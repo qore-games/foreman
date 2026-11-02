@@ -1,0 +1,57 @@
+name: Release
+
+# On a version tag (v1.2.3, the same as mod_version): builds the mod and the plugin, attaches them to a GitHub release
+# with the version's CHANGELOG section, and adds the API artifacts to the maven-repo branch (the docs workflow then
+# serves it at https://qore-games.github.io/foreman/maven/).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: The tag is the version
+        run: |
+          VERSION=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME, mod_version $VERSION"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - run: ./gradlew build -x test
+      - run: ./gradlew :api:publishAllPublicationsToReleaseRepository :paper:publishAllPublicationsToReleaseRepository :server-api:publishAllPublicationsToReleaseRepository
+
+      - name: Add the artifacts to the maven-repo branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin maven-repo; then
+            git fetch origin maven-repo
+            git worktree add -B maven-repo maven-repo origin/maven-repo
+          else
+            git worktree add --orphan -b maven-repo maven-repo
+          fi
+          cp -r build/release-repo/. maven-repo/
+          cd maven-repo
+          git add -A
+          git commit -m "Artifacts of $GITHUB_REF_NAME"
+          git push origin maven-repo
+
+      - name: Release notes from the changelog
+        run: awk -v v="$VERSION" '$0 ~ "^## \\[?" v "[] ]" { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            client/build/libs/foreman-${{ env.VERSION }}.jar
+            server/build/libs/foreman-server-${{ env.VERSION }}.jar

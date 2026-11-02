@@ -1,0 +1,61 @@
+# What build_structure puts in each room type: Foreman's defaults, neutral on purpose. Add or redefine room types per
+# server in plugins/Foreman/catalog/rooms.yml, per world in its profile's `rooms` (world_profile), per building in
+# build_structure's `catalog`: a room type defined there replaces this one. list_styles shows the result.
+#
+# Each entry:
+#   item:   furniture:<furniture id> | block:<block state>  ({facing} = the side its front looks to, {back} = the wall side);
+#           `a|b|c` after the prefix picks one of them for each piece (furniture:blue_sofa|gray_sofa)
+#   count:  n or a-b                 how many (default 1), for a room of about 50 cells (bigger rooms get more)
+#   chance: 0..1                     for each one (default 1)
+#   place:  wall (default) | center   wall = back against a wall, clear of doors and windows; center = free in the room
+#   point:  <type>:<kind>            records a gameplay point at it (container:chest, spawn:guard…: free names), kept in
+#                                    the world, listed by the `points` tool and readable by other plugins; an entry with a
+#                                    point and no item records it on a free floor cell
+#
+# Room types are free names. The archetypes use living, kitchen, lobby, corridor, stairwell and hall; the uses of
+# catalog/buildings.yml name the others. `clutter` (when defined) lists the blocks build_structure's clutter uses.
+
+living:
+  - {item: "block:bookshelf", count: 1-2}
+  - {item: "block:barrel[facing=up]"}
+  - {item: "block:spruce_stairs[facing={back}]", count: 1-2}
+  - {item: "block:brown_carpet", place: center}
+bedroom:
+  - {item: "block:red_bed[facing={back},part=head]", count: 1-2}
+  - {item: "block:chest[facing={facing}]"}
+  - {item: "block:lantern", chance: 0.4}
+kitchen:
+  - {item: "block:smoker[facing={facing}]"}
+  - {item: "block:cauldron"}
+  - {item: "block:barrel[facing={facing}]"}
+  - {item: "block:spruce_slab[type=top]", count: 1-2}
+bathroom:
+  - {item: "block:cauldron"}
+  - {item: "block:white_carpet", place: center}
+office:
+  - {item: "block:lectern[facing={facing}]"}
+  - {item: "block:barrel[facing={facing}]"}
+  - {item: "block:bookshelf", count: 1-2}
+storage:
+  - {item: "block:barrel[facing={facing}]", count: 2-4}
+  - {item: "block:chest[facing={facing}]", count: 1-2}
+classroom:
+  - {item: "block:spruce_stairs[facing={back}]", count: 4-6, place: center}
+  - {item: "block:lectern[facing={facing}]"}
+workshop:
+  - {item: "block:crafting_table"}
+  - {item: "block:anvil[facing={facing}]"}
+  - {item: "block:chest[facing={facing}]"}
+lobby:
+  - {item: "block:spruce_stairs[facing={back}]", count: 2-3}
+  - {item: "block:flower_pot", chance: 0.5}
+shop:
+  - {item: "block:spruce_slab[type=top]", count: 2-4}
+  - {item: "block:barrel[facing={facing}]", count: 1-2}
+hall:
+  - {item: "block:barrel[facing={facing}]", count: 2-4}
+dining:
+  - {item: "block:spruce_slab[type=top]", count: 2-4, place: center}
+  - {item: "block:barrel[facing={facing}]"}
+corridor: []
+stairwell: []

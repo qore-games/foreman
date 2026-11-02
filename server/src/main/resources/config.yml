@@ -1,0 +1,27 @@
+mcp:
+  # Bind to localhost unless the AI client runs on another machine. The server speaks plain HTTP: beyond this
+  # machine, put it behind TLS (a reverse proxy) or a VPN.
+  host: 127.0.0.1
+  port: 25599
+  # Clients send "Authorization: Bearer <token>". Empty: the token in mcp-token.txt (this folder), made at the first
+  # start. Players with foreman.client also get their own through the foreman mod (tokens.yml, /foreman token revoke
+  # <player>), accepted besides this one.
+  token: ""
+  # The URL the foreman mod gives its AI (it runs on the player's computer). Default: http://<host>:<port>/mcp,
+  # with the server's IP when host is 0.0.0.0. Set it when players reach the server through another address.
+  public-url: ""
+
+# World used when a tool call names none. Empty: the world of the first online player.
+default-world: ""
+
+limits:
+  max-edit-blocks: 1000000
+  max-read-blocks: 20000
+  max-render-blocks: 800000
+
+# Assets for the textured renders (look, model previews). The client jar is downloaded from Mojang into cache/ unless
+# client-jar is set; packs are the server's resource packs (zips or unzipped folders, absolute or relative to the
+# server folder), later ones winning.
+resources:
+  client-jar: ""
+  packs: []

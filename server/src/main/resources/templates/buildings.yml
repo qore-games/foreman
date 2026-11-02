@@ -1,0 +1,29 @@
+# This server's building styles and uses for build_structure, next to Foreman's (brick, wood, stone, modern,
+# industrial; office, school, hotel, apartment, dormitory, shop, workshop, basement). A style or use named like one of
+# Foreman's replaces it. list_styles shows them all; a world's profile (world_profile) can add its own on top.
+#
+# styles: material presets by name. A style starts from the one it `extends` (default brick) and gives what it changes:
+#   wall, trim, base, floor, slab, inner, paint, roof, roof_stairs, parapet, window, door, entrance, stairs, pillar,
+#   railing (block states; `none` removes the optional parapet and pillar).
+# uses: the room types of a building use, in the order its rooms get them (room types of catalog/rooms.yml).
+#
+# Examples (uncomment and adapt):
+#
+# styles:
+#   timber:
+#     extends: wood
+#     wall: white_terracotta
+#     trim: dark_oak_log
+#     pillar: dark_oak_log
+#     roof_stairs: dark_oak_stairs
+#   sandstone:
+#     extends: stone
+#     wall: smooth_sandstone
+#     trim: cut_sandstone
+#     base: sandstone
+#     roof_stairs: sandstone_stairs
+#     parapet: smooth_sandstone_slab[type=bottom]
+#
+# uses:
+#   library: [reading, reading, office, storage]
+#   tavern: [dining, kitchen, storage, bedroom, bedroom]

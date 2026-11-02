@@ -1,0 +1,28 @@
+# This server's room types for build_structure, next to Foreman's (living, bedroom, kitchen, bathroom, office,
+# storage, classroom, workshop, lobby, shop, hall, dining, corridor, stairwell). A room type named like one of
+# Foreman's replaces it. list_styles shows them all with what each gets; a world's profile (world_profile `rooms`) can
+# redefine them on top.
+#
+# Each entry:
+#   item:   furniture:<furniture id> | block:<block state>  ({facing} = the side its front looks to, {back} = the wall side);
+#           `a|b|c` after the prefix picks one of them for each piece
+#   count:  n or a-b                 how many (default 1), for a room of about 50 cells (bigger rooms get more)
+#   chance: 0..1                     for each one (default 1)
+#   place:  wall (default) | center   wall = back against a wall, clear of doors and windows; center = free in the room
+#   point:  <type>:<kind>            records a gameplay point at it (container:chest, spawn:guard…: free names) that
+#                                    other plugins read; with no item, on a free floor cell
+#
+# Examples (uncomment and adapt; give them to a building with a use of catalog/buildings.yml, or build_structure's
+# `rooms`):
+#
+# reading:
+#   - {item: "block:bookshelf", count: 3-5}
+#   - {item: "block:lectern[facing={facing}]"}
+#   - {item: "block:oak_stairs[facing={back}]", count: 2-3, place: center}
+#   - {item: "block:lantern", chance: 0.5}
+# guardroom:
+#   - {item: "block:barrel[facing={facing}]", count: 1-2, point: "container:supplies"}
+#   - {point: "spawn:guard", count: 1-2}
+# clutter:
+#   - {item: "block:barrel[facing=up]"}
+#   - {item: "block:hay_block"}

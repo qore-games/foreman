@@ -1,0 +1,23 @@
+{
+	"key.category.foreman.general": "Foreman",
+	"key.category.foreman.ai": "Foreman: AI",
+	"key.category.foreman.world": "Foreman: world",
+	"key.category.foreman.debug": "Foreman: debug",
+	"key.foreman.hub": "Foreman hub",
+	"key.foreman.locations": "Location sources and categories",
+	"key.foreman.location-editor": "Toggle the location editor",
+	"key.foreman.move-to-player-exact": "Editor: move selection to your feet",
+	"key.foreman.move-to-player-eye-exact": "Editor: move selection to your eyes",
+	"key.foreman.move-to-player-block": "Editor: move selection to your block",
+	"key.foreman.copy-exact-location": "Copy exact location",
+	"key.foreman.copy-block-location": "Copy block location",
+	"key.foreman.ai-chat": "AI chats",
+	"key.foreman.ai-selection-tool": "Toggle the selection tool",
+	"key.foreman.ai-selection-to-prompt": "Send the selection to a chat",
+	"key.foreman.ai-overlays": "All overlays on / off",
+	"key.foreman.ai-overlay-areas": "Areas: off / nearby / always",
+	"key.foreman.ai-overlay-points": "Points: off / nearby / always",
+	"key.foreman.ai-overlay-issues": "Check issues: off / nearby / always",
+	"key.foreman.ai-overlay-locations": "Plugin locations: off / nearby / always",
+	"key.foreman.packets-record": "Packet recording: start / stop"
+}

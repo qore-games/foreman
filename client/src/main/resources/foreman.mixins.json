@@ -1,0 +1,29 @@
+{
+	"required": true,
+	"package": "games.qore.foreman.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"BossHealthOverlayAccessor",
+		"ClientPacketListenerMixin",
+		"CompressionDecoderMixin",
+		"CompressionEncoderMixin",
+		"ConnectionMixin",
+		"DisplayAccessor",
+		"FontAccessor",
+		"GameRendererAccessor",
+		"HudAccessor",
+		"MinecraftMixin",
+		"MouseHandlerMixin",
+		"PacketDecoderMixin",
+		"PacketEncoderMixin",
+		"PacketProcessorMixin",
+		"PlayerTabOverlayAccessor",
+		"QueuedPacketMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

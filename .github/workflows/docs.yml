@@ -1,0 +1,52 @@
+name: Docs
+
+# The documentation (Zensical, docs/ and zensical.toml) and, next to it in maven/, the Maven repository the release
+# workflow keeps in the maven-repo branch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - zensical.toml
+      - .github/workflows/docs.yml
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/configure-pages@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+      - run: pip install -r docs/requirements.txt
+      - run: zensical build --clean
+      - run: python3 -I scripts/llms.py site
+      - name: The Maven repository
+        run: |
+          if git ls-remote --exit-code --heads origin maven-repo; then
+            git fetch --depth 1 origin maven-repo
+            mkdir -p site/maven
+            git archive FETCH_HEAD | tar -x -C site/maven
+          fi
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - uses: actions/deploy-pages@v5
+        id: deployment

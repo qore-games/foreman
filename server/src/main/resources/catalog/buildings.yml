@@ -1,0 +1,109 @@
+# build_structure's presets: Foreman's defaults, neutral on purpose. Add your own per server in
+# plugins/Foreman/catalog/buildings.yml (a style or use of the same name replaces one of these), per world in its
+# profile's `styles` and `uses` (world_profile), per building in build_structure's `materials` and `rooms`. list_styles
+# shows the result.
+#
+# styles: material presets by name.
+#   extends:     the style it starts from (default brick): a style only gives what it changes
+#   wall, trim (floor edges, corners), base (foundation, bottom row), floor, slab (between storeys, flat roof),
+#   inner (inner walls), paint (bottom row of the rooms' walls), roof, roof_stairs (gable and hip roofs),
+#   parapet (flat roofs; optional), window, door, entrance (front doors), stairs, pillar (corners; optional),
+#   railing (stair rails, boarded windows): block states, e.g. `oak_log[axis=y]`. `none` removes an optional one.
+#
+# uses: the room types of a building use, in the order its rooms get them (they repeat). Room types are those of
+# catalog/rooms.yml. `basement` is the use of basements.
+
+styles:
+  brick:
+    wall: bricks
+    trim: white_terracotta
+    base: stone_bricks
+    floor: spruce_planks
+    slab: gray_concrete
+    inner: light_gray_terracotta
+    paint: brown_terracotta
+    roof: gray_concrete
+    roof_stairs: deepslate_tile_stairs
+    parapet: brick_slab[type=bottom]
+    window: glass_pane
+    door: dark_oak_door
+    entrance: dark_oak_door
+    stairs: stone_brick_stairs
+    railing: iron_bars
+  wood:
+    wall: spruce_planks
+    trim: stripped_spruce_log
+    base: cobblestone
+    floor: spruce_planks
+    slab: spruce_planks
+    inner: birch_planks
+    paint: spruce_planks
+    roof: spruce_planks
+    roof_stairs: dark_oak_stairs
+    parapet: none
+    window: glass_pane
+    door: spruce_door
+    entrance: spruce_door
+    stairs: spruce_stairs
+    pillar: stripped_spruce_log
+    railing: spruce_fence
+  stone:
+    wall: stone_bricks
+    trim: polished_andesite
+    base: cobblestone
+    floor: oak_planks
+    slab: smooth_stone
+    inner: oak_planks
+    paint: polished_andesite
+    roof: stone_bricks
+    roof_stairs: spruce_stairs
+    parapet: stone_brick_slab[type=bottom]
+    window: glass_pane
+    door: oak_door
+    entrance: spruce_door
+    stairs: stone_brick_stairs
+    pillar: polished_andesite
+    railing: oak_fence
+  modern:
+    wall: white_concrete
+    trim: light_gray_concrete
+    base: gray_concrete
+    floor: birch_planks
+    slab: light_gray_concrete
+    inner: white_terracotta
+    paint: light_gray_terracotta
+    roof: gray_concrete
+    roof_stairs: stone_brick_stairs
+    parapet: smooth_stone_slab[type=bottom]
+    window: glass_pane
+    door: birch_door
+    entrance: iron_door
+    stairs: polished_andesite_stairs
+    railing: iron_bars
+  industrial:
+    wall: light_gray_concrete
+    trim: gray_concrete
+    base: gray_concrete
+    floor: smooth_stone
+    slab: gray_concrete
+    inner: light_gray_concrete
+    paint: gray_concrete
+    roof: gray_concrete
+    roof_stairs: stone_brick_stairs
+    parapet: none
+    window: glass_pane
+    door: iron_door
+    entrance: iron_door
+    stairs: polished_andesite_stairs
+    pillar: gray_concrete
+    railing: iron_bars
+
+uses:
+  office: [office, office, storage, office, bathroom]
+  school: [classroom, classroom, office, classroom, storage, dining]
+  hotel: [bedroom, bathroom, bedroom, bedroom, storage]
+  apartment: [bedroom, bathroom, bedroom, kitchen]
+  dormitory: [bedroom, bedroom, bathroom, bedroom, kitchen]
+  shop: [shop, shop, storage, office]
+  workshop: [workshop, workshop, storage, office]
+  basement: [storage, workshop, storage]

@@ -1,0 +1,16 @@
+name: Feature request
+description: Something Foreman could do for server owners, admins or plugin developers.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you're trying to do, and what's slow or impossible today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: An idea
+      description: How Foreman could help (optional).

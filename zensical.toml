@@ -1,0 +1,121 @@
+[project]
+site_name = "Foreman"
+site_description = "A multi-tool for Minecraft server owners, admins and plugin developers"
+site_url = "https://qore-games.github.io/foreman/"
+repo_url = "https://github.com/qore-games/foreman"
+repo_name = "qore-games/foreman"
+edit_uri = "edit/main/docs/"
+# The GIFs are for the README (the site plays the videos).
+exclude_docs = """
+requirements.txt
+assets/gifs/
+"""
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    "getting-started/index.md",
+    { "Install the client" = "getting-started/install-client.md" },
+    { "Install the server plugin" = "getting-started/install-server.md" },
+    { "First run" = "getting-started/first-run.md" },
+    { "Flatpak launchers" = "getting-started/flatpak.md" },
+  ] },
+  { "Client" = [
+    "client/index.md",
+    { "The hub" = "client/hub.md" },
+    { "Packet viewer" = "client/packets.md" },
+    { "HUD inspector" = "client/hud-inspector.md" },
+    { "Locations and local sets" = "client/locations.md" },
+    { "Selection" = "client/selection.md" },
+    { "Plugin messages and helpers" = "client/plugin-messages.md" },
+    { "Keys and commands" = "client/keys-commands.md" },
+  ] },
+  { "AI" = [
+    "ai/index.md",
+    { "Chats" = "ai/chats.md" },
+    { "Examples" = "ai/examples.md" },
+    { "Ask your AI to use Foreman" = "ai/ask-your-ai.md" },
+    { "Workspaces" = "ai/workspaces.md" },
+    { "Backends" = "ai/backends.md" },
+    { "Outside agents (client MCP)" = "ai/outside-agents.md" },
+    { "Tool reference" = "ai/tools.md" },
+  ] },
+  { "Server plugin" = [
+    "server/index.md",
+    { "Setup and configuration" = "server/setup.md" },
+    { "Permissions and tokens" = "server/permissions.md" },
+    { "Dev-server tools" = "server/dev-tools.md" },
+    { "Dupe testing" = "server/dupe-testing.md" },
+    { "Skills" = "server/skills.md" },
+    { "Plugin integrations" = "server/integrations.md" },
+    { "World building" = [
+      { "World tools" = "server/world-tools.md" },
+      { "Building templates" = "server/building-templates.md" },
+      { "World context" = "server/world-context.md" },
+      { "Schematic library" = "server/assets.md" },
+      { "Lessons and prompts" = "server/lessons-prompts.md" },
+    ] },
+  ] },
+  { "For developers" = [
+    "developers/index.md",
+    { "Add Foreman to your plugin" = "developers/install.md" },
+    { "Skills for your plugin" = "developers/skills.md" },
+    { "ForemanTools" = "developers/foreman-tools.md" },
+    { "Location API" = "developers/locations-api.md" },
+    { "ForemanWorlds" = "developers/foreman-worlds.md" },
+    { "FurnitureProvider" = "developers/furniture.md" },
+    { "Network profiles" = "developers/network-profiles.md" },
+    { "Building from source" = "developers/building.md" },
+  ] },
+  { "Security and privacy" = "security.md" },
+  { "FAQ and known limits" = "faq.md" },
+]
+
+[project.theme]
+language = "en"
+logo = "assets/hard-hat.png"
+favicon = "assets/favicon.png"
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "blue grey"
+accent = "light blue"
+toggle.icon = "lucide/moon"
+toggle.name = "Dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "blue grey"
+accent = "light blue"
+toggle.icon = "lucide/sun"
+toggle.name = "Light mode"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.tabbed.combine_header_slug = true

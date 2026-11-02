@@ -1,0 +1,45 @@
+{
+	"schemaVersion": 1,
+	"id": "foreman",
+	"version": "${version}",
+	"name": "Foreman",
+	"description": "A toolbox for server owners, admins and plugin developers: a packet viewer, a HUD inspector, your plugins' locations in the world, and AI chats and MCP tools that work in the game with you.",
+	"authors": [
+		"evlad"
+	],
+	"contact": {
+		"homepage": "https://qore-games.github.io/foreman/",
+		"sources": "https://github.com/qore-games/foreman",
+		"issues": "https://github.com/qore-games/foreman/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/foreman/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			{
+				"value": "games.qore.foreman.client.ForemanClient",
+				"adapter": "kotlin"
+			}
+		],
+		"modmenu": [
+			{
+				"value": "games.qore.foreman.client.config.ForemanModMenu",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"foreman.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": ">=0.160.5",
+		"fabric-language-kotlin": ">=1.13.12"
+	},
+	"suggests": {
+		"modmenu": "*"
+	}
+}

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://qore-games.github.io/foreman/
+    about: Setup, every feature, the FAQ and known limits.

@@ -1,0 +1,36 @@
+name: Bug report
+description: Something doesn't work as the documentation says.
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Client mod
+        - Server plugin
+        - API (foreman-server-api, foreman-paper)
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Foreman, Minecraft, and the server software (Paper build, other plugins involved).
+      placeholder: Foreman 1.0.0, Minecraft 26.3, Paper 26.3 build 12
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The client log (`logs/latest.log`) or the server log around the problem.
+      render: text
