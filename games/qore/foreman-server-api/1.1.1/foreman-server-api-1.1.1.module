@@ -1,0 +1,102 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "games.qore",
+    "module": "foreman-server-api",
+    "version": "1.1.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "foreman-server-api-1.1.1.jar",
+          "url": "foreman-server-api-1.1.1.jar",
+          "size": 18887,
+          "sha512": "ad7677c8a56c99ec310691f41eca44220a129926fef1f76ac3d7f657189ed2da6a50a23d1852ffc422a8a1f96eff3a0e0ec1f67e5a0f3435a6330321b33333f2",
+          "sha256": "1c2426e247a2685927e37e4bd4a7a51680989eb2bfc9c7794e5dc89883aaaf04",
+          "sha1": "8d0ebaa2bcdf54fd62aa7ca470a4b998df8700e7",
+          "md5": "17553cea48b8a63335221b2e37ae92bd"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 25,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "foreman-server-api-1.1.1.jar",
+          "url": "foreman-server-api-1.1.1.jar",
+          "size": 18887,
+          "sha512": "ad7677c8a56c99ec310691f41eca44220a129926fef1f76ac3d7f657189ed2da6a50a23d1852ffc422a8a1f96eff3a0e0ec1f67e5a0f3435a6330321b33333f2",
+          "sha256": "1c2426e247a2685927e37e4bd4a7a51680989eb2bfc9c7794e5dc89883aaaf04",
+          "sha1": "8d0ebaa2bcdf54fd62aa7ca470a4b998df8700e7",
+          "md5": "17553cea48b8a63335221b2e37ae92bd"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "foreman-server-api-1.1.1-sources.jar",
+          "url": "foreman-server-api-1.1.1-sources.jar",
+          "size": 6294,
+          "sha512": "75c7fe85754e9563e63c18ceabd58d00f80df778839f49627c0c7694e108fc250d3cd145f667c09c9f9a5b17f48ee9cf8fbb1bbb47603ca790887a5e35cedfd2",
+          "sha256": "49c5e5dca7915b637aebaa4406a73e3c946e64348b518970e889c4cf60abefa5",
+          "sha1": "c2465ca4c362cee42ae87a38195586e166499ede",
+          "md5": "7496339cf42e0d0b625985d6e3a10723"
+        }
+      ]
+    }
+  ]
+}
