@@ -3,7 +3,7 @@
 The plugin is optional: the client mod works on any server. Install it where you want the
 [dev-server tools](../server/dev-tools.md), the [world tools](../server/world-tools.md) or tools other plugins publish.
 
-1. Put `foreman-server-1.0.0.jar` in `plugins/`. For the world tools, add
+1. Put `foreman-server-1.1.0.jar` in `plugins/`. For the world tools, add
    [FastAsyncWorldEdit](https://modrinth.com/plugin/fastasyncworldedit) too: without it the plugin has the dev-server
    tools and other plugins' tools, and none that edit the world (the log says so at start).
 2. Start the server. The log shows the MCP address, `http://127.0.0.1:25599/mcp` by default; other MCP clients send

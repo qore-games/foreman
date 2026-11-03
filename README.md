@@ -105,8 +105,8 @@ Working on Foreman itself: [AGENTS.md](AGENTS.md).
 
 | | Requirements |
 |---|---|
-| **Client** (`foreman-1.0.0.jar` in `mods/`) | Minecraft 26.3, Fabric Loader, Fabric API, Fabric Language Kotlin. |
-| **Server** (`foreman-server-1.0.0.jar` in `plugins/`) | Paper 26.3. FastAsyncWorldEdit for the world tools (optional: the rest works without it). |
+| **Client** (`foreman-1.1.0.jar` in `mods/`) | Minecraft 26.3, Fabric Loader, Fabric API, Fabric Language Kotlin. |
+| **Server** (`foreman-server-1.1.0.jar` in `plugins/`) | Paper 26.3. FastAsyncWorldEdit for the world tools (optional: the rest works without it). |
 
 Players with the `foreman.client` permission (ops by default) are connected to the server's tools when they join.
 The plugin's MCP server listens on `127.0.0.1:25599` by default (see `plugins/Foreman/config.yml`), with the token in
