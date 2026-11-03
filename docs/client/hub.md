@@ -8,7 +8,7 @@ grouped by what they're for, with each feature's settings on its own page:
 | | **Home**: is the Foreman plugin linked, the running chats, the packet recording, the overlays and your selection, your keys |
 | **AI** | **Chats**, **Workspaces**, **Tools** (every tool the AI can use, by provider), **Agents** (the backend chats run on, agents outside the game) |
 | **World** | **Overlays** (what's drawn in the world), **Locations** (sources and categories, the location editor and its snap), **Selection** (your selection tool, the WorldEdit selection and its tool) |
-| **Debug** | **Packets** (the packet viewer and its settings), **HUD** (the HUD inspector), **Plugin messages** (a log of what plugins send on their channels) |
+| **Debug** | **Packets** (the packet viewer and its settings), **HUD** (the HUD inspector), **Plugin messages** (a log of what plugins send on their channels), **Resource packs** (fast reloads, the last one's steps and issues) |
 | | **Keys** (by group; click a key, press the new one), **Settings** (where each setting is, the config folder, links) |
 
 The rail shows badges: the number of chats at work, a red dot while packets are being recorded, and a dot on the

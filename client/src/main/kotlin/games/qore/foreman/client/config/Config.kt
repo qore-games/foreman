@@ -99,6 +99,16 @@ data class ExternalAccessSettings(
     var allowScreenshots: Boolean = true,
 )
 
+@Serializable
+data class ReloadSettings(
+    /** Resource reloads do their slow steps in parallel and off the main thread, and the loading screen closes as they end. */
+    var fast: Boolean = true,
+    /** With [fast]: the game stays on screen and playable while packs load; only the short apply at the end freezes it. */
+    var keepPlaying: Boolean = true,
+    /** A chat line after each reload: how long it took, and how long it froze the game. */
+    var report: Boolean = true,
+)
+
 /** A named set of folders chats can use (a plugin's configs, a datapack, a repo…). Default ones go to every new chat. */
 @Serializable
 data class Workspace(
@@ -118,6 +128,7 @@ data class Settings(
     var overlays: OverlaySettings = OverlaySettings(),
     var agent: AgentSettings = AgentSettings(),
     var external: ExternalAccessSettings = ExternalAccessSettings(),
+    var reload: ReloadSettings = ReloadSettings(),
 )
 
 /** `config/foreman/settings.json`, read once at start and written on every change (this user only: it holds a token). */

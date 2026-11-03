@@ -35,6 +35,10 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
 - **HUD inspector.** See how the client lays out your server's action bar, titles, boss bars and tab list, glyph by
   glyph, and find the part that makes a line shift. Guides over the HUD, a watch for glyphs that move, and a check of
   your declared glyph widths against what the client draws.
+- **Fast pack reloads.** F3+T and server packs reload about nine times faster, with the same textures, models and
+  fonts: a 70 MB pack takes 1 second instead of 9. The game stays playable meanwhile, under a thin progress bar
+  instead of the loading screen. The reload's warnings and errors are listed by kind, and a chat finds their cause in
+  your pack's sources.
 - **Plugin locations.** Plugins send their locations (NPCs, spawns, regions, waypoints…) and the mod draws them in the
   world, by source and category. Staff can teleport to them and move them with a gizmo, and the plugin gets the new
   position. Local sets keep your own lists of points on your computer.
@@ -132,6 +136,7 @@ Every key can be changed in the hub or in Minecraft's controls.
 |---|---|
 | `/packets [start [seconds] \| stop \| clear \| export \| ask]` | The packet viewer |
 | `/hud [guides [element]]` | The HUD inspector |
+| `/fastreload [on \| off]` | Reload the resource packs; fast reloads on or off |
 | `/locations`, `/local` | Plugin locations and your local sets |
 | `/ai [ask <prompt> \| new \| cancel \| tools]` | AI chats |
 | `/foreman` (server) | Areas, undo, assets, tokens, tools, world data, status |

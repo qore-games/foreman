@@ -19,9 +19,12 @@ import games.qore.foreman.client.link.WorldEditTool
 import games.qore.foreman.client.locations.LocalSets
 import games.qore.foreman.client.locations.LocationEditor
 import games.qore.foreman.client.locations.LocationStore
+import games.qore.foreman.client.mcp.ClientLog
 import games.qore.foreman.client.mcp.ClientMcp
 import games.qore.foreman.client.packets.PacketRecorder
 import games.qore.foreman.client.packets.PacketReports
+import games.qore.foreman.client.reload.PackIssues
+import games.qore.foreman.client.reload.ReloadTimer
 import games.qore.foreman.client.ui.kit.KitScreen
 import games.qore.foreman.client.ui.kit.Style
 import games.qore.foreman.client.ui.kit.Theme
@@ -41,6 +44,7 @@ import net.minecraft.resources.Identifier
 import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 /**
  * Foreman's home (H): a rail of sections grouped under parent labels on the left, the section on the right. Each
@@ -63,6 +67,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         PACKETS(Group.DEBUG, "⇅", "Packets", "What the server and your client send each other: record, then find what floods the connection"),
         HUD(Group.DEBUG, "▦", "HUD", "Your HUD's texts as the client lays them out: parts, glyphs, offsets, and what moves when they change"),
         MESSAGES(Group.DEBUG, "✎", "Plugin messages", "What plugins send on their channels, both ways"),
+        RESOURCES(Group.DEBUG, "↻", "Resource packs", "Faster reloads that keep the game going, how long the last one took, and what it warned about"),
         KEYS(Group.BOTTOM, "⌨", "Keys", "Every key of the mod, and its commands"),
         SETTINGS(Group.BOTTOM, "⚙", "Settings", "Where each setting is, files and links"),
     }
@@ -187,6 +192,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             Section.PACKETS -> PacketsPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty())
             Section.HUD -> HudPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad)
             Section.MESSAGES -> messages(ui)
+            Section.RESOURCES -> resources(ui)
             Section.KEYS -> keys(ui)
             Section.SETTINGS -> settings(ui)
         }
@@ -917,6 +923,112 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         }
     }
 
+    // ---- Debug: resource packs --------------------------------------------------------------------------------------
+
+
+    private var resourcesTab = 0
+    private val openIssues = mutableSetOf<String>()
+
+    private fun resources(ui: Ui) {
+        val r = Config.settings.reload
+        val half = (contentWidth - pad) / 2
+        var y = y0
+        ui.switch(x0, y, half, "Fast reloads", r.fast, "Slow steps in parallel and off the main thread, no fade-out: the same resources, much sooner") {
+            Config.update { reload.fast = !reload.fast }
+        }
+        ui.switch(x0 + half + pad, y, half, "Keep playing meanwhile", r.keepPlaying, "With fast reloads: the game stays on screen and takes input, under a thin progress bar; only the last step freezes it") {
+            Config.update { reload.keepPlaying = !reload.keepPlaying }
+        }
+        y += 22
+        ui.switch(x0, y, half, "Report each reload in chat", r.report) { Config.update { reload.report = !reload.report } }
+        ui.button(x0 + half + pad, y, 100, 16, "Reload now", tooltip = "Reloads the resource packs, like F3+T") { minecraft.reloadResourcePacks() }
+        y += 28
+
+        val issues = PackIssues.groups()
+        val count = issues.sumOf { it.lines.size }
+        ui.segmented(x0, y, listOf("Performance", if (count == 0) "Issues" else "Issues ($count)"), resourcesTab,
+            listOf(Theme.TEXT, if (issues.any { it.error }) Theme.ERROR else if (count > 0) Theme.WARN else Theme.TEXT)) { resourcesTab = it }
+        y += 24
+        if (resourcesTab == 0) reloadTimes(ui, y) else reloadIssues(ui, y, issues)
+    }
+
+    /** The last reload's time and its steps. */
+    private fun reloadTimes(ui: Ui, top: Int) {
+        var y = top
+        val last = ReloadTimer.last
+        if (last == null) {
+            ui.paragraph("No reload yet: F3+T, the options' packs or a server's pack starts one. Its steps and their times show here.", x0, y, contentWidth)
+            return
+        }
+        ui.text(ui.fit(last.summary(), contentWidth), x0, y, Theme.TEXT)
+        ui.text(ui.fit("Main thread: ${"%.2f".format(Locale.ROOT, last.blockingMs / 1000.0)} s applying. A step prepares off the main thread, waits for the others, then applies on it.", contentWidth), x0, y + 12, Theme.MUTED)
+        y += 30
+        val cols = listOf(contentWidth - 210, contentWidth - 140, contentWidth - 70)
+        ui.text("Step, last prepared first", x0, y, Theme.FAINT)
+        listOf("prepared at", "preparing", "applying").forEachIndexed { i, h -> ui.text(h, x0 + cols[i], y, Theme.FAINT) }
+        y += 12
+        ui.scroll("reload-steps", x0, y, contentWidth, height - y - pad) { top ->
+            var row = top
+            for (step in last.steps.sortedByDescending { it.preparedMs }) {
+                ui.text(ui.fit(step.name, cols[0] - 10), x0, row, Theme.TEXT)
+                listOf(step.preparedMs, step.prepareMs, step.applyMs).forEachIndexed { i, ms -> ui.text(if (ms < 0) "—" else "$ms ms", x0 + cols[i], row, Theme.MUTED) }
+                row += 12
+            }
+            row - top
+        }
+    }
+
+    /** The last reload's warnings and errors, a row per kind (click to see its lines), and chats about them. */
+    private fun reloadIssues(ui: Ui, top: Int, issues: List<PackIssues.Group>) {
+        if (issues.isEmpty()) {
+            ui.paragraph(if (ClientLog.lastReload() == 0L) "No reload seen yet: the warnings and errors of the next one show here."
+                else "No warning or error in the last reload.", x0, top, contentWidth)
+            return
+        }
+        val count = issues.sumOf { it.lines.size }
+        ui.text("$count lines in ${issues.size} kinds, errors first", x0, top + 4, Theme.FAINT)
+        ui.button(width - pad - 90, top, 90, 16, "Ask the AI", Style.PRIMARY, tooltip = "A new chat finds the files that cause them in your pack's sources, and fixes them") {
+            PackIssues.ask(issues)
+        }
+        val listTop = top + 22
+        ui.scroll("reload-issues", x0, listTop, contentWidth, height - listTop - pad) { scrollTop ->
+            var y = scrollTop
+            for (group in issues) y += issueRow(ui, y, group)
+            y - scrollTop
+        }
+    }
+
+    private fun issueRow(ui: Ui, y: Int, group: PackIssues.Group): Int {
+        val w = contentWidth - 6
+        val open = group.key in openIssues
+        ui.rect(x0, y, w, 18, if (open || ui.hovered(x0, y, w, 18)) Theme.PANEL_HOVER else Theme.PANEL)
+        ui.text(if (open) "▾" else "▸", x0 + 5, y + 5, Theme.FAINT)
+        var cx = x0 + 16
+        cx += ui.chip(cx, y + 3, "${group.lines.size}", if (group.error) Theme.ERROR else Theme.WARN) + 6
+        cx += ui.chip(cx, y + 3, group.logger) + 6
+        ui.text(ui.fit(group.kind, (w - (cx - x0) - 6).coerceAtLeast(0)), cx, y + 5, Theme.TEXT)
+        ui.hit(x0, y, w, 18, if (open) "Click to close" else "Click to see its lines") { if (!openIssues.remove(group.key)) openIssues += group.key }
+        if (!open) return 19
+
+        val tx = x0 + 16
+        val tw = w - 28
+        // Each line: its first line, then the rest (a model's missing textures…) indented and dimmer.
+        val shown = group.lines.take(30).map { line -> line.text.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+        fun h(text: String, width: Int) = ui.font.split(Component.literal(text), width).size * 10
+        val textH = shown.sumOf { parts -> parts.withIndex().sumOf { (i, part) -> h(part, if (i == 0) tw else tw - 10) } + 2 }
+        val more = group.lines.size - shown.size
+        val height = 8 + textH + (if (more > 0) 12 else 0) + 24
+        ui.rect(x0, y + 18, w, height, Theme.FIELD)
+        var dy = y + 26
+        for (parts in shown) {
+            parts.forEachIndexed { i, part -> dy += if (i == 0) ui.paragraph(part, tx, dy, tw, Theme.TEXT) else ui.paragraph(part, tx + 10, dy, tw - 10, Theme.MUTED) }
+            dy += 2
+        }
+        if (more > 0) { ui.text("… and $more more", tx, dy + 2, Theme.FAINT); dy += 12 }
+        ui.button(tx, dy + 4, 110, 16, "Ask about these", Style.GHOST, tooltip = "A new chat about this kind of issue") { PackIssues.ask(listOf(group)) }
+        return 18 + height + 1
+    }
+
     // ---- Settings ---------------------------------------------------------------------------------------------------
 
     private fun settings(ui: Ui) {
@@ -930,6 +1042,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             Section.LOCATIONS to "Location labels, through blocks, the editor's gizmo snap",
             Section.PACKETS to "Packets kept per recording, keeping their fields",
             Section.MESSAGES to "Logging plugin messages, printing them",
+            Section.RESOURCES to "Fast reloads, playing through them, the chat report",
             Section.KEYS to "Every key of the mod",
         )
         val colX = listOf(x0 + 10, x0 + 10 + half)

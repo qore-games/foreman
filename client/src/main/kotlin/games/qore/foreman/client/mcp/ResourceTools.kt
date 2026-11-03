@@ -2,6 +2,7 @@ package games.qore.foreman.client.mcp
 
 import games.qore.foreman.client.mixin.GameRendererAccessor
 import games.qore.foreman.client.packets.PacketInspector
+import games.qore.foreman.client.reload.ReloadTimer
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.int
@@ -52,16 +53,20 @@ object ResourceTools {
             "client_resource_packs",
             "The resource packs the client has loaded, from the bottom (vanilla) to the top (the server's packs last), and " +
                 "when the last resource reload started. `reload`: reloads them like F3+T (the same packs: a server pack isn't " +
-                "downloaded again), waits for the end, and returns the warnings and errors logged meanwhile.",
+                "downloaded again), waits for the end, and returns how long each step took and the warnings and errors logged meanwhile.",
             ClientTools.schema("reload" to "boolean: reload the packs first (default false)", "lines" to "integer: for reload, log lines shown (default 60)"),
             acts = { it["reload"].bool() == true },
         ) { _, args ->
             val minecraft = Minecraft.getInstance()
             val log = if (args["reload"].bool() == true) {
-                val started = System.currentTimeMillis()
+                val asked = System.nanoTime()
                 ClientTools.onClient { minecraft.reloadResourcePacks() }.get(180, TimeUnit.SECONDS)
-                val took = (System.currentTimeMillis() - started) / 1000.0
-                "Reloaded in %.1f s. ".format(java.util.Locale.ROOT, took) + ClientLog.report(Level.WARN, null, (args["lines"].int() ?: 60).coerceIn(1, 500), sinceReload = true) + "\n\n"
+                // The report comes as the loading screen closes: at once with fast reloads, after its fade-out without.
+                fun report() = ReloadTimer.last?.takeIf { it.startedNanos > asked }
+                val deadline = System.currentTimeMillis() + 3000
+                while (ReloadTimer.times() && report() == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+                (report()?.details() ?: "Reloaded.") + "\n\n" +
+                    ClientLog.report(Level.WARN, null, (args["lines"].int() ?: 60).coerceIn(1, 500), sinceReload = true) + "\n\n"
             } else ""
             val packs = ClientTools.onClient {
                 minecraft.resourcePackRepository.selectedPacks.mapIndexed { i, pack ->

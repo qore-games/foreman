@@ -28,6 +28,7 @@ nav = [
     { "Locations and local sets" = "client/locations.md" },
     { "Selection" = "client/selection.md" },
     { "Plugin messages and helpers" = "client/plugin-messages.md" },
+    { "Resource packs" = "client/resource-packs.md" },
     { "Keys and commands" = "client/keys-commands.md" },
   ] },
   { "AI" = [

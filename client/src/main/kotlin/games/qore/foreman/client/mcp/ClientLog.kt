@@ -22,7 +22,8 @@ import java.time.format.DateTimeFormatter
  * `client_log`: shader, model and resource errors after a resource reload without reading the log file.
  */
 object ClientLog {
-    class Line(val time: Long, val level: Level, val logger: String, val text: String)
+    /** [client]: logged on the render thread or a background worker, not the integrated server's or the network's. */
+    class Line(val time: Long, val level: Level, val logger: String, val text: String, val client: Boolean)
 
     private const val KEPT = 10_000
     private val lines = ArrayDeque<Line>()
@@ -84,7 +85,8 @@ object ClientLog {
             append(event.message?.formattedMessage ?: "")
             event.thrown?.let { append(" | ").append(thrown(it)) }
         }
-        val line = Line(event.timeMillis, event.level, event.loggerName?.substringAfterLast('.') ?: "", text)
+        val client = event.threadName == clientThread || event.threadName?.startsWith("Worker-") == true
+        val line = Line(event.timeMillis, event.level, event.loggerName?.substringAfterLast('.') ?: "", text, client)
         // Vanilla logs this as a resource reload starts; the integrated server's data pack reloads run on its own threads.
         val reload = event.threadName == clientThread && text.startsWith("Reloading ResourceManager")
         synchronized(lines) {

@@ -9,7 +9,7 @@ working on the code.
 
 | Module | What | Language |
 |---|---|---|
-| `client` | The Fabric mod: the hub (`ui/HubScreen.kt`), packet viewer (`packets/`), HUD inspector (`hud/`), locations (`locations/`), AI chats (`agent/`), the client MCP server and its tools (`mcp/`) | Kotlin, Java mixins |
+| `client` | The Fabric mod: the hub (`ui/HubScreen.kt`), packet viewer (`packets/`), HUD inspector (`hud/`), locations (`locations/`), fast resource reloads (`reload/`), AI chats (`agent/`), the client MCP server and its tools (`mcp/`) | Kotlin, Java mixins |
 | `server` | The Paper plugin: the MCP server (`mcp/`), server tools (`tools/ServerTools.kt`), world tools (`tools/`, `world/`), skills (`skills/`), integrations with other plugins (`integrations/`), the bridge to the mod (`bridge/`) | Kotlin |
 | `server-api` | What plugins compile against: `ForemanTools` (tools and skills), `ForemanWorlds`, `FurnitureProvider` | Kotlin, Java-friendly |
 | `api` | The location protocol, and `ForemanTool`: the names of Foreman's own tools, shared by the client and the server | Kotlin |

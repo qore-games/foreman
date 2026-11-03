@@ -22,6 +22,11 @@ the plugin and tries the command again. More in [Examples](ai/examples.md).*
     See how the client lays out action bars, titles, boss bars and the tab list, glyph by glyph.
     [→ HUD inspector](client/hud-inspector.md)
 
+-   **Fast pack reloads**
+
+    A big resource pack reloads in a second instead of ten while you keep playing, and its warnings show by kind.
+    [→ Resource packs](client/resource-packs.md)
+
 -   **Plugin locations**
 
     Plugins send their NPCs, spawns and regions, and the mod draws them. Move them with a gizmo.
@@ -63,7 +68,7 @@ the plugin and tries the command again. More in [Examples](ai/examples.md).*
 
 | | Client mod alone | With the server plugin |
 |---|---|---|
-| Packet viewer, HUD inspector, local location sets | ✓ | ✓ |
+| Packet viewer, HUD inspector, fast pack reloads, local location sets | ✓ | ✓ |
 | Plugin locations | when a plugin sends them (`foreman-paper`) | when a plugin sends them |
 | AI chats with the client's tools (screenshots, commands, files, screens) | ✓ | ✓ |
 | Dev-server tools (`server_command`, `server_log`, `server_plugins`…) | | ✓ |
@@ -74,7 +79,8 @@ the plugin and tries the command again. More in [Examples](ai/examples.md).*
 ## Cheap when unused
 
 Foreman is meant to stay installed. A packet recording runs only while you record, overlays are drawn only when
-they're on, and the client's MCP server only answers outside agents when you allow them.
+they're on, fast reloads only change how a reload runs, and the client's MCP server only answers outside agents when
+you allow them.
 
 !!! note "Server requirements"
     The server plugin runs on Paper alone. Add FastAsyncWorldEdit for the world tools: they're built on it, and they're

@@ -30,6 +30,14 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   told to start a new session, listing the tools again.
 - `client_record` and `client_replay` (and `/foreman-record`, a key): what the player does, recorded and saved with a test that
   replays it from where it started and says where its path left the recorded one.
+- Fast resource reloads (on by default, Debug → Resource packs): mipmaps for every sprite at once and on arrays,
+  fonts' providers picked in linear time off the main thread, zip packs listed from an index, and no loading screen
+  minimum or fade-out. A 70 MB pack reloads in about a second instead of ten, with the same resources.
+- Keep playing through reloads: the game stays on screen and playable under a thin progress bar; only the last step
+  freezes it, without drawing it half done.
+- Each reload's time in chat, its steps in the hub, and in `client_resource_packs` with `reload`; `/fastreload`.
+- The last reload's warnings and errors in the hub, a row per kind, and a chat that finds their cause in the pack's
+  sources and fixes it.
 
 ### Server (Paper plugin)
 

@@ -21,6 +21,7 @@ unbinds) or in Minecraft's controls.
 |---|---|
 | `/packets [start [seconds] \| stop \| clear \| export \| ask]` | [Packet viewer](packets.md) |
 | `/hud [guides [element]]` | [HUD inspector](hud-inspector.md) |
+| `/fastreload [on \| off \| playing \| screen]` | Reload the resource packs; [fast reloads](resource-packs.md) on or off, playing through them or not |
 | `/locations …` | [Plugin locations](locations.md) and the location editor |
 | `/local …` | [Local sets](locations.md#local-sets) |
 | `/ai` | Open the chats |

@@ -7,9 +7,9 @@ only answers outside agents when you allow them. On the server, the dev-server t
 
 ## Do I need the server plugin?
 
-No. The packet viewer, the HUD inspector, local location sets and AI chats with the client's tools work on any server.
-Plugin locations need a plugin that sends them ([location API](developers/locations-api.md)). The dev-server tools,
-the world tools and other plugins' tools need the plugin.
+No. The packet viewer, the HUD inspector, fast pack reloads, local location sets and AI chats with the client's tools
+work on any server. Plugin locations need a plugin that sends them ([location API](developers/locations-api.md)). The
+dev-server tools, the world tools and other plugins' tools need the plugin.
 
 ## Which AI does it use?
 

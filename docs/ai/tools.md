@@ -57,7 +57,7 @@ answers a line a step, and the lines around a failure. A test is saved by `name`
 |---|---|
 | `client_entities` | The entities around the player or along the look, with their synced data |
 | `client_item` | An item the player has, with its components, as the client sees it |
-| `client_resource_packs` | The loaded resource packs, bottom to top |
+| `client_resource_packs` | The loaded resource packs, bottom to top; `reload` reloads them and returns how long each step took, and what was logged |
 | `client_post_effects` | The post effects (full-screen shaders) in use |
 
 ### Packets

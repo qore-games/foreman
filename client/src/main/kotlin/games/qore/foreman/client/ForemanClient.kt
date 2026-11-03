@@ -15,6 +15,7 @@ import games.qore.foreman.client.mcp.ClientMcp
 import games.qore.foreman.client.hud.HudGuides
 import games.qore.foreman.client.hud.UiTools
 import games.qore.foreman.client.packets.PacketViewer
+import games.qore.foreman.client.reload.FastReload
 import games.qore.foreman.client.render.Overlays
 import games.qore.foreman.client.ui.Hud
 import games.qore.foreman.client.ui.HubScreen
@@ -51,6 +52,7 @@ object ForemanClient : ClientModInitializer {
         PacketViewer.init()
         UiTools.init()
         HudGuides.init()
+        FastReload.init()
         // Last: its threads list the tools registered above.
         ClientMcp.start()
     }
