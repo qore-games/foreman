@@ -39,7 +39,11 @@ working on the code.
   an `Integration("<PluginName>") { XTools.all(it) }` entry in `Integrations.kt`, the API as `compileOnly` in
   `server/build.gradle.kts`, `ForemanTool` entries with `requires = "<Plugin> on the server"`.
 - **A client tool:** `ClientMcp.register(ClientTool(name, description, schema) { scope, args -> … })` in a tools
-  object under `client/…/mcp/` (or the feature's package), registered from `ForemanClient.onInitializeClient`.
+  object under `client/…/mcp/` (or the feature's package), registered from `ForemanClient.onInitializeClient`. A tool
+  that only looks says so (`acts = { false }`, or a test of its arguments): the others take the `ClientLock` lease.
+  Sessions that started before you rebuilt the mod start again after the game restarts (their session ids are
+  unknown) and see the new tools; one without a session id calls them with
+  `scripts/client-call.py --connection <game dir>/config/foreman/client-mcp.json <tool> '<json args>'` (`--list`).
 - **Docs:** the page of the feature, the tool reference (`docs/ai/tools.md`), the navigation in `zensical.toml`.
 
 ## Rules

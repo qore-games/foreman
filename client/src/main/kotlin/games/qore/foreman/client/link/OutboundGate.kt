@@ -22,6 +22,9 @@ object OutboundGate {
     /** Guards our own replay: a replayed packet must go through vanilla's send, not back into the gate. */
     private val replaying: ThreadLocal<Boolean> = ThreadLocal.withInitial { false }
 
+    /** Whether this thread is sending packets a profile held (they went through the outbound hooks once already). */
+    fun replaying(): Boolean = replaying.get()
+
     /** Packets parked by a burst, in send order. Guarded by [lock]. */
     private val held = ArrayDeque<Packet<*>>()
 

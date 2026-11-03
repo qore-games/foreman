@@ -5,7 +5,7 @@
 | `foreman.use` | The `/foreman` command | ops |
 | `foreman.client` | Being connected to the server's tools when joining with the mod (a personal token) | ops |
 | `foreman.admin` | With a personal token: the [dev-server tools](dev-tools.md), `learn` and removing lessons, `save_skill`, `worldedit` commands other than block edits (WorldGuard, schematics), plugins' tools that run console commands | ops |
-| `foreman.test` | The [dupe-testing](dupe-testing.md) tools (item ledger, inventory watch and restore), and the mod's packet options for them (`network`, `drop`) | ops |
+| `foreman.test` | The [dupe-testing](dupe-testing.md) tools (item ledger, inventory watch and restore), players kept and traced for [tests](../ai/testing.md) (`test_player`, `server_trace`), and the mod's packet options (`network`, `drop` on `inventory_actions` and test steps) | ops |
 | `foreman.watch` | A chat line for each change an AI makes to the world, with who asked | ops |
 
 ## Tokens

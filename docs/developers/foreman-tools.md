@@ -79,3 +79,31 @@ add arguments to the command, except the one whose placeholder ends it (`broadca
   `call.getPlayer()` (who asked, when online), `call.getArguments()` (the JSON).
 
 `tools.tools()` lists every tool with its provider; `unregister(owner, name)` removes one.
+
+## Your values in server traces
+
+`server_trace` records the server's view of a player tick by tick (where it heard they are, their on-ground flag, the
+keys they hold, entities' boxes) for movement and gameplay bugs. Add what your plugin knows of them, and the AI sees it
+in the same rows, with each number's range in the summary as `<your plugin>.<key>`:
+
+=== "Java"
+
+    ```java
+    tools.registerTraceValues(this, player -> {
+        Ride ride = rides.get(player.getUniqueId());
+        if (ride == null) return null; // nothing to add for this player
+        return Map.of("carried", ride.carried(), "above", ride.above());
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    tools.registerTraceValues(this) { player ->
+        rides[player.uniqueId]?.let { mapOf("carried" to it.carried, "above" to it.above) }
+    }
+    ```
+
+Values are numbers, texts, booleans or vectors. Foreman calls you on the server thread, each tick a player is traced and
+only then. One provider per plugin, removed when it disables (`unregisterTraceValues(owner)` before).
+

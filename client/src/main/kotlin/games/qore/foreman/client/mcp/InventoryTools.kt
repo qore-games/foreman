@@ -31,6 +31,7 @@ object InventoryTools {
                 "every non-empty slot (index → item and count). Take it before and after an inventory_actions burst to see " +
                 "what changed, and read the state id to spot desync. Needs a container open (inventory, chest, a plugin menu).",
             ClientTools.schema(),
+            acts = { false },
         ) { _, _ -> listOf(ClientMcp.text(ClientTools.onClient { snapshot() })) })
 
         ClientMcp.register(ClientTool(

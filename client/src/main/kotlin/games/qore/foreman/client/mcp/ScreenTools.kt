@@ -59,6 +59,7 @@ object ScreenTools {
             "The open screen: its class and title, the GUI size, then each widget (buttons, text fields, checkboxes, sliders, " +
                 "texts…) with its index, kind, text, position and size in GUI units, and whether it is inactive or focused.",
             ClientTools.schema(),
+            acts = { false },
         ) { _, _ -> listOf(ClientMcp.text(ClientTools.onClient { describe() })) })
 
         ClientMcp.register(ClientTool(
@@ -216,25 +217,30 @@ object ScreenTools {
         ClientMcp.register(ClientTool(
             "client_key",
             "Presses a key binding like the player, by its id (`key.quickActions` opens the server's quick actions dialog, " +
-                "`key.inventory`, `key.chat`…), or `escape` (what Esc does on the open screen). Unknown ids list the known ones.",
-            ClientTools.schema("key" to "string: a key binding id or escape", "wait_ms" to "integer: default 400"),
+                "`key.inventory`, `key.chat`, `key.jump`…), or `escape` (what Esc does on the open screen). `hold_ms` holds it " +
+                "down that long (walking, sneaking, using an item…), then releases and says how the player moved (at once with " +
+                "`wait` false); client_input holds several in sequence. Unknown ids list the known ones.",
+            ClientTools.schema("key" to "string: a key binding id or escape", "hold_ms" to "integer: hold it down this long (default a tap: one tick)",
+                "wait" to "boolean: with hold_ms, return after the release (default true)", "wait_ms" to "integer: then wait this long (default 400)"),
             enabled = { it.allowCommands },
         ) { _, args ->
             val key = args["key"].str() ?: throw ToolFailure("Give key")
-            val done = ClientTools.onClient {
-                val minecraft = Minecraft.getInstance()
-                if (key.equals("escape", ignoreCase = true)) {
-                    screen().keyPressed(KeyEvent(InputConstants.KEY_ESCAPE, 0, 0))
-                    "Pressed Esc"
-                } else {
-                    val mapping = minecraft.options.keyMappings.firstOrNull { it.name == key }
-                        ?: throw ToolFailure("Unknown key binding $key: " + minecraft.options.keyMappings.joinToString { it.name })
-                    if (minecraft.gui.screen() != null) throw ToolFailure("A screen is open: key bindings only act in game (escape first)")
-                    KeyMapping.click(InputConstants.getKey(mapping.saveString()))
-                    "Pressed $key (${mapping.translatedKeyMessage.string})"
+            val holdMs = args["hold_ms"].int()
+            val done = if (key.equals("escape", ignoreCase = true)) {
+                if (holdMs != null) throw ToolFailure("escape can't be held")
+                ClientTools.onClient { screen().keyPressed(KeyEvent(InputConstants.KEY_ESCAPE, 0, 0)) }
+                "Pressed Esc"
+            } else {
+                val (mapping, label) = ClientTools.onClient { InputTools.mapping(key).let { it to "$key (${it.translatedKeyMessage.string})" } }
+                val ticks = holdMs?.let { InputTools.ticks(it) } ?: 1
+                val released = InputTools.play(listOf(InputTools.Step(setOf(mapping), ticks)))
+                when {
+                    holdMs == null -> "Pressed $label"
+                    args["wait"].bool() == false -> "Holding $label for $ticks ticks"
+                    else -> "Held $label. " + InputTools.await(released, ticks)
                 }
             }
-            Thread.sleep((args["wait_ms"].int() ?: 400).coerceIn(0, 5000).toLong())
+            if (holdMs == null || args["wait"].bool() != false) Thread.sleep((args["wait_ms"].int() ?: 400).coerceIn(0, 5000).toLong())
             listOf(ClientMcp.text(done + "\n\n" + ClientTools.onClient { describe() }))
         })
     }
@@ -353,7 +359,7 @@ object ScreenTools {
     /** A Foreman screen's own units against GUI units: its widgets' positions are multiplied by it. */
     private fun zoom(screen: Screen) = (screen as? KitScreen)?.zoom?.toDouble() ?: 1.0
 
-    private fun describe(): String {
+    internal fun describe(): String {
         val minecraft = Minecraft.getInstance()
         val screen = minecraft.gui.screen() ?: return "No screen open"
         val window = minecraft.window

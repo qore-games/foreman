@@ -61,7 +61,7 @@ bukkit {
         register("foreman.use") { description = "The /foreman command" }
         register("foreman.client") { description = "Being connected to the server's tools when joining with the client mod" }
         register("foreman.admin") { description = "The dev-server tools (commands as the console, logs, reloads) with a personal token" }
-        register("foreman.test") { description = "The dupe-testing tools: item ledger, inventory watch and restore, and the mod's network profiles and packet drops" }
+        register("foreman.test") { description = "The testing tools: item ledger, inventory watch and restore, players kept and traced, and the mod's network profiles and packet drops" }
         register("foreman.watch") { description = "A chat line for each change an AI makes to the world" }
     }
 }
@@ -71,6 +71,6 @@ base.archivesName = "foreman-server"
 // The tool API's classes ship in the plugin (other plugins compile against foreman-server-api and use them from here).
 tasks.jar {
     from(project(":server-api").sourceSets.main.get().output)
-    // The names of Foreman's own tools, shared with the client (only this class of the api: the rest is the client's).
-    from(project(":api").sourceSets.main.get().output) { include("games/qore/foreman/api/ForemanTool*") }
+    // The names of Foreman's own tools and the skills shared with the client (only these of the api: the rest is the client's).
+    from(project(":api").sourceSets.main.get().output) { include("games/qore/foreman/api/ForemanTool*", "skills/**") }
 }

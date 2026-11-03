@@ -3,6 +3,39 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
+## [Unreleased]
+
+### Client (Fabric mod, any server)
+
+- `client_input` holds key bindings across ticks, in steps (walking, sprinting, sneaking, double jumps, dashes, holding
+  use or attack), and `client_key` holds one with `hold_ms`: the server gets them as from real keys.
+- `client_trace` records what the client has every tick (the player's position, velocity, flags and pose, nearby
+  entities' boxes), keys held meanwhile, with a summary line first (ground and air ticks, height range, each entity's
+  feet range); `client_frames` takes screenshots in a row as one contact sheet, after a command, the camera turning
+  between frames; `client_perf` times the frames over a few seconds (FPS, lows, worst frame), after a command, to see
+  what a change costs; `client_stats` a snapshot of what the client renders and holds; `client_sounds` the sounds
+  played over a few seconds; `client_pixels` exact colours of the world without the HUD, or a region's mean colour,
+  luminance spread and grid of cell means (`stats`); `client_screenshot` `hide_hud`.
+- `client_connect` joins a server (the last one by default) and waits until the player is in game, or leaves it.
+- `client_test` runs tests: steps over the client's tools, the server's Foreman tools, commands and waits, checked
+  against what they return (texts, regexes, every number of a regex against bounds, arithmetic of captured values) and
+  saved by name to run again, answering a line a step and the lines around a failure. `keep_player` puts the player
+  back as they were; a death or a disconnect stops a test and says so. Any step, or group of them, can hold a network
+  profile (`network`), ignore inbound packets (`drop`, both behind the server's `foreman.test`) and check the packets
+  sent and received meanwhile (`packets`). The `testing` skill (`action: guide`, and a skill on servers with Foreman)
+  says how to write tests that hold.
+- One agent drives the client at a time: the first acting call takes a lease that lasts 2 minutes past its last call
+  (`client_lock` acquires it for longer, releases it, waits for it), other sessions' acting calls are refused
+  meanwhile; `/foreman-lock take|free` for the player. MCP sessions get ids, and after the game restarts agents are
+  told to start a new session, listing the tools again.
+- `client_record` and `client_replay` (and `/foreman-record`, a key): what the player does, recorded and saved with a test that
+  replays it from where it started and says where its path left the recorded one.
+
+### Server (Paper plugin)
+
+- `test_player` saves and restores players as a test found them, unhurt meanwhile; `server_trace` records the
+  server's view of a player tick by tick, with the values plugins add through `ForemanTools.registerTraceValues`.
+
 ## [1.0.0] - 2026-11-02
 
 The first public release.

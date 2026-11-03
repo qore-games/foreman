@@ -3,7 +3,8 @@
 The hardest item dupes need the client and server to disagree for a tick. Foreman's
 [dupe testing](../server/dupe-testing.md) runs the input side of that (action bursts in one tick), and two stock network
 profiles run the network side: `burst` holds the client's sends and sends them together at the end, and `ping_<n>` adds
-n ms to each. A test names one as `network` on `inventory_actions`, and the profile is held around the burst only.
+n ms to each. A test names one as `network` on `inventory_actions`, and the profile is held around the burst only, or
+on any `client_test` step, held around that step.
 The hook is open too: implement another condition against the client connection and register it.
 
 ## Stock profiles

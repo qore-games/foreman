@@ -12,13 +12,15 @@
 		"FontAccessor",
 		"GameRendererAccessor",
 		"HudAccessor",
+		"KeyMappingAccessor",
 		"MinecraftMixin",
 		"MouseHandlerMixin",
 		"PacketDecoderMixin",
 		"PacketEncoderMixin",
 		"PacketProcessorMixin",
 		"PlayerTabOverlayAccessor",
-		"QueuedPacketMixin"
+		"QueuedPacketMixin",
+		"SoundManagerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

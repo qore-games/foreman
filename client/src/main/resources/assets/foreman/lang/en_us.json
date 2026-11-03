@@ -19,5 +19,7 @@
 	"key.foreman.ai-overlay-points": "Points: off / nearby / always",
 	"key.foreman.ai-overlay-issues": "Check issues: off / nearby / always",
 	"key.foreman.ai-overlay-locations": "Plugin locations: off / nearby / always",
-	"key.foreman.packets-record": "Packet recording: start / stop"
+	"key.foreman.packets-record": "Packet recording: start / stop",
+	"key.foreman.input-record": "Input recording (replayed as a test): start / stop",
+	"key.foreman.lock-take": "Take the client back from AI agents / let them use it again"
 }

@@ -26,6 +26,29 @@ so screenshots and clicks keep working while you're in the terminal. Idle again,
 
 Outside sessions get no workspace folders: they have their own file tools.
 
+## One agent at a time
+
+Two agents testing in the same client at once undo each other's work (one teleports you while the other measures),
+and both spend their time on errors that aren't theirs. So the client is driven by one MCP session at a time: the
+first call of a tool that acts (commands, input, the camera, screens, tests, recordings) takes it, and while it has it,
+other sessions' acting calls are refused with who has it and until when. Tools that only look (context, entities,
+logs, stats) stay open to all.
+
+It's a lease, not a lock: it lasts 2 minutes past the holder's last call, or the idle time it asked for with
+`client_lock acquire` (with a label saying what it's doing), and goes as soon as it releases or its session ends.
+Nothing is saved, so a crashed agent or a restarted game never leaves the client taken. A waiting agent calls
+`client_lock wait` instead of retrying.
+
+You take the client back with `/foreman-lock take` (or the key in Foreman's controls): agents are refused until
+`/foreman-lock free`. `/foreman-lock` says who has it. A chat line tells you when an agent takes the client for a
+session and when it's done.
+
+## After the mod is updated
+
+Each agent's MCP session has an id the game gives it, kept in memory. When the game restarts with a new version of the
+mod, it no longer knows those ids and tells the agents so, and they start a new session, which lists the tools again:
+new tools are there without restarting the agent (Claude Code does this on its own).
+
 ## Example
 
 ```text

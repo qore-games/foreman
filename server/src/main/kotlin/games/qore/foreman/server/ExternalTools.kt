@@ -16,9 +16,11 @@ import games.qore.foreman.server.mcp.ToolRegistry
 import games.qore.foreman.server.mcp.ToolResult
 import games.qore.foreman.server.tools.AssetTools
 import games.qore.foreman.server.tools.ServerTools
+import games.qore.foreman.server.tools.ServerTrace
 import games.qore.foreman.server.world.Furniture
 import games.qore.foreman.server.world.Sync
 import org.bukkit.Bukkit
+import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.server.PluginDisableEvent
@@ -27,6 +29,7 @@ import org.bukkit.event.server.ServiceUnregisterEvent
 import org.bukkit.plugin.Plugin
 import org.bukkit.plugin.ServicePriority
 import java.util.Base64
+import java.util.function.Function
 import java.util.function.Supplier
 
 /** [ForemanTools] for other plugins: their tools go into the MCP server's registry under their name as provider. */
@@ -44,6 +47,7 @@ class ExternalTools(private val plugin: Foreman, private val registry: ToolRegis
         if (event.plugin !== plugin) {
             registry.removeProvider(event.plugin.name)
             plugin.skills.removeOwner(event.plugin.name)
+            ServerTrace.values.remove(event.plugin.name)
         }
     }
 
@@ -134,6 +138,14 @@ class ExternalTools(private val plugin: Foreman, private val registry: ToolRegis
 
     override fun unregister(owner: Plugin, name: String) {
         if (registry[name]?.provider == owner.name) registry.remove(name)
+    }
+
+    override fun registerTraceValues(owner: Plugin, values: Function<Player, Map<String, Any?>?>) {
+        ServerTrace.values[owner.name] = values
+    }
+
+    override fun unregisterTraceValues(owner: Plugin) {
+        ServerTrace.values.remove(owner.name)
     }
 
     override fun tools(): List<ToolInfo> = registry.all().map { ToolInfo(it.name, it.provider, it.description, it.modifies) }

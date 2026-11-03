@@ -53,6 +53,7 @@ object EntityTools {
                 "json" to "boolean: items' components and texts as JSON too (default false)",
                 "limit" to "integer: default 20, max 200",
             ),
+            acts = { false },
         ) { _, args -> listOf(ClientMcp.text(ClientTools.onClient { list(args) })) })
 
         ClientMcp.register(ClientTool(
@@ -61,6 +62,7 @@ object EntityTools {
                 "inventory index (0-8 hotbar, 9-35 inventory, 36-39 armor, 40 offhand): its summary, then the whole stack as " +
                 "JSON (id, count, every component the server set).",
             ClientTools.schema("slot" to "string|integer: a slot name or an inventory index"),
+            acts = { false },
         ) { _, args ->
             listOf(ClientMcp.text(ClientTools.onClient {
                 val player = Minecraft.getInstance().player ?: throw ToolFailure("Not in a world")

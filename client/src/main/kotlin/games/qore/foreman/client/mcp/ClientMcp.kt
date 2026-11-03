@@ -36,6 +36,8 @@ class ClientTool(
     val schema: JsonObject,
     /** Whether the chat lets the AI use it (listed only then). */
     val enabled: (ToolScope) -> Boolean = { true },
+    /** Whether a call with these arguments acts on the game (takes the [ClientLock] lease) rather than only looking. */
+    val acts: (JsonObject) -> Boolean = { true },
     val run: (ToolScope, JsonObject) -> List<JsonObject>,
 )
 
@@ -54,6 +56,15 @@ object ClientMcp {
     private val pool = Executors.newCachedThreadPool { Thread(it, "foreman-client-mcp").apply { isDaemon = true } }
     private val tools = LinkedHashMap<String, ClientTool>()
     private val scopes = HashMap<String, ToolScope>()
+    /**
+     * MCP sessions by id, given at `initialize`: who calls (a [ClientLock.Holder]). Kept in memory only, so after a
+     * restart their ids are unknown and agents are told to start again (404), listing the tools again: a rebuilt mod's
+     * new tools reach sessions that started before.
+     */
+    private val sessions: MutableMap<String, ClientLock.Holder> = java.util.Collections.synchronizedMap(object : LinkedHashMap<String, ClientLock.Holder>() {
+        // a few dozen at most: the oldest dropped only starts again
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ClientLock.Holder>) = size > MAX_SESSIONS
+    })
 
     val port get() = socket?.localPort ?: 0
 
@@ -146,10 +157,28 @@ object ClientMcp {
             val length = headers["content-length"]?.toIntOrNull() ?: 0
             if (length > MAX_BODY) return respond(socket, 413, null)
             val body = input.readNBytes(length).decodeToString()
-            if (method == "DELETE") return respond(socket, 200, null)
-            if (method != "POST" || !path.startsWith("/mcp/")) return respond(socket, 404, null)
+            if (!path.startsWith("/mcp/")) return respond(socket, 404, null)
+            val sessionId = headers["mcp-session-id"]
+            val session = sessionId?.let { sessions[it] }
+            // as the MCP SDK's servers answer: the agent starts a new session, and lists the tools again
+            if (sessionId != null && session == null) return respond(socket, 404, NO_SESSION)
+            if (method == "DELETE") {
+                if (sessionId != null) sessions.remove(sessionId)?.let { ClientLock.ended(it) }
+                return respond(socket, 200, null)
+            }
+            // no stream of server messages: nothing is sent unasked
+            if (method != "POST") return respond(socket, 405, null, "Allow: POST, DELETE")
             val scope = if (external) External else synchronized(scopes) { scopes[path.removePrefix("/mcp/")] } ?: return respond(socket, 404, null)
-            val answer = dispatch(scope, JSON.parseToJsonElement(body) as? JsonObject ?: return respond(socket, 400, null))
+            val request = JSON.parseToJsonElement(body) as? JsonObject ?: return respond(socket, 400, null)
+            if (request["method"].str() == "initialize") {
+                val id = newToken()
+                val client = request["params"]["clientInfo"]["name"].str() ?: "an agent"
+                val holder = ClientLock.Holder("session:$id", "$client ${id.take(4)}" + if (external) "" else " (chat)")
+                sessions[id] = holder
+                return respond(socket, 200, dispatch(scope, request, holder).toString(), "Mcp-Session-Id: $id")
+            }
+            val holder = session ?: ClientLock.Holder(path, if (external) "an outside agent without an MCP session" else "a chat without an MCP session")
+            val answer = dispatch(scope, request, holder)
             if (answer == null) respond(socket, 202, null) else respond(socket, 200, answer.toString())
         } catch (e: Exception) {
             logger.warn("Client MCP request failed", e)
@@ -168,15 +197,16 @@ object ClientMcp {
         return null
     }
 
-    private fun respond(socket: Socket, status: Int, json: String?) {
+    private fun respond(socket: Socket, status: Int, json: String?, header: String? = null) {
         val bytes = json?.encodeToByteArray() ?: ByteArray(0)
         val head = "HTTP/1.1 $status ${if (status in 200..299) "OK" else "Error"}\r\n" +
             (if (json != null) "Content-Type: application/json\r\n" else "") +
+            (header?.let { "$it\r\n" } ?: "") +
             "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         socket.getOutputStream().apply { write(head.encodeToByteArray()); write(bytes); flush() }
     }
 
-    private fun dispatch(scope: ToolScope, request: JsonObject): JsonObject? {
+    private fun dispatch(scope: ToolScope, request: JsonObject, holder: ClientLock.Holder): JsonObject? {
         val id = request["id"] ?: return null
         val result: JsonElement = try {
             when (request["method"].str()) {
@@ -199,10 +229,16 @@ object ClientMcp {
                     val tool = tools[name]?.takeIf { it.enabled(scope) }
                         ?: return error(id, -32602, "Unknown tool $name (or not allowed in this chat)")
                     val args = request["params"]["arguments"] as? JsonObject ?: JsonObject(emptyMap())
+                    var counted = false
                     try {
+                        counted = ClientLock.enter(holder, tool.acts(args))
+                        ClientLock.caller.set(holder)
                         buildJsonObject { put("content", JsonArray(AgentActivity.call { tool.run(scope, args) })) }
                     } catch (e: ToolFailure) {
                         buildJsonObject { put("content", JsonArray(listOf(text(e.message ?: "failed")))); put("isError", true) }
+                    } finally {
+                        ClientLock.caller.remove()
+                        if (counted) ClientLock.exit(holder)
                     }
                 }
                 else -> return error(id, -32601, "Method not found")
@@ -225,6 +261,8 @@ object ClientMcp {
     }
 
     private const val MAX_BODY = 4 shl 20
+    private const val MAX_SESSIONS = 64
+    private const val NO_SESSION = """{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}"""
 
     private const val INSTRUCTIONS = """The player's own Minecraft client. Its tools act as the player: client_screenshot shows you what the
 player sees (use it to check a build or a place with your own eyes: teleport and look first), client_run_command runs a
@@ -233,6 +271,8 @@ player and the camera, client_context says where they are, what they look at and
 the folders the player added to this chat only. Tell the player before running a command that changes the world or
 their inventory. client_screen, client_click, client_type and client_key use the open screen (menus, dialogs,
 inventories); client_dialog_preview opens a dialog from its JSON locally, to check its layout without the server.
+client_input holds key bindings across ticks, in steps (walking, sprinting, sneaking, a double jump, a dash, holding use
+or attack), and client_key hold_ms one of them.
 What the client knows, without asking the server: client_entities (the entities around the player or along the look,
 packet-only ones too, with their synced data: display transformations, item models, texts, interaction sizes…),
 client_item (an item's components), client_post_effects (applied and failed post effects), client_resource_packs (the
@@ -241,6 +281,11 @@ resource errors, since_reload after a resource pack reload). For network lag or 
 record what the server and the client send each other (packets_record), then show it (packets_summary first;
 packets_list filters by type, time, text, or packets near another one). For HUD texts (action bar, titles, boss bars),
 the ui_* tools show how the client lays them out glyph by glyph (ui_capture), what moves when they change (ui_watch),
-and whether declared glyph widths match what the client draws (ui_check_widths). While a session uses these tools, the
-game doesn't pause when its window loses focus."""
+and whether declared glyph widths match what the client draws (ui_check_widths). client_test runs a test of steps over
+the client's and the server's tools in one call and answers a line a step: save each check you repeat as a test (`name`
+with `steps`) and rerun it by name; `action: guide` first says how to write tests that hold. client_trace records the client's view tick by tick (server_trace, on a server with
+Foreman, the server's); client_record records what the player does and client_replay plays it back, a test. One
+session drives the client at a time: a tool that acts takes it until 2 minutes after your last call, others are refused
+meanwhile (client_lock: status, acquire for longer, release when done, wait for it). While a session uses these tools,
+the game doesn't pause when its window loses focus."""
 }

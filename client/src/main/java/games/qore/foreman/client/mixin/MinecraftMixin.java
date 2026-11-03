@@ -4,7 +4,10 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import games.qore.foreman.client.input.Tools;
 import games.qore.foreman.client.mcp.AgentActivity;
+import games.qore.foreman.client.mcp.InputTools;
+import games.qore.foreman.client.mcp.PerfTools;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,7 +17,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * While a tool is active, it gets the attack and use clicks instead of the game (no block broken or placed). While an
- * AI session uses the client, losing focus doesn't pause the game (the player's option is left as it is).
+ * AI session uses the client, losing focus doesn't pause the game (the player's option is left as it is). Frames are
+ * timed while client_perf measures.
  */
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
@@ -33,9 +37,20 @@ public class MinecraftMixin {
         if (Tools.onUse()) ci.cancel();
     }
 
+    @Inject(method = "runTick", at = @At("RETURN"))
+    private void foreman$frame(boolean advanceGameTime, CallbackInfo ci) {
+        PerfTools.frame();
+    }
+
     @Inject(method = "pauseIfInactive", at = @At("HEAD"), cancellable = true)
     private void foreman$pauseIfInactive(CallbackInfo ci) {
         if (AgentActivity.active()) ci.cancel();
+    }
+
+    /** A held attack (client_input) keeps mining with the window in the background, where the mouse isn't grabbed. */
+    @WrapOperation(method = "handleKeybinds", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/MouseHandler;isMouseGrabbed()Z"))
+    private boolean foreman$heldAttack(MouseHandler handler, Operation<Boolean> original) {
+        return original.call(handler) || InputTools.holdsAttack();
     }
 
     /** The pause screen focus loss opens, for a session to close when it comes back. */

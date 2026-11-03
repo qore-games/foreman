@@ -10,7 +10,10 @@ import games.qore.foreman.server.mcp.schema
 import games.qore.foreman.server.world.Items
 import games.qore.foreman.server.world.Sync
 import org.bukkit.Bukkit
+import org.bukkit.GameMode
+import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
@@ -23,14 +26,17 @@ import org.bukkit.event.inventory.InventoryEvent
 import org.bukkit.event.inventory.InventoryMoveItemEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.inventory.ItemStack
+import org.bukkit.potion.PotionEffect
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Finding item duplication in plugins: count an item everywhere ([ForemanTool.ITEM_LEDGER]), watch the inventory events
  * a test fires and who handles them ([ForemanTool.INVENTORY_WATCH]), and put tested inventories back
  * ([ForemanTool.TEST_RESTORE]). A dupe leaves more of an item than it started with; the ledger's before/after total
- * proves it, the watch points at the listener. All need [PERMISSION]: lag and action bursts that trigger dupes are the
- * [games.qore.foreman.server.bridge.Bridge] client's, gated the same way.
+ * proves it, the watch points at the listener. Tests of any kind keep players as they found them
+ * ([ForemanTool.TEST_PLAYER]) and see the server's view of them tick by tick ([ForemanTool.SERVER_TRACE]). All need
+ * [PERMISSION]: lag and action bursts that trigger dupes are the [games.qore.foreman.server.bridge.Bridge] client's,
+ * gated the same way.
  */
 object TestTools {
     /** What a per-player token's player needs for the testing tools (never the normal player: it drives dupe attempts). */
@@ -42,6 +48,16 @@ object TestTools {
     private val saved = ConcurrentHashMap<String, Map<java.util.UUID, SavedInv>>()
 
     private class SavedInv(val contents: Array<ItemStack?>, val ender: Array<ItemStack?>)
+
+    /** Players as tests found them, by label, for test_player. */
+    private val kept = ConcurrentHashMap<String, Map<java.util.UUID, Kept>>()
+
+    /** A player as a test found them. [invulnerable] is their own flag, before test_player protected them. */
+    private class Kept(
+        val location: Location, val gameMode: GameMode, val health: Double, val food: Int, val saturation: Float,
+        val exhaustion: Float, val fire: Int, val air: Int, val effects: Collection<PotionEffect>, val level: Int,
+        val exp: Float, val allowFlight: Boolean, val flying: Boolean, val invulnerable: Boolean, val inventory: SavedInv,
+    )
 
     fun all(plugin: Foreman) = listOf(
         Tool(
@@ -92,6 +108,45 @@ object TestTools {
         ) { args ->
             requireTest(args)
             Sync.main { restore(args) }
+        },
+
+        Tool(
+            ForemanTool.TEST_PLAYER,
+            "Saves or restores players as a test found them: where they stand and look, game mode, health, hunger, " +
+                "effects, experience, flight, fire and air, inventory and ender chest. `protect` with `save` keeps them " +
+                "from any damage until the restore; a dead player is respawned first. For tests that move, hurt or kill " +
+                "the player (the client's client_test `keep_player` uses it). By default it's the caller.",
+            schema {
+                string("action", "`save` or `restore`")
+                string("label", "A name for the saved state (default `test`)", required = false)
+                bool("protect", "With save: no damage until the restore (default false)", required = false)
+                strings("players", "Player names (default: the caller)", required = false)
+            },
+        ) { args ->
+            requireTest(args)
+            Sync.main { keep(args) }
+        },
+
+        Tool(
+            ForemanTool.SERVER_TRACE,
+            "Records the server's view of a player, tick by tick: where it last heard they are and how far that moved " +
+                "since the tick before, their on-ground flag (the client's), the keys they hold, pose, the nearest `limit` " +
+                "entities of `entities` types within `radius` (box bottom..top, the player's feet against its top), and " +
+                "the values plugins add (ForemanTools.registerTraceValues). Returns a summary line (as client_trace's, " +
+                "plus each plugin number's range), then a row every `every` ticks. Alongside client_trace (a client_test " +
+                "`parallel`) it shows what the server and the client each have, for movement and collision bugs.",
+            schema {
+                string("player", "Whom (default: the caller)", required = false)
+                int("ticks", "How long (default 60, max ${ServerTrace.MAX_TICKS})", required = false)
+                int("every", "A row every so many ticks (default 1)", required = false)
+                string("entities", "Entity types to follow, comma-separated parts of their ids (shulker, item_display…)", required = false)
+                number("radius", "Blocks around the player to find them (default 8)", required = false)
+                int("limit", "The nearest ones followed (default 4)", required = false)
+                bool("rows", "The rows after the summary line (default true; false: the summary only)", required = false)
+            },
+        ) { args ->
+            requireTest(args)
+            ServerTrace.trace(plugin, args)
         },
     )
 
@@ -193,11 +248,7 @@ object TestTools {
 
     private fun restore(args: Args): ToolResult {
         val label = args.string("label", "test") ?: "test"
-        val players = args.strings("players").ifEmpty {
-            listOfNotNull(args.caller?.let { Bukkit.getPlayer(it.id)?.name })
-        }.mapNotNull { Bukkit.getPlayerExact(it) ?: throw ToolError("$it isn't online") }
-        if (players.isEmpty()) throw ToolError("No players: name some, or call as a player in game")
-
+        val players = players(args)
         return when (args.string("action")) {
             "save" -> {
                 // Deep copy: a shared ItemStack is mutated in place when its stack grows, which would change the save.
@@ -217,6 +268,59 @@ object TestTools {
             else -> throw ToolError("action is `save` or `restore`")
         }
     }
+
+    private fun keep(args: Args): ToolResult {
+        val label = args.string("label", "test") ?: "test"
+        val players = players(args)
+        return when (args.string("action")) {
+            "save" -> {
+                val protect = args.bool("protect", false)
+                kept[label] = players.associate { p ->
+                    p.uniqueId to Kept(
+                        p.location, p.gameMode, p.health, p.foodLevel, p.saturation, p.exhaustion, p.fireTicks, p.remainingAir,
+                        p.activePotionEffects.toList(), p.level, p.exp, p.allowFlight, p.isFlying, p.isMarkedInvulnerable,
+                        SavedInv(deep(p.inventory.contents), deep(p.enderChest.contents)),
+                    ).also { if (protect) p.setInvulnerable(true) }
+                }
+                ToolResult.text("Saved ${players.joinToString { it.name }} as `$label`${if (protect) ", unhurt until the restore" else ""}.")
+            }
+            "restore" -> {
+                val snap = kept[label] ?: throw ToolError("No saved player state `$label`. Save one first.")
+                val done = players.mapNotNull { p -> snap[p.uniqueId]?.let { putBack(p, it); p.name } }
+                ToolResult.text(if (done.isEmpty()) "Nothing saved as `$label` for ${players.joinToString { it.name }}" else "Restored ${done.joinToString()} from `$label`.")
+            }
+            else -> throw ToolError("action is `save` or `restore`")
+        }
+    }
+
+    /** Puts [p] back as [k] says. */
+    private fun putBack(p: Player, k: Kept) {
+        if (p.isDead) p.spigot().respawn()
+        p.gameMode = k.gameMode
+        p.teleport(k.location)
+        p.velocity = org.bukkit.util.Vector()
+        p.fallDistance = 0f
+        p.health = k.health.coerceAtMost(p.getAttribute(Attribute.MAX_HEALTH)?.value ?: k.health)
+        p.foodLevel = k.food
+        p.saturation = k.saturation
+        p.exhaustion = k.exhaustion
+        p.fireTicks = k.fire
+        p.remainingAir = k.air
+        p.activePotionEffects.forEach { p.removePotionEffect(it.type) }
+        p.addPotionEffects(k.effects)
+        p.level = k.level
+        p.exp = k.exp
+        p.allowFlight = k.allowFlight
+        p.isFlying = k.flying && k.allowFlight
+        p.setInvulnerable(k.invulnerable)
+        p.inventory.contents = deep(k.inventory.contents)
+        p.enderChest.contents = deep(k.inventory.ender)
+    }
+
+    /** The players named in `players`, else the caller. */
+    private fun players(args: Args): List<Player> = args.strings("players").ifEmpty {
+        listOfNotNull(args.caller?.let { Bukkit.getPlayer(it.id)?.name })
+    }.map { Bukkit.getPlayerExact(it) ?: throw ToolError("$it isn't online") }.ifEmpty { throw ToolError("No players: name some, or call as a player in game") }
 
     private fun template(args: Args): ItemStack = when (val item = args.string("item", "held") ?: "held") {
         "held" -> args.caller?.let { Bukkit.getPlayer(it.id)?.inventory?.itemInMainHand?.takeIf { s -> !s.type.isAir } }

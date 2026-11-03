@@ -12,12 +12,33 @@ Available on any server, to chats and to [outside agents](outside-agents.md).
 | Tool | Does |
 |---|---|
 | `client_context` | Where the player is and looks, the block or entity at the crosshair, their selection, dimension, the last chat lines |
-| `client_screenshot` | What the player sees, as an image (needs Vision) |
+| `client_screenshot` | What the player sees, as an image, optionally without the HUD (needs Vision) |
 | `client_run_command` | Runs a command as the player and returns what the server printed (needs Commands) |
+| `client_connect` | Joins a server (by default the last one joined) and waits until the player is in game, or leaves it (needs Commands) |
 | `client_teleport` | Teleports the player (a `/tp` as them) |
 | `client_look` | Turns the camera to a point, or a yaw and pitch |
+| `client_input` | Holds key bindings across ticks, in steps, as the player holding keys: walking, sprinting, sneaking, a double jump, a dash, holding use or attack (needs Commands) |
+| `client_trace` | The client's own view, tick by tick: the player's position, velocity, ground and collision flags and pose, and nearby entities' boxes, optionally while holding keys; a summary line first (ticks on the ground and in the air, height range, each entity's feet range) (needs Commands) |
+| `client_record`, `client_replay` | Record what the player does (keys, look, hotbar slot, commands, path), saved with a test that replays it from where it started and says where its path left the recorded one (needs Commands). Players record with `/foreman-record <name>` and `/foreman-record stop`, or a key |
+| `client_stats` | A snapshot of the client: FPS, memory, graphics device, distances, rendered sections and entities, particles, ping, post effects, packs |
+| `client_sounds` | The sounds the client plays over a few seconds: which, where, how far, volume and pitch |
+| `client_pixels` | Exact colours of a rectangle of the world as rendered (post effects included, the HUD hidden), or a region's numbers (`stats`: mean colour, luminance spread, a grid of cell means) |
+| `client_perf` | The client's frame times over a few seconds (average FPS, 1% and 0.1% lows, worst frame), optionally after a command: what a change costs |
+| `client_frames` | Screenshots one after another as one labelled contact sheet, optionally after a command and turning the camera between frames (needs Vision) |
 | `client_chat_log` | The last chat and system messages |
 | `client_log` | The client's recent log lines, filtered by level and text |
+
+### Tests
+
+`client_test` runs a test in one call: steps calling client tools, the server's Foreman tools, commands, waits and
+saved tests, each checked against what it returned, optionally under network conditions with the packets checked. It
+answers a line a step, and the lines around a failure. A test is saved by `name` and runs again by its name. See
+[Testing in game](testing.md).
+
+| Tool | Does |
+|---|---|
+| `client_test` | Runs a test, saves it, lists, shows or deletes saved ones; `action: guide` gives the AI the testing skill (needs Commands) |
+| `client_lock` | Who drives the client: one session at a time (see [Outside agents](outside-agents.md#one-agent-at-a-time)) |
 
 ### Screens
 
@@ -26,7 +47,7 @@ Available on any server, to chats and to [outside agents](outside-agents.md).
 | `client_screen` | The open screen: its class and title, the GUI size, each widget with its text and bounds |
 | `client_click`, `client_hover`, `client_scroll` | Use the open screen like the mouse |
 | `client_drag` | Hold a mouse button and move: across a screen (scrollbars, sliders), or turning the camera in the world (gizmos, mining) |
-| `client_type`, `client_key` | Type into the focused field; press a key binding |
+| `client_type`, `client_key` | Type into the focused field; press a key binding, or hold it (`hold_ms`) |
 | `client_dialog_preview` | Opens a dialog on the client alone from its JSON, as the server would send it |
 | `inventory_snapshot`, `inventory_actions` | Read the open container, and click it like a player (bursts in one tick, optionally under a network profile or inbound packet drop, which need `foreman.test`) — [dupe testing](../server/dupe-testing.md) |
 
@@ -73,11 +94,14 @@ Available where the Foreman plugin runs.
 `read_skill` (one skill, or the list), `save_skill` (a skill for the server, from a chat). See
 [Skills](../server/skills.md).
 
-### Testing (dupe hunting)
+### Testing
 
 `item_ledger` (count an item everywhere, with the change since last time), `inventory_watch` (the inventory events a
-test fires and who handles them), `test_restore` (save/restore inventories). Need `foreman.test`. See
-[Dupe testing](../server/dupe-testing.md).
+test fires and who handles them), `test_restore` (save/restore inventories): see [Dupe testing](../server/dupe-testing.md).
+`test_player` saves and restores players as a test found them (position, game mode, health, hunger, effects,
+experience, inventory; optionally unhurt meanwhile), `server_trace` records the server's view of a player tick by tick,
+with the values plugins add ([your values in server traces](../developers/foreman-tools.md#your-values-in-server-traces)),
+to compare with `client_trace`. Need `foreman.test`.
 
 ### Other plugins
 

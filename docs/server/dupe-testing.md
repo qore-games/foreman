@@ -58,5 +58,7 @@ caught.
 
 ## Keep the wins
 
-Each dupe you patch becomes a test you keep: save the steps as a chat prompt or a note, and re-run them after every
-plugin update. The ledger is a regression guard, not a one-off.
+Each dupe you patch becomes a test you keep: save the steps as a [`client_test`](../ai/testing.md), the ledger
+before and after, the burst between, and re-run it by name after every plugin update. The ledger is a regression
+guard, not a one-off. In a test, `network`, `drop` and `packets` go on any step (a burst, a command, a menu click, a
+replayed recording), so the same desync and the packets it should and shouldn't cause are checked every run.

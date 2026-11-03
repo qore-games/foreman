@@ -21,6 +21,7 @@ object ResourceTools {
                 "with the log lines about them. `available`: the post effect ids the loaded packs declare (with `contains`).",
             ClientTools.schema("available" to "boolean: list the declared post effects too (default false)",
                 "contains" to "string: for available, ids containing this"),
+            acts = { false },
         ) { _, args ->
             val (text, failed) = ClientTools.onClient {
                 val minecraft = Minecraft.getInstance()
@@ -53,6 +54,7 @@ object ResourceTools {
                 "when the last resource reload started. `reload`: reloads them like F3+T (the same packs: a server pack isn't " +
                 "downloaded again), waits for the end, and returns the warnings and errors logged meanwhile.",
             ClientTools.schema("reload" to "boolean: reload the packs first (default false)", "lines" to "integer: for reload, log lines shown (default 60)"),
+            acts = { it["reload"].bool() == true },
         ) { _, args ->
             val minecraft = Minecraft.getInstance()
             val log = if (args["reload"].bool() == true) {

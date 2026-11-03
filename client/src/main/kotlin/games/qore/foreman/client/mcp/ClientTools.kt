@@ -1,6 +1,7 @@
 package games.qore.foreman.client.mcp
 
 import games.qore.foreman.client.agent.PromptContext
+import games.qore.foreman.client.util.Chat
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.double
 import games.qore.foreman.client.util.int
@@ -12,9 +13,18 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
+import net.fabricmc.fabric.api.client.networking.v1.ClientLoginConnectionEvents
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Screenshot
+import net.minecraft.client.gui.screens.ConnectScreen
+import net.minecraft.client.gui.screens.DeathScreen
+import net.minecraft.client.gui.screens.DisconnectedScreen
+import net.minecraft.client.gui.screens.TitleScreen
+import net.minecraft.client.multiplayer.ServerData
+import net.minecraft.client.multiplayer.ServerList
+import net.minecraft.client.multiplayer.resolver.ServerAddress
+import net.minecraft.network.chat.Component
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.world.phys.Vec3
 import java.nio.file.FileSystems
@@ -31,31 +41,48 @@ object ClientTools {
     /** Recent chat and system messages, to return what a command printed. */
     private val log = ArrayDeque<Pair<Long, String>>()
     private val waiting = ArrayDeque<() -> Unit>()
+    /** The address of the last server the client logged in to (or tried to), for client_connect once it's left. */
+    @Volatile
+    private var lastServer: String? = null
 
     fun init() {
-        ClientReceiveMessageEvents.GAME.register { message, overlay -> if (!overlay) record(message.string) }
+        // what the server prints, not the mod's own lines (an agent's command output stays the server's answer)
+        ClientReceiveMessageEvents.GAME.register { message, overlay -> if (!overlay && !Chat.own(message)) record(message.string) }
         ClientReceiveMessageEvents.CHAT.register { message, _, _, _, _ -> record(message.string) }
+        // each login started, joined or not (a login the authentication servers refused is retried too)
+        ClientLoginConnectionEvents.INIT.register { _, minecraft -> minecraft.currentServer?.ip?.let { lastServer = it } }
         ClientTickEvents.END_CLIENT_TICK.register { synchronized(waiting) { repeat(waiting.size) { waiting.removeFirst()() } } }
         ScreenTools.init()
+        InputTools.init()
+        TraceTools.init()
+        PerfTools.init()
+        MetricTools.init()
         EntityTools.init()
         ResourceTools.init()
         InventoryTools.init()
         ClientLog.init()
+        TestTools.init()
+        RecordTools.init()
+        ClientLock.init()
 
         ClientMcp.register(ClientTool(
             "client_context",
             "Where the player is and looks, the block or entity at the crosshair, their selection, dimension, and the last chat lines.",
             schema(),
+            acts = { false },
         ) { _, _ -> listOf(ClientMcp.text(onClient { PromptContext.build() } + "\n\nRecent chat:\n" + recent(Long.MIN_VALUE).takeLast(15).joinToString("\n"))) })
 
         ClientMcp.register(ClientTool(
             "client_screenshot",
             "What the player sees right now, as an image (the open screen is closed for the shot, unless `keep_screen`: menus, " +
                 "dialogs, inventories). To look at a build: client_teleport to a good spot, client_look at it, then take the screenshot.",
-            schema("max_width" to "integer: widest image in pixels (default 1280)", "keep_screen" to "boolean: keep the open screen in the shot (default false)"),
+            schema("max_width" to "integer: widest image in pixels (default 1280)", "keep_screen" to "boolean: keep the open screen in the shot (default false)",
+                "hide_hud" to "boolean: without the HUD and the hand, as F1 (default false)"),
             enabled = { it.allowScreenshots },
+            acts = { it["keep_screen"].bool() != true },
         ) { _, args ->
-            listOf(ClientMcp.image(screenshot(args["max_width"].int() ?: 1280, keepScreen = args["keep_screen"].bool() == true)), ClientMcp.text("Screenshot of the player's view"))
+            listOf(ClientMcp.image(screenshot(args["max_width"].int() ?: 1280, keepScreen = args["keep_screen"].bool() == true, hideHud = args["hide_hud"].bool() == true)),
+                ClientMcp.text("Screenshot of the player's view"))
         })
 
         ClientMcp.register(ClientTool(
@@ -68,6 +95,16 @@ object ClientTools {
             val command = args["command"].str()?.removePrefix("/")?.takeIf { it.isNotBlank() } ?: throw ToolFailure("Give command")
             listOf(ClientMcp.text(command(command, (args["wait_ms"].int() ?: 800).coerceIn(100, 5000))))
         })
+
+        ClientMcp.register(ClientTool(
+            "client_connect",
+            "Joins a server (`address`, default the last one joined), leaving the one the player is on first, and waits " +
+                "until they are in game, or says why not (the disconnect screen). `disconnect`: only leaves. Server packs " +
+                "are taken as the saved server entry says, accepted when there is none. After a server restart or a kick.",
+            schema("address" to "string: host or host:port (default: the last server it logged in to, or tried to)", "disconnect" to "boolean: only leave (default false)",
+                "wait_ms" to "integer: how long to wait to be in game (default 90000)"),
+            enabled = { it.allowCommands },
+        ) { _, args -> listOf(ClientMcp.text(connect(args["address"].str(), args["disconnect"].bool() == true, (args["wait_ms"].int() ?: 90_000).coerceIn(1000, 300_000)))) })
 
         ClientMcp.register(ClientTool(
             "client_teleport",
@@ -106,6 +143,7 @@ object ClientTools {
             "client_chat_log",
             "The last chat and system messages the player received (command outputs, plugin messages).",
             schema("lines" to "integer: how many (default 30)"),
+            acts = { false },
         ) { _, args -> listOf(ClientMcp.text(recent(Long.MIN_VALUE).takeLast(args["lines"].int() ?: 30).joinToString("\n").ifEmpty { "(nothing yet)" })) })
 
         // ---- Workspace files: the folders the player added to the chat (CLI agents use their own file tools on them) ----
@@ -113,6 +151,7 @@ object ClientTools {
         ClientMcp.register(ClientTool(
             "client_list_files", "Files of the chat's workspace folders (recursively), optionally matching a glob like `**/*.yml`.",
             schema("path" to "string: a folder inside the workspace (default all of them)", "glob" to "string: optional"), files,
+            acts = { false },
         ) { scope, args ->
             val roots = args["path"].str()?.let { listOf(resolve(scope, it)) } ?: scope.folders.map { Path.of(it) }
             val matcher = args["glob"].str()?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
@@ -124,6 +163,7 @@ object ClientTools {
         ClientMcp.register(ClientTool(
             "client_read_file", "Reads a text file of the workspace (lines `offset`.., at most `limit`).",
             schema("path" to "string", "offset" to "integer: first line (default 1)", "limit" to "integer: lines (default 400)"), files,
+            acts = { false },
         ) { scope, args ->
             val path = resolve(scope, args["path"].str() ?: throw ToolFailure("Give path"))
             val lines = Files.readAllLines(path)
@@ -134,6 +174,7 @@ object ClientTools {
         ClientMcp.register(ClientTool(
             "client_write_file", "Writes a text file of the workspace (creates it, or replaces it whole). Read it first to keep what you don't change.",
             schema("path" to "string", "content" to "string"), files,
+            acts = { false },
         ) { scope, args ->
             val path = resolve(scope, args["path"].str() ?: throw ToolFailure("Give path"))
             Files.createDirectories(path.parent)
@@ -143,6 +184,7 @@ object ClientTools {
         ClientMcp.register(ClientTool(
             "client_search_files", "Lines matching a regular expression in the workspace's files (optionally only files matching `glob`).",
             schema("pattern" to "string: a regex", "glob" to "string: optional, e.g. `**/*.yml`"), files,
+            acts = { false },
         ) { scope, args ->
             val regex = Regex(args["pattern"].str() ?: throw ToolFailure("Give pattern"))
             val matcher = args["glob"].str()?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
@@ -202,14 +244,53 @@ object ClientTools {
     /** Sends a command as the player and collects the chat lines that came back within [waitMs]. */
     private fun command(command: String, waitMs: Int): String {
         val sent = System.currentTimeMillis()
-        onClient { (Minecraft.getInstance().connection ?: throw ToolFailure("Not connected")).sendCommand(command) }
+        onClient {
+            val minecraft = Minecraft.getInstance()
+            val connection = minecraft.connection ?: throw ToolFailure("Not connected")
+            // a dead player's commands only get "Chat disabled in client options" back
+            if (minecraft.gui.screen() is DeathScreen) throw ToolFailure("The player is dead: respawn first (client_click Respawn)")
+            connection.sendCommand(command)
+        }
         Thread.sleep(waitMs.toLong())
         val out = recent(sent)
         return "/$command → " + if (out.isEmpty()) "(no chat output)" else out.joinToString("\n")
     }
 
+    /** Leaves the server, then joins [address] (or the last one) and waits up to [waitMs] to be in game. */
+    private fun connect(address: String?, leaveOnly: Boolean, waitMs: Int): String {
+        val minecraft = Minecraft.getInstance()
+        val target = address ?: onClient { minecraft.currentServer?.ip } ?: lastServer
+        onClient { if (minecraft.level != null) minecraft.disconnectFromWorld(Component.literal("client_connect")) }
+        if (leaveOnly) return "Left the server"
+        target ?: throw ToolFailure("Give address: no server joined yet")
+        if (!ServerAddress.isValidAddress(target)) throw ToolFailure("$target isn't a server address")
+        Thread.sleep(300)
+        val started = System.currentTimeMillis()
+        onClient {
+            val saved = ServerList(minecraft).apply { load() }.get(target)
+            val server = saved ?: ServerData("Foreman", target, ServerData.Type.OTHER).apply { resourcePackStatus = ServerData.ServerPackStatus.ENABLED }
+            ConnectScreen.startConnecting(TitleScreen(), minecraft, ServerAddress.parseString(target), server, false, null)
+        }
+        while (System.currentTimeMillis() - started < waitMs) {
+            Thread.sleep(250)
+            val state = onClient {
+                val screen = minecraft.gui.screen()
+                when {
+                    screen is DisconnectedScreen -> "failed"
+                    minecraft.player != null && minecraft.level != null && (screen == null || screen.isPauseScreen) -> "in"
+                    else -> null
+                }
+            }
+            if (state == "in") return "Joined $target in %.1f s".format(java.util.Locale.ROOT, (System.currentTimeMillis() - started) / 1000.0)
+            if (state == "failed") throw ToolFailure("Couldn't join $target: " + onClient { ScreenTools.describe() })
+        }
+        throw ToolFailure("Not in game on $target after ${waitMs / 1000} s: " + onClient { ScreenTools.describe() })
+    }
+
     /** Runs [block] on the client thread and waits for it (tools are called from the MCP server's threads). */
     internal fun <T> onClient(block: () -> T): T {
+        // on it already (a tool calling another's helper): a task queued to it would wait for this one
+        if (Minecraft.getInstance().isSameThread) return block()
         val result = CompletableFuture<T>()
         Minecraft.getInstance().execute {
             try {
@@ -238,9 +319,10 @@ object ClientTools {
      * The main render target as PNG, the open screen closed for the shot and put back after (unless [keepScreen]).
      * [region] (x, y, width, height in GUI units): only that part, zoomed in to about [maxWidth] pixels.
      */
-    internal fun screenshot(maxWidth: Int, region: IntArray? = null, keepScreen: Boolean = false): ByteArray {
+    internal fun screenshot(maxWidth: Int, region: IntArray? = null, keepScreen: Boolean = false, hideHud: Boolean = false): ByteArray {
         val minecraft = Minecraft.getInstance()
         val screen = if (keepScreen) null else onClient { minecraft.gui.screen().also { if (it != null) minecraft.gui.setScreen(null) } }
+        val shown = hideHud && onClient { hideHud(true) }
         try {
             waitTicks(3)
             val future = CompletableFuture<ByteArray>()
@@ -268,8 +350,17 @@ object ClientTools {
             }
             return future.get(10, TimeUnit.SECONDS)
         } finally {
+            if (shown) minecraft.execute { hideHud(false) }
             if (screen != null) minecraft.execute { if (minecraft.gui.screen() == null) minecraft.gui.setScreen(screen) }
         }
+    }
+
+    /** Hides the HUD (as F1 does) or shows it again. @return whether it changed */
+    internal fun hideHud(hide: Boolean): Boolean {
+        val hud = Minecraft.getInstance().gui.hud
+        if (hud.isHidden == hide) return false
+        hud.toggle()
+        return true
     }
 
     /** A part of [image] (GUI units × [guiScale]), each pixel repeated so it is about [maxWidth] wide (4× at most). */

@@ -47,6 +47,7 @@ object UiTools {
                 "cursor off moves everything after it; a centered line moves by half its width change). With an image of it, zoomed.",
             ClientTools.schema("element" to "string: $elements (default action_bar)", "index" to "integer: which boss bar, from the top (default 0)",
                 "image" to "boolean: add a zoomed screenshot of the element (default true)"),
+            acts = { false },
         ) { scope, args ->
             val element = element(args["element"].str())
             val index = args["index"].int() ?: 0
@@ -66,6 +67,7 @@ object UiTools {
                 "`command` runs as the player right after the watch starts (a test command, an item use…).",
             ClientTools.schema("element" to "string: $elements (default action_bar)", "index" to "integer: which boss bar (default 0)",
                 "seconds" to "integer: how long (default 10, max 60)", "command" to "string: optional command to run as the player (without the slash)"),
+            acts = { false },
         ) { scope, args ->
             val element = element(args["element"].str())
             val seconds = (args["seconds"].int() ?: 10).coerceIn(1, 60)
@@ -84,6 +86,7 @@ object UiTools {
             "Lays out a text without showing it, as an action bar line: give `json` (a text component, like the server sends) " +
                 "or `text` with an optional `font` (e.g. `myserver:hud`). Same report as ui_capture.",
             ClientTools.schema("json" to "string: a text component in JSON", "text" to "string: plain text (§ codes work)", "font" to "string: font id for `text`"),
+            acts = { false },
         ) { _, args ->
             val report = ClientTools.onClient {
                 val component = args["json"].str()?.let { parse(it) } ?: args["text"].str()?.let { text ->
@@ -101,6 +104,7 @@ object UiTools {
                 "file, and the advance the client gives it; space characters with their advance.",
             ClientTools.schema("font" to "string: only this font (e.g. myserver:hud)", "query" to "string: part of the texture name",
                 "spaces" to "boolean: list space characters too (default false)", "limit" to "integer: default 100, max 1000"),
+            acts = { false },
         ) { _, args ->
             val text = ClientTools.onClient {
                 val font = args["font"].str()
@@ -132,6 +136,7 @@ object UiTools {
                 "it. Lists the mismatches: fix the declaration (or the texture), not the other way around.",
             ClientTools.schema("widths" to "object: character → declared width", "glyphs" to "object: glyph id → {chars, width}",
                 "font" to "string: font to measure in", "spacing" to "integer: expected advance minus width (default 1)", "bold" to "boolean: measure bold (+1 per character)"),
+            acts = { false },
         ) { _, args ->
             val declared = ArrayList<Triple<String, Int, Int>>() // label, codepoint, width
             (args["widths"] as? JsonObject)?.forEach { (chars, w) ->

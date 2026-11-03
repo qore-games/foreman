@@ -78,10 +78,12 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     // Other plugins: code tools where their commands fall short (skills cover the rest), published while they run.
     MODELENGINE_MODELS("modelengine_models", "ModelEngine", "ModelEngine on the server"),
 
-    // Testing: finding item duplication in plugins (the player needs foreman.test).
+    // Testing: finding item duplication in plugins, players kept and traced across tests (the player needs foreman.test).
     ITEM_LEDGER("item_ledger", "Testing"),
     INVENTORY_WATCH("inventory_watch", "Testing"),
     TEST_RESTORE("test_restore", "Testing"),
+    TEST_PLAYER("test_player", "Testing"),
+    SERVER_TRACE("server_trace", "Testing"),
 
     // Server: developing plugins on the server (commands, log, plugin jars, performance).
     SERVER_COMMAND("server_command", "Server"),

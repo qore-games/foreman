@@ -20,6 +20,9 @@ object Chat {
     /** [text] after the hard hat, for lines a feature builds itself. */
     fun prefixed(text: Component): Component = Component.empty().append(LOGO).append(" ").append(text)
 
+    /** Whether [message] is one of the mod's own lines (it starts with the hard hat), not the server's. */
+    fun own(message: Component): Boolean = message.siblings.firstOrNull()?.style?.font == LOGO.style.font
+
     fun send(text: Component) {
         Minecraft.getInstance().player?.sendSystemMessage(text)
     }

@@ -46,6 +46,17 @@ interface ForemanTools {
 
     fun unregisterSkill(owner: Plugin, name: String)
 
+    /**
+     * Adds what your plugin knows of a player to `server_trace` (the server's view of a player tick by tick, for
+     * movement and gameplay bugs): each tick a player is traced, [values] gives yours (numbers, texts, booleans,
+     * vectors; null or empty when you have nothing), shown in its rows, and each number's range in its summary as
+     * `<your plugin>.<key>`. Called on the server thread, only while a trace runs. One per plugin (a second replaces
+     * the first), removed when your plugin disables.
+     */
+    fun registerTraceValues(owner: Plugin, values: Function<Player, Map<String, Any?>?>)
+
+    fun unregisterTraceValues(owner: Plugin)
+
     /** Every tool with its provider (Foreman's own and other plugins'). */
     fun tools(): List<ToolInfo>
 

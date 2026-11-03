@@ -38,6 +38,7 @@ nav = [
     { "Workspaces" = "ai/workspaces.md" },
     { "Backends" = "ai/backends.md" },
     { "Outside agents (client MCP)" = "ai/outside-agents.md" },
+    { "Testing in game" = "ai/testing.md" },
     { "Tool reference" = "ai/tools.md" },
   ] },
   { "Server plugin" = [
