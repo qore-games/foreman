@@ -18,7 +18,7 @@ body:
     attributes:
       label: Versions
       description: Foreman, Minecraft, and the server software (Paper build, other plugins involved).
-      placeholder: Foreman 1.1.0, Minecraft 26.3, Paper 26.3 build 12
+      placeholder: Foreman 1.1.1, Minecraft 26.3, Paper 26.3 build 12
     validations:
       required: true
   - type: textarea

@@ -3,10 +3,10 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
-## [Unreleased]
+## [1.1.1] - 2026-11-04
 
-- Minecraft 26.2: the mod is a jar per Minecraft version, `foreman-<version>+26.2.jar` (Fabric API 0.152.2 or later)
-  and `foreman-<version>+26.3.jar`, and the plugin runs on Paper 26.2 and 26.3. On 26.2, `client_post_effects` shows
+- Minecraft 26.2: the mod is a jar per Minecraft version, `foreman-1.1.1+26.2.jar` (Fabric API 0.152.2 or later)
+  and `foreman-1.1.1+26.3.jar`, and the plugin runs on Paper 26.2 and 26.3. On 26.2, `client_post_effects` shows
   the one post effect it has (a spectated entity's).
 - Building: a project per Minecraft version, `client/versions/<minecraft>`, over the shared sources, with what differs
   in the package `games.qore.foreman.client.mc`; `./gradlew :client:26.3:runClient`.
