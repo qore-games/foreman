@@ -1,6 +1,6 @@
 package games.qore.foreman.client.mcp
 
-import games.qore.foreman.client.mixin.GameRendererAccessor
+import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.packets.PacketInspector
 import games.qore.foreman.client.reload.ReloadTimer
 import games.qore.foreman.client.util.bool
@@ -17,7 +17,7 @@ object ResourceTools {
     fun init() {
         ClientMcp.register(ClientTool(
             "client_post_effects",
-            "The post effects (full-screen shaders: the server's /posteffect, the client's own when spectating a creeper…) " +
+            "The post effects (full-screen shaders: the server's /posteffect on 26.3+, the client's own when spectating a creeper…) " +
                 "requested now, the ones applied, and the ones that failed to load (skipped until the next resource reload) " +
                 "with the log lines about them. `available`: the post effect ids the loaded packs declare (with `contains`).",
             ClientTools.schema("available" to "boolean: list the declared post effects too (default false)",
@@ -25,18 +25,17 @@ object ResourceTools {
             acts = { false },
         ) { _, args ->
             val (text, failed) = ClientTools.onClient {
-                val minecraft = Minecraft.getInstance()
-                val renderer = minecraft.gameRenderer
-                val failed = (renderer as GameRendererAccessor).`foreman$failedPostEffects`().map { it.toString() }
+                val state = Mc.postEffects()
+                val failed = state.failed.map { it.toString() }
                 val text = buildString {
-                    appendLine("Requested: " + renderer.requestedPostEffects.joinToString(", ").ifEmpty { "none" } + " (minecraft:end_of_frame is always there)")
-                    minecraft.player?.activePostEffects?.takeIf { it.isNotEmpty() }?.let { appendLine("From the server: " + it.joinToString(", ")) }
-                    renderer.spectatedEntityPostEffect()?.let { appendLine("Spectated entity's: $it") }
-                    appendLine("Applied: " + renderer.appliedPostEffects.joinToString(", ").ifEmpty { "none" })
+                    state.requested?.let { appendLine("Requested: " + it.joinToString(", ").ifEmpty { "none" } + " (minecraft:end_of_frame is always there)") }
+                    state.fromServer.takeIf { it.isNotEmpty() }?.let { appendLine("From the server: " + it.joinToString(", ")) }
+                    state.spectated?.let { appendLine("Spectated entity's: $it") }
+                    appendLine("Applied: " + state.applied.joinToString(", ").ifEmpty { "none" })
                     append("Failed: " + failed.joinToString(", ").ifEmpty { "none" })
                     if (args["available"].bool() == true) {
                         val contains = args["contains"].str()
-                        val ids = minecraft.shaderManager.availablePostEffects.map { it.toString() }.filter { contains == null || it.contains(contains, true) }.sorted().toList()
+                        val ids = Mc.availablePostEffects().map { it.toString() }.filter { contains == null || it.contains(contains, true) }.sorted()
                         append("\n${ids.size} declared" + (contains?.let { " containing \"$it\"" } ?: "") + ": " + ids.joinToString(", "))
                     }
                 }

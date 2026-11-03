@@ -4,12 +4,21 @@ Issues and pull requests are welcome. For a larger change, open an issue first t
 
 ## Building
 
-JDK 25. `./gradlew build` builds everything; `./gradlew :client:runClient` starts a development client. The modules
+JDK 25. `./gradlew build` builds everything; `./gradlew :client:26.3:runClient` starts a development client (each
+Minecraft version has its own: `:client:26.2:runClient`). The modules
 and their artifacts are described in [Building from source](https://qore-games.github.io/foreman/developers/building/).
 
-The versions in `gradle.properties` are the oldest Foreman supports (`fabric.mod.json` asks for them): raise one only
-when the code needs it, and check a lower one in a real game first (a Fabric API built for a 26.3 pre-release builds
-fine and crashes on 26.3). Every pull request is built by the Build workflow, docs included (`zensical build --strict`),
+The mod has a jar per Minecraft version: `client/versions/<minecraft>` builds the shared sources (`client/src`)
+against that version, with what differs between versions in the package `games.qore.foreman.client.mc` (an `Mc` object
+per version with the same members, and that version's mixins). The shared code calls `Mc` where the versions differ
+and never tests the version: key and mouse button numbers changed in 26.3 and are compiled in. To add a Minecraft
+version, copy the newest `client/versions/<minecraft>`, set its `gradle.properties`, make it compile, and play it: a
+mixin whose target is gone fails only in game.
+
+The versions in `gradle.properties` and in each `client/versions/<minecraft>/gradle.properties` are the oldest Foreman
+supports (`fabric.mod.json` asks for them): raise one only when the code needs it, and check a lower one in a real game
+first (a Fabric API built for a 26.3 pre-release builds fine and crashes on 26.3). The plugin is one jar for every Paper
+version, compiled against the oldest. Every pull request is built by the Build workflow, docs included (`zensical build --strict`),
 and its jars are attached to the run.
 
 ## Code

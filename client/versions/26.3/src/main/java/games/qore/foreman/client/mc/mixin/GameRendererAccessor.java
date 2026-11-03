@@ -1,4 +1,4 @@
-package games.qore.foreman.client.mixin;
+package games.qore.foreman.client.mc.mixin;
 
 import java.util.List;
 import net.minecraft.client.renderer.GameRenderer;

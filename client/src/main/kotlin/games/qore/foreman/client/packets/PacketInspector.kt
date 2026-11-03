@@ -1,5 +1,6 @@
 package games.qore.foreman.client.packets
 
+import games.qore.foreman.client.mc.Mc
 import io.netty.buffer.ByteBuf
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Holder
@@ -178,7 +179,7 @@ object PacketInspector {
     private fun typed(packet: Any): String? = when (packet) {
         is ServerboundChatCommandPacket -> "command=/${packet.command().substringBefore(' ')} (arguments hidden)"
         is ServerboundChatCommandSignedPacket -> "command=/${packet.command().substringBefore(' ')} (arguments hidden)"
-        is ServerboundCommandSuggestionPacket -> "command=${packet.command().substringBefore(' ')} (arguments hidden)"
+        is ServerboundCommandSuggestionPacket -> "command=${Mc.command(packet).substringBefore(' ')} (arguments hidden)"
         is ServerboundChatPacket -> "message hidden (${packet.message().length} characters)"
         is ServerboundSignUpdatePacket, is ServerboundEditBookPacket, is ServerboundRenameItemPacket, is ServerboundCookieResponsePacket -> "(what the player typed is hidden)"
         else -> null
@@ -195,7 +196,7 @@ object PacketInspector {
             is Enum<*> -> out.append(v.name.lowercase())
             is Identifier, is java.util.UUID -> out.append(v)
             is ResourceKey<*> -> out.append(v.identifier())
-            is Holder<*> -> out.append(v.registeredNameIfPresent.orElse("direct"))
+            is Holder<*> -> out.append(v.unwrapKey().map { it.identifier().toString() }.orElse("direct"))
             is Component -> {
                 readable(v.string).let { out.append('"').append(cut(it, 60)).append(if (it.length > 60) "…\"" else "\"") }
                 translationKeys(v).takeIf { it.isNotEmpty() }?.let { out.append("{key=").append(it.joinToString(",")).append('}') }

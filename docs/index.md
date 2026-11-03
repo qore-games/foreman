@@ -3,7 +3,7 @@
 A multi-tool for Minecraft server owners, admins and plugin developers. See what your server sends and draws, debug
 your plugins on a running server, and work with an AI that can do the same: in game, or from your terminal.
 
-Foreman is a **Fabric client mod** and an optional **Paper plugin** for Minecraft 26.3.
+Foreman is a **Fabric client mod** and an optional **Paper plugin** for Minecraft 26.2 and 26.3.
 
 <video src="assets/videos/ai-debug.mp4" controls muted loop playsinline preload="metadata" width="100%"></video>
 

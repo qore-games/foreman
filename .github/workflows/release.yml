@@ -53,5 +53,5 @@ jobs:
         with:
           body_path: notes.md
           files: |
-            client/build/libs/foreman-${{ env.VERSION }}.jar
+            client/versions/*/build/libs/foreman-${{ env.VERSION }}+*[0-9].jar
             server/build/libs/foreman-server-${{ env.VERSION }}.jar

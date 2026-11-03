@@ -2,6 +2,7 @@
 .gradle/
 .kotlin/
 */build/
+client/versions/*/build/
 run/
 .idea/
 site/

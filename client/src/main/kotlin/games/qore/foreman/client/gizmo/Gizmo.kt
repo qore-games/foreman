@@ -2,6 +2,7 @@ package games.qore.foreman.client.gizmo
 
 import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.input.Ray
+import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import net.minecraft.world.phys.Vec3
@@ -98,6 +99,6 @@ abstract class Gizmo<H : Gizmo.Handle> {
 
         /** Rounds to [step]; Ctrl held means no snapping. */
         fun snap(value: Double, step: Double): Double =
-            if (step <= 0 || InputConstants.isKeyDown(InputConstants.KEY_LCONTROL)) value else round(value / step) * step
+            if (step <= 0 || Mc.isKeyDown(InputConstants.KEY_LCONTROL)) value else round(value / step) * step
     }
 }

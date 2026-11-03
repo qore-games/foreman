@@ -1,0 +1,11 @@
+{
+	"required": true,
+	"package": "games.qore.foreman.client.mc.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"GameRendererAccessor"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

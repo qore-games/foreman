@@ -9,13 +9,15 @@ Requirements: JDK 25.
 
 | Module | Artifact | What |
 |---|---|---|
-| `client` | `client/build/libs/foreman-<version>.jar` | The Fabric mod |
+| `client` | `client/versions/<minecraft>/build/libs/foreman-<version>+<minecraft>.jar` | The Fabric mod, a jar per Minecraft version |
 | `server` | `server/build/libs/foreman-server-<version>.jar` | The Paper plugin |
 | `server-api` | `games.qore:foreman-server-api` | What other plugins compile against (`ForemanTools`, `ForemanWorlds`, `FurnitureProvider`) |
 | `paper` | `games.qore:foreman-paper` | The location API's Paper side, shaded into your plugin |
 | `api` | `games.qore:foreman-api` | The location protocol, and Foreman's tool names shared by the client and the server |
 
-`./gradlew :client:runClient` starts a development client.
+`./gradlew :client:26.3:runClient` starts a development client (`:client:26.2:runClient` on 26.2). Each Minecraft
+version is a project in `client/versions/` that builds the shared sources (`client/src`) against it, with what
+differs between versions in the package `games.qore.foreman.client.mc`.
 
 ## Documentation
 

@@ -59,6 +59,11 @@ object TestTools {
         val exp: Float, val allowFlight: Boolean, val flying: Boolean, val invulnerable: Boolean, val inventory: SavedInv,
     )
 
+    /** Paper 26.3's name for the player's own invulnerable flag: there, isInvulnerable also counts creative mode. */
+    private val isMarkedInvulnerable = runCatching { Player::class.java.getMethod("isMarkedInvulnerable") }.getOrNull()
+
+    private fun ownInvulnerable(p: Player) = isMarkedInvulnerable?.invoke(p) as Boolean? ?: p.isInvulnerable
+
     fun all(plugin: Foreman) = listOf(
         Tool(
             ForemanTool.ITEM_LEDGER,
@@ -278,7 +283,7 @@ object TestTools {
                 kept[label] = players.associate { p ->
                     p.uniqueId to Kept(
                         p.location, p.gameMode, p.health, p.foodLevel, p.saturation, p.exhaustion, p.fireTicks, p.remainingAir,
-                        p.activePotionEffects.toList(), p.level, p.exp, p.allowFlight, p.isFlying, p.isMarkedInvulnerable,
+                        p.activePotionEffects.toList(), p.level, p.exp, p.allowFlight, p.isFlying, ownInvulnerable(p),
                         SavedInv(deep(p.inventory.contents), deep(p.enderChest.contents)),
                     ).also { if (protect) p.setInvulnerable(true) }
                 }

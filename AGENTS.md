@@ -1,7 +1,7 @@
 # Foreman: notes for AI agents
 
 Foreman is a multi-tool for Minecraft server owners, admins and plugin developers: a Fabric client mod (works on any
-server) and an optional Paper plugin, for Minecraft 26.3. Users read the docs in `docs/` (published at
+server) and an optional Paper plugin, for Minecraft 26.2 and 26.3. Users read the docs in `docs/` (published at
 <https://qore-games.github.io/foreman/>, with every page in one file at `/llms-full.txt`). This file is for agents
 working on the code.
 
@@ -9,7 +9,7 @@ working on the code.
 
 | Module | What | Language |
 |---|---|---|
-| `client` | The Fabric mod: the hub (`ui/HubScreen.kt`), packet viewer (`packets/`), HUD inspector (`hud/`), locations (`locations/`), fast resource reloads (`reload/`), AI chats (`agent/`), the client MCP server and its tools (`mcp/`) | Kotlin, Java mixins |
+| `client` | The Fabric mod, a jar per Minecraft version (see below): the hub (`ui/HubScreen.kt`), packet viewer (`packets/`), HUD inspector (`hud/`), locations (`locations/`), fast resource reloads (`reload/`), AI chats (`agent/`), the client MCP server and its tools (`mcp/`) | Kotlin, Java mixins |
 | `server` | The Paper plugin: the MCP server (`mcp/`), server tools (`tools/ServerTools.kt`), world tools (`tools/`, `world/`), skills (`skills/`), integrations with other plugins (`integrations/`), the bridge to the mod (`bridge/`) | Kotlin |
 | `server-api` | What plugins compile against: `ForemanTools` (tools and skills), `ForemanWorlds`, `FurnitureProvider` | Kotlin, Java-friendly |
 | `api` | The location protocol, and `ForemanTool`: the names of Foreman's own tools, shared by the client and the server | Kotlin |
@@ -17,13 +17,29 @@ working on the code.
 
 ## Build and try
 
-- JDK 25. `./gradlew build` (add `-x test`), `./gradlew :client:runClient` for a dev client.
-- Jars: `client/build/libs/foreman-<version>.jar`, `server/build/libs/foreman-server-<version>.jar`.
+- JDK 25. `./gradlew build` (add `-x test`), `./gradlew :client:26.3:runClient` for a dev client (`:client:26.2:…` on 26.2).
+- Jars: `client/versions/<minecraft>/build/libs/foreman-<version>+<minecraft>.jar`,
+  `server/build/libs/foreman-server-<version>.jar`.
 - A throwaway Paper server is the way to test the plugin: Paper, Foreman, and the plugins involved (FastAsyncWorldEdit
   for the world tools), Foreman's MCP on `mcp.port`. Call tools with JSON-RPC over HTTP (`initialize`, `tools/list`,
   `tools/call`). Test with and without the optional plugins: the plugin must enable cleanly either way.
 - Docs: `pip install -r docs/requirements.txt`, `zensical serve`; `zensical build --clean` then
   `python3 -I scripts/llms.py site` writes `llms.txt` and `llms-full.txt`.
+
+## Minecraft versions
+
+- The mod is a jar per Minecraft version: each `client/versions/<minecraft>` project (its `gradle.properties` holds the
+  versions it builds against) compiles the shared sources, `client/src`, against its version. What differs between
+  versions is the layer, package `games.qore.foreman.client.mc`: an `Mc` object per version with the same members, and
+  the version's own mixins (`mc/mixin`, listed in its `foreman-mc.mixins.json`). Shared code calls `Mc` where the
+  versions differ and never tests the version at runtime: key and mouse button numbers changed in 26.3 (SDL) and are
+  compiled in, so a jar only runs on its version.
+- An API that differs: an `Mc` member in every version, or a member's name as a `const val` for a mixin's `method`
+  (`Mc.TEXT_EDITING`). Build every version (`./gradlew build`): one that lacks the member fails to compile.
+- A new Minecraft version: copy the newest `client/versions/<minecraft>`, set its `gradle.properties` (the oldest Fabric
+  API that runs on the release), make it compile, then play it: a mixin whose target is gone fails only in game.
+- The plugin is one jar for every Paper version, compiled against the oldest (`paper_version`): where a newer Paper
+  changed what a method means, the plugin looks the new one up at runtime (`TestTools.isMarkedInvulnerable`).
 
 ## Adding things
 

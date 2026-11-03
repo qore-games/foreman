@@ -1,86 +1,120 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 plugins {
-    id("net.fabricmc.fabric-loom")
-    kotlin("jvm")
-    `maven-publish`
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0" apply false
 }
 
-val archiveName = providers.gradleProperty("mod_name").get()
-version = providers.gradleProperty("mod_version").get()
-group = providers.gradleProperty("maven_group").get()
-base.archivesName = archiveName
+// The Fabric mod, a jar per Minecraft version. Each versions/<minecraft> project compiles the shared sources (src/) and
+// its own layer (package games.qore.foreman.client.mc: what differs between versions) against its Minecraft version,
+// with the versions in its gradle.properties.
+val shared = layout.projectDirectory.dir("src")
+// IntelliJ gives a source folder to one module only: while it syncs, the shared sources go to the newest version (an
+// older version's own files then miss the shared types in the IDE; build and run them with Gradle).
+val ideVersion = subprojects.maxBy { p -> p.name.split('.').joinToString(".") { it.padStart(4, '0') } }
+val ideSync = System.getProperty("idea.sync.active") == "true"
 
-repositories {
-    maven {
-        name = "Fabric"
-        url = uri("https://maven.fabricmc.net/")
+subprojects {
+    apply(plugin = "net.fabricmc.fabric-loom")
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
+    apply(plugin = "maven-publish")
+
+    fun prop(name: String) = property(name) as String
+    val minecraft = prop("minecraft_version")
+    version = "${prop("mod_version")}+$minecraft"
+    group = prop("maven_group")
+    extensions.configure<BasePluginExtension> { archivesName = prop("mod_name") }
+
+    if (!ideSync || this == ideVersion) {
+        extensions.configure<SourceSetContainer> {
+            named("main") {
+                java.srcDir(shared.dir("main/java"))
+                resources.srcDir(shared.dir("main/resources"))
+            }
+        }
+        extensions.configure<KotlinJvmProjectExtension> {
+            sourceSets.named("main") { kotlin.srcDir(shared.dir("main/kotlin")) }
+            sourceSets.named("test") { kotlin.srcDir(shared.dir("test/kotlin")) }
+        }
     }
-    maven {
-        name = "Terraformers"
-        url = uri("https://maven.terraformersmc.com/releases/")
+
+    repositories {
+        maven {
+            name = "Fabric"
+            url = uri("https://maven.fabricmc.net/")
+        }
+        maven {
+            name = "Terraformers"
+            url = uri("https://maven.terraformersmc.com/releases/")
+        }
+        mavenCentral()
     }
-    mavenCentral()
-}
 
-dependencies {
-    minecraft("com.mojang:minecraft:${providers.gradleProperty("minecraft_version").get()}")
-    implementation("net.fabricmc:fabric-loader:${providers.gradleProperty("loader_version").get()}")
-    implementation("net.fabricmc.fabric-api:fabric-api:${providers.gradleProperty("fabric_api_version").get()}")
-    implementation("net.fabricmc:fabric-language-kotlin:${providers.gradleProperty("fabric_kotlin_version").get()}")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    compileOnly("com.terraformersmc:modmenu:${providers.gradleProperty("modmenu_version").get()}")
-    implementation(project(":api"))
-    testImplementation(kotlin("test"))
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-tasks.processResources {
-    val version = version
-    inputs.property("version", version)
-
-    filesMatching("fabric.mod.json") {
-        expand("version" to version)
+    dependencies {
+        "minecraft"("com.mojang:minecraft:$minecraft")
+        "implementation"("net.fabricmc:fabric-loader:${prop("loader_version")}")
+        "implementation"("net.fabricmc.fabric-api:fabric-api:${prop("fabric_api_version")}")
+        "implementation"("net.fabricmc:fabric-language-kotlin:${prop("fabric_kotlin_version")}")
+        "implementation"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+        "compileOnly"("com.terraformersmc:modmenu:${prop("modmenu_version")}")
+        "implementation"(project(":api"))
+        "testImplementation"(kotlin("test"))
     }
-}
 
-tasks.withType<JavaCompile>().configureEach {
-    options.release = 25
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget = JvmTarget.JVM_25
+    tasks.named<Test>("test") {
+        useJUnitPlatform()
     }
-}
 
-java {
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-tasks.jar {
-    val projectName = rootProject.name
-    from(rootProject.file("LICENSE")) {
-        rename { "${it}_$projectName" }
+    tasks.named<ProcessResources>("processResources") {
+        // fabric.mod.json requires the versions built against, and the Minecraft versions this jar runs on
+        val expanded = mapOf(
+            "version" to version,
+            "minecraft" to prop("minecraft_range"),
+            "loader" to prop("loader_version"),
+            "fabric_api" to prop("fabric_api_version").substringBefore('+'),
+            "fabric_kotlin" to prop("fabric_kotlin_version").substringBefore('+'),
+        )
+        inputs.properties(expanded)
+        filesMatching("fabric.mod.json") {
+            expand(expanded)
+        }
     }
-    from(project(":api").sourceSets.main.get().output)
-}
 
-tasks.named<JavaExec>("runClient") {
-    jvmArgs("-XX:+AllowEnhancedClassRedefinition")
-}
+    tasks.withType<JavaCompile>().configureEach {
+        options.release = 25
+    }
 
-publishing {
-    publications {
-        register<MavenPublication>("mavenJava") {
-            artifactId = "foreman-client"
-            from(components["java"])
+    extensions.configure<KotlinJvmProjectExtension> {
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_25
+        }
+    }
+
+    extensions.configure<JavaPluginExtension> {
+        withSourcesJar()
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
+    }
+
+    tasks.named<Jar>("jar") {
+        val projectName = rootProject.name
+        from(rootProject.file("LICENSE")) {
+            rename { "${it}_$projectName" }
+        }
+        from(project(":api").the<SourceSetContainer>()["main"].output)
+    }
+
+    tasks.named<JavaExec>("runClient") {
+        jvmArgs("-XX:+AllowEnhancedClassRedefinition")
+    }
+
+    extensions.configure<PublishingExtension> {
+        publications {
+            register<MavenPublication>("mavenJava") {
+                artifactId = "foreman-client"
+                from(components["java"])
+            }
         }
     }
 }

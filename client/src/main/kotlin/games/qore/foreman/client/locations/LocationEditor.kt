@@ -7,6 +7,7 @@ import games.qore.foreman.client.input.MouseButton
 import games.qore.foreman.client.input.Ray
 import games.qore.foreman.client.input.Tool
 import games.qore.foreman.client.input.Tools
+import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.api.data.LocationEntry
@@ -91,7 +92,7 @@ object LocationEditor : Tool {
 
     override fun scroll(amount: Double): Boolean {
         if (!gizmo.dragging) return false
-        val fine = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL)
+        val fine = Mc.isKeyDown(InputConstants.KEY_LCONTROL)
         gizmo.nudge(sign(amount) * if (fine) 0.0625 else 1.0)
         return true
     }

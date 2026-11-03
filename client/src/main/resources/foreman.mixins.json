@@ -13,7 +13,6 @@
 		"FontAccessor",
 		"FontManagerMixin",
 		"FontSetMixin",
-		"GameRendererAccessor",
 		"HudAccessor",
 		"KeyMappingAccessor",
 		"LoadingOverlayMixin",

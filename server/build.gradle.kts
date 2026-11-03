@@ -39,7 +39,7 @@ kotlin {
 bukkit {
     main = "games.qore.foreman.server.Foreman"
     name = "Foreman"
-    apiVersion = "26.3"
+    apiVersion = "26.2"
     description = "Tools for server owners, admins and plugin developers, for AI agents (MCP) and the Foreman client mod."
     website = "https://qore-games.github.io/foreman/"
 

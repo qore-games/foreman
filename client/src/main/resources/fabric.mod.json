@@ -30,14 +30,15 @@
 		]
 	},
 	"mixins": [
-		"foreman.mixins.json"
+		"foreman.mixins.json",
+		"foreman-mc.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.19.3",
-		"minecraft": "~26.3",
+		"fabricloader": ">=${loader}",
+		"minecraft": "${minecraft}",
 		"java": ">=25",
-		"fabric-api": ">=0.160.5",
-		"fabric-language-kotlin": ">=1.13.12"
+		"fabric-api": ">=${fabric_api}",
+		"fabric-language-kotlin": ">=${fabric_kotlin}"
 	},
 	"suggests": {
 		"modmenu": "*"

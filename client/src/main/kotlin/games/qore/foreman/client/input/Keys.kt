@@ -1,6 +1,7 @@
 package games.qore.foreman.client.input
 
 import com.mojang.blaze3d.platform.InputConstants
+import games.qore.foreman.client.mc.Mc
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
 import net.minecraft.client.KeyMapping
@@ -27,7 +28,7 @@ object Keys {
     /** `key.foreman.<name>` in [category]. */
     fun bind(name: String, category: Category, key: Int, description: String = "", onPress: () -> Unit): KeyMapping {
         val cat = categories.getOrPut(category) { KeyMapping.Category.register(Identifier.fromNamespaceAndPath("foreman", category.id)) }
-        val mapping = KeyMappingHelper.registerKeyMapping(KeyMapping("key.foreman.$name", InputConstants.Type.KEYBOARD, key, cat))
+        val mapping = KeyMappingHelper.registerKeyMapping(KeyMapping("key.foreman.$name", Mc.keyboard, key, cat))
         bindings += mapping to onPress
         if (description.isNotEmpty()) described += Binding(mapping, description, category)
         return mapping

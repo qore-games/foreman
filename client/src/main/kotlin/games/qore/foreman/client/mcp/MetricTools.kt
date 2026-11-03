@@ -1,6 +1,7 @@
 package games.qore.foreman.client.mcp
 
 import com.mojang.blaze3d.systems.RenderSystem
+import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.int
@@ -116,7 +117,7 @@ object MetricTools {
         minecraft.player?.let { player ->
             minecraft.connection?.getPlayerInfo(player.uuid)?.let { lines += "Ping ${it.latency} ms" }
         }
-        lines += "Post effects: " + minecraft.gameRenderer.appliedPostEffects.joinToString().ifEmpty { "none" }
+        lines += "Post effects: " + Mc.postEffects().applied.joinToString().ifEmpty { "none" }
         lines += "Resource packs: ${minecraft.resourcePackRepository.selectedPacks.size} selected"
         lines.joinToString("\n")
     }

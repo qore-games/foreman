@@ -118,7 +118,7 @@ object ScreenTools {
                     val y = args["y"].double() ?: throw ToolFailure("Give label, or x and y")
                     Triple(x, y, "${x.toInt()},${y.toInt()}")
                 }
-                // 26.3 numbers mouse buttons like SDL (left 1, right 3)
+                // Minecraft's button numbers: SDL's since 26.3 (left 1, right 3), GLFW's before
                 val button = if (args["button"].int() == 1) InputConstants.MOUSE_BUTTON_RIGHT else InputConstants.MOUSE_BUTTON_LEFT
                 val event = MouseButtonEvent(x, y, MouseButtonInfo(button, 0))
                 val handled = screen.mouseClicked(event, false)

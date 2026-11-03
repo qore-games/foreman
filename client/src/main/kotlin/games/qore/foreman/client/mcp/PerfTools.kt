@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mcp
 
+import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.int
 import games.qore.foreman.client.util.str
@@ -62,7 +63,7 @@ object PerfTools {
             val minecraft = Minecraft.getInstance()
             val taken = frames!!.copyOf(count)
             frames = null
-            Triple(taken, minecraft.isWindowActive, minecraft.gameRenderer.appliedPostEffects)
+            Triple(taken, minecraft.isWindowActive, Mc.postEffects().applied)
         }
         if (samples.isEmpty()) return "No frame in $seconds s"
         val sorted = samples.sorted()

@@ -1,9 +1,10 @@
 # Install the client
 
-Put `foreman-1.1.0.jar` in your instance's `mods/` folder, with:
+Put the jar for your Minecraft version in your instance's `mods/` folder (`foreman-<version>+26.3.jar` for 26.3,
+`foreman-<version>+26.2.jar` for 26.2), with:
 
-- Fabric Loader 0.19.3 or later, for Minecraft 26.3
-- [Fabric API](https://modrinth.com/mod/fabric-api) 0.160.5 or later
+- Fabric Loader 0.19.3 or later
+- [Fabric API](https://modrinth.com/mod/fabric-api) 0.160.5 or later on 26.3, 0.152.2 or later on 26.2
 - [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin) 1.13.12 or later
 
 Any later version works: the mod asks for the oldest ones it was built against.
@@ -18,5 +19,5 @@ The mod keeps its files in `config/foreman/`:
 | `packets/` | Packet recordings written by `/packets export` |
 | `client-mcp.json` | How outside agents connect, while you allow them |
 
-Download it from the [releases](https://github.com/qore-games/foreman/releases): each release has the mod
-(`foreman-<version>.jar`) and the server plugin (`foreman-server-<version>.jar`).
+Download it from the [releases](https://github.com/qore-games/foreman/releases): each release has the mod for each
+Minecraft version (`foreman-<version>+<minecraft>.jar`) and the server plugin (`foreman-server-<version>.jar`).

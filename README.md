@@ -5,7 +5,7 @@
 A multi-tool for Minecraft server owners, admins and plugin developers. See what your server sends and draws, debug
 your plugins on a running server, and work with an AI that can do the same: in game, or from your terminal.
 
-Foreman is a **Fabric client mod** and an optional **Paper plugin** for Minecraft 26.3. The mod works on any server.
+Foreman is a **Fabric client mod** and an optional **Paper plugin** for Minecraft 26.2 and 26.3. The mod works on any server.
 The plugin adds server-side tools when you install it. Nothing runs until you use it: no recording, no overlay, no
 listener doing work in the background.
 
@@ -105,8 +105,8 @@ Working on Foreman itself: [AGENTS.md](AGENTS.md).
 
 | | Requirements |
 |---|---|
-| **Client** (`foreman-1.1.0.jar` in `mods/`) | Minecraft 26.3, Fabric Loader, Fabric API, Fabric Language Kotlin. |
-| **Server** (`foreman-server-1.1.0.jar` in `plugins/`) | Paper 26.3. FastAsyncWorldEdit for the world tools (optional: the rest works without it). |
+| **Client** (`foreman-<version>+<minecraft>.jar` in `mods/`, the one for your Minecraft) | Minecraft 26.2 or 26.3, Fabric Loader, Fabric API, Fabric Language Kotlin. |
+| **Server** (`foreman-server-<version>.jar` in `plugins/`) | Paper 26.2 or 26.3. FastAsyncWorldEdit for the world tools (optional: the rest works without it). |
 
 Players with the `foreman.client` permission (ops by default) are connected to the server's tools when they join.
 The plugin's MCP server listens on `127.0.0.1:25599` by default (see `plugins/Foreman/config.yml`), with the token in
@@ -148,9 +148,9 @@ Every key can be changed in the hub or in Minecraft's controls.
 ./gradlew publishToMavenLocal
 ```
 
-The client jar is in `client/build/libs/`, the plugin in `server/build/libs/`. The modules are `api` (the location
-protocol), `paper` (its Paper side), `server` (the plugin), `server-api` (what other plugins compile against) and
-`client` (the mod).
+The client jars are in `client/versions/<minecraft>/build/libs/`, the plugin in `server/build/libs/`. The modules are
+`api` (the location protocol), `paper` (its Paper side), `server` (the plugin), `server-api` (what other plugins compile
+against) and `client` (the mod, a project per Minecraft version).
 
 ## License
 
