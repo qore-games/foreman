@@ -3,6 +3,61 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
+## [Unreleased]
+
+### Client (Fabric mod, any server)
+
+- With ModernFix, a resource reload after the game's start (F3+T, the options' packs, a server's pack) never ended
+  while Foreman timed it (fast reloads or the chat report on): the packs were prepared, then nothing applied and the
+  loading screen stayed. To time the steps Foreman switched the reload to vanilla's profiled one, whose listeners
+  ModernFix wraps; on 26.x the reload then waits for the unwrapped ones to be prepared, for good. Foreman now times
+  each step itself and leaves the profiled reload to vanilla's debug logging.
+- Fast font selection also covers providers of other kinds than vanilla's, asked about the codepoints still free at
+  their turn as vanilla asks them (`FontProviders.select(supported, has)`), and font sets reloaded outside a resource
+  reload. With ModernFix, which wraps the unifont provider, every font that includes the default one went vanilla's
+  quadratic way (seconds for icon fonts), and ImmediatelyFast's font reload after a server pack froze the game as long.
+- Lean mode for test clients (`-Dforeman.lean=true`, or the `lean` setting): the window hidden, frames drawn only when
+  a tool needs pixels or a screen's layout (and once a second), no sound device, light settings in memory only
+  (options.txt keeps the player's); ticks, networking, screens and every client tool work as usual. See
+  [lean clients](docs/ai/lean-clients.md).
+- Lean clients can skip the server's resource packs: `-Dforeman.lean.packs=skip` (or the `lean.packs` setting) answers
+  each pack the server sends as accepted, downloaded and loaded without downloading or applying it, so a server that
+  requires its packs still lets the client in; the log says which were skipped. Default `load`.
+- Outside access from a launch's system properties, for scripts and launchers: `foreman.mcp.external`,
+  `foreman.mcp.port` (`0`: any free port), `foreman.mcp.allow`. `client-mcp.json` says where the game is (`state`:
+  `starting`, `menu`, `joining`, `in_game`, `stopped`) and its `pid`.
+- `client-mcp.json` gains `version` (the mod's) and `started_at`.
+- `GET /stream` on the client's MCP server (with the outside agents' token): what the game shows, screens and HUD
+  included, live, as Motion JPEG (`multipart/x-mixed-replace`), for a launcher or a dashboard to watch a client, a
+  lean one included. `fps` 1 to 30 (default 10), `width` 160 to 1920 (default 640, frames only scaled down),
+  `quality` 30 to 95 (default 70). Only the newest frame is sent, so a slow reader skips frames instead of falling
+  behind; 4 streams at most (`503`), `403` when outside agents may not take screenshots, a reader idle for 60 s is
+  dropped. A lean client draws frames at the stream's rate while it's watched (about 15 % of a core at 10 FPS against
+  3 % idle), and nothing more otherwise. See [watching the game live](docs/ai/outside-agents.md#watching-the-game-live).
+- Screenshots no longer touch the disk: `client_screenshot`, `ui_capture` and `client_frames` encode their images in
+  memory (they wrote and deleted a temporary file).
+- `client_usage`: what the client process uses (heap, resident memory, CPU, threads, JVM flags, frames drawn).
+- Bots that move, for load and network tests: `client_wander` walks the player to random waypoints within a radius of
+  where it starts, on safe ground a straight walk reaches (no lava, water, cliff or void; a block up at most), jumping
+  onto single blocks and taking another waypoint when stuck, the same ones again with a `seed`; `client_path` follows
+  given points, in a loop if asked, skipping one it can't reach. Both steer with the movement keys and the camera as
+  `client_input` does, need no frames (lean clients), and answer JSON (distance, waypoints reached or points
+  reached and skipped with their times, times stuck, jumps, final position). See
+  [bots that move](docs/ai/testing.md#bots-that-move).
+- `packets_stats`: the packet recording as compact JSON for reports: packets and bytes each way and per type, rates
+  per second and a series over time, the silences from the server (longest first, with when), keep-alives (the
+  client's answer time, the interval, the ping the server measured), optionally from `since_ms` on. The recorder now
+  keeps those silences, keep-alives and pings while it records.
+
+### fastload
+
+- **fastload**, Foreman's fast reload algorithms as a library of their own (`fastload/`, `games.qore:fastload`, plain
+  Java 21, no dependencies, MIT; `fastload/API.md`): `Mipmaps` (vanilla's mip levels on pixel arrays, to the bit, and
+  an atlas's sprites in parallel), `FontProviders` (font provider selection in linear time), `ZipIndex` (a zip's
+  folders by lookup), and `Claims`: who speeds up each feature (`loading-screen`, `title-fade`, `mipmaps`, `fonts`,
+  `zip-index`), first come first served, in system properties every class loader sees. The mod bundles it and steps
+  aside on the features a launcher or another mod claimed first; alone, it does what it did, as fast.
+
 ## [1.1.1] - 2026-11-04
 
 - Minecraft 26.2: the mod is a jar per Minecraft version, `foreman-1.1.1+26.2.jar` (Fabric API 0.152.2 or later)

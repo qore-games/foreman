@@ -14,10 +14,62 @@ plays the change in the running client (screens, commands, entities, items, pack
 The address and a token are also written to `config/foreman/client-mcp.json` (readable by you only), for other agents:
 
 ```json
-{"url": "http://127.0.0.1:25601/mcp/external", "token": "…", "claude": "claude mcp add --transport http foreman-client …"}
+{"url": "http://127.0.0.1:25601/mcp/external", "token": "…", 
+ "claude": "claude mcp add --transport http foreman-client …", "state": "in_game", "pid": 41872, "lean": false,
+ "version": "1.1.1+26.3", "started_at": "2026-11-04T18:12:03Z"}
 ```
 
-The port stays the same from one launch to the next (`25601`, or another free one when it's taken).
+The port stays the same from one launch to the next (`25601`, or another free one when it's taken). `state` says where
+the game is, for a script waiting until it can test: `starting` (loading), `menu` (no world: the title screen, or a
+server that refused it), `joining`, `in_game`, then `stopped` when the game closes (quit, or `SIGTERM`). `pid` is the
+game's process, `version` the mod's, `started_at` when its MCP server started (UTC).
+
+The [server plugin](../server/setup.md#the-connection-file) writes the same kind of file for the server's MCP,
+`plugins/Foreman/mcp.json` in the server's folder (`url`, `token`, `port`, `pid`, `server`, `version`, `started_at`):
+an agent that tests on a dev server reads both, and finds the right server's MCP when several run on one machine.
+
+## Without the hub
+
+Scripts and launchers that start the game set outside access with system properties among its JVM arguments. They hold
+for that launch only, over the hub's settings, and nothing is saved:
+
+| Property | Does |
+|---|---|
+| `-Dforeman.mcp.external=true` | Outside agents may connect, without the hub's switch (`false` keeps them out). The token is made once and kept |
+| `-Dforeman.mcp.port=<n>` | The port; `0` for any free one, which the file gives. Without it, `25601` or another free one |
+| `-Dforeman.mcp.allow=commands,screenshots` | What outside agents may do: only what's listed (empty: neither) |
+
+Delete `client-mcp.json` before a launch, or check its `pid`: after a crash it still says the last state. For test
+clients that cost as little as possible, see [lean clients](lean-clients.md).
+
+## Watching the game live
+
+The same server streams what the game's window shows, screens and HUD included, for a launcher or a dashboard to
+watch a client (a [lean](lean-clients.md) one without a window too): `GET /stream` with the token of
+`client-mcp.json` in its `Authorization` header (a browser's `<img>` can't send one: show the stream through a page or
+a program that does).
+
+```sh
+curl -N -H 'Authorization: Bearer <token>' 'http://127.0.0.1:25601/stream?fps=10' | ffplay -f mjpeg -
+```
+
+| Parameter | Default | Range | Does |
+|---|---|---|---|
+| `fps` | `10` | 1 to 30 | Frames per second at most |
+| `width` | `640` | 160 to 1920 | Frames scaled down to this width at most, keeping their shape (never up) |
+| `quality` | `70` | 30 to 95 | JPEG quality |
+
+The answer is Motion JPEG, as cameras send it: `Content-Type: multipart/x-mixed-replace; boundary=foreman-frame`, then
+for each frame `--foreman-frame`, `Content-Type: image/jpeg`, `Content-Length` and `X-Frame-Time` (when it was drawn,
+in milliseconds since 1970) headers, a blank line and the JPEG. It goes on until you close the connection or the game
+stops. Only the newest frame is ever sent: a reader that falls behind skips frames instead of seeing them late, and one
+that reads nothing for a minute is dropped.
+
+- `401` without the right token, `403` for a request with an `Origin` (web pages) or when outside agents may not take
+  screenshots, `405` for anything but `GET`, `503` when 4 streams are already open.
+- Frames stay in memory: nothing is written to disk, and nothing runs while no stream is open. While one is, the game
+  reads its frames back and each stream scales and encodes them: a few percent of a core at the defaults, besides
+  drawing them.
 
 ## While an agent works
 

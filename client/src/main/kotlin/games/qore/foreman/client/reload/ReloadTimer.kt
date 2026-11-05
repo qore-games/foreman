@@ -2,17 +2,20 @@ package games.qore.foreman.client.reload
 
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.util.Chat
-import net.minecraft.server.packs.resources.ProfiledReloadInstance
+import net.minecraft.server.packs.resources.PreparableReloadListener
 import net.minecraft.server.packs.resources.ReloadInstance
 import org.slf4j.LoggerFactory
+import java.util.IdentityHashMap
 import java.util.Locale
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Times the client's resource reloads (F3+T, the options' packs, a server's pack): how long each step prepared (off
  * the main thread) and applied (on it, freezing the game), the longest frame, and the time the loading screen stayed up
  * after the packs were loaded. Only works during a reload, and only with fast reloads or the chat report on: the
- * overlay's frames and vanilla's profiled reload drive it.
+ * overlay's frames and the reload's listeners drive it ([ListenerTimes]).
  */
 object ReloadTimer {
     private val logger = LoggerFactory.getLogger("Foreman")
@@ -73,7 +76,7 @@ object ReloadTimer {
     /** Reloads are timed while Foreman takes part in them: with fast reloads or the chat report on. */
     @JvmStatic fun times(): Boolean = Config.settings.reload.let { it.fast || it.report }
 
-    /** A reload starts: vanilla will profile it (the steps are only timed then). */
+    /** A reload starts: its listeners are timed. */
     @JvmStatic fun start() {
         if (!times()) {
             started = 0L
@@ -99,12 +102,43 @@ object ReloadTimer {
     /** [instance] is the client's reload being timed (not a data pack load on the same thread). */
     @JvmStatic fun isTimed(instance: Any): Boolean = reload === instance
 
-    /** Every listener is done: the packs are loaded, the loading screen may still be up. */
-    @JvmStatic fun steps(states: List<ProfiledReloadInstance.State>) {
-        if (!timing()) return
+    /** Every listener of [instance] is done: if it's the reload being timed, the packs are loaded (the loading screen may still be up). */
+    @JvmStatic fun steps(instance: ReloadInstance, times: ListenerTimes) {
+        if (!timing() || !isTimed(instance)) return
         loaded = System.nanoTime()
-        steps = states.map {
-            Step(it.name(), TimeUnit.NANOSECONDS.toMillis(it.preparationNanos().get()), TimeUnit.NANOSECONDS.toMillis(it.reloadNanos().get()), prepared[it.name()] ?: -1)
+        steps = times.steps()
+    }
+
+    /**
+     * A reload's listeners' time, as vanilla's profiled reload measures it (that one isn't used: mods change it, and
+     * ModernFix's change never lets its listeners apply on 26.x): each listener's tasks run through executors that add
+     * up their time, off the main thread and on it.
+     */
+    class ListenerTimes {
+        private class Times(val name: String) {
+            val prepareNanos = AtomicLong()
+            val applyNanos = AtomicLong()
+        }
+
+        /** By listener, and [all] in the reload's order: filled on the thread that starts the reload, as it does. */
+        private val byListener = IdentityHashMap<PreparableReloadListener, Times>()
+        private val all = ArrayList<Times>()
+
+        /** [executor], timed for [listener]: its preparing tasks, or applying ones with [apply]. */
+        fun executor(listener: PreparableReloadListener, executor: Executor, apply: Boolean): Executor {
+            val times = byListener.getOrPut(listener) { Times(listener.name).also { all.add(it) } }
+            val total = if (apply) times.applyNanos else times.prepareNanos
+            return Executor { task ->
+                executor.execute {
+                    val start = System.nanoTime()
+                    task.run()
+                    total.addAndGet(System.nanoTime() - start)
+                }
+            }
+        }
+
+        fun steps(): List<Step> = all.map {
+            Step(it.name, TimeUnit.NANOSECONDS.toMillis(it.prepareNanos.get()), TimeUnit.NANOSECONDS.toMillis(it.applyNanos.get()), prepared[it.name] ?: -1)
         }
     }
 

@@ -5,7 +5,7 @@ plugins {
 
 // The artifacts plugins compile against: their POMs, and the release repository (the release workflow publishes there,
 // then the docs site serves it as https://qore-games.github.io/foreman/maven/).
-configure(listOf(project(":api"), project(":paper"), project(":server-api"))) {
+configure(listOf(project(":api"), project(":fastload"), project(":paper"), project(":server-api"))) {
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
             publications.withType<MavenPublication>().configureEach {

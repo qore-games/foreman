@@ -2,6 +2,7 @@ package games.qore.foreman.client.config
 
 import games.qore.foreman.client.util.PRETTY_JSON
 import games.qore.foreman.client.util.writePrivateFile
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.fabricmc.loader.api.FabricLoader
 import org.slf4j.LoggerFactory
@@ -119,6 +120,31 @@ data class Workspace(
     var instructions: String = "",
 )
 
+/** Where a lean client's window goes: nowhere to be seen, in the taskbar, or on screen (frames on demand all the same). */
+@Serializable
+enum class LeanWindow { @SerialName("hidden") HIDDEN, @SerialName("minimized") MINIMIZED, @SerialName("shown") SHOWN }
+
+/** What a lean client does with the resource packs a server sends: load them, or answer as loaded without them. */
+@Serializable
+enum class LeanPacks { @SerialName("load") LOAD, @SerialName("skip") SKIP }
+
+/**
+ * Lean mode, for clients that scripts and launchers start for automated tests (docs/ai/lean-clients.md): no window,
+ * frames drawn only when a tool needs them, no sound device, light settings kept in memory. Read at start; the
+ * `foreman.lean*` system properties win over it. Not in the hub: a hidden window couldn't turn it off again.
+ */
+@Serializable
+data class LeanSettings(
+    var enabled: Boolean = false,
+    /** Frames drawn per second besides the ones tools ask for; 0: only those. */
+    var fps: Int = 1,
+    var window: LeanWindow = LeanWindow.HIDDEN,
+    /** The render distance in chunks (the server sends no farther): 2 is the least; more for screenshots of a build. */
+    var renderDistance: Int = 2,
+    /** SKIP: the server's resource packs are answered as loaded, never downloaded (a bot doesn't draw them, a big set doesn't fit a small heap). */
+    var packs: LeanPacks = LeanPacks.LOAD,
+)
+
 @Serializable
 data class Settings(
     var workspaces: MutableList<Workspace> = mutableListOf(),
@@ -129,6 +155,7 @@ data class Settings(
     var agent: AgentSettings = AgentSettings(),
     var external: ExternalAccessSettings = ExternalAccessSettings(),
     var reload: ReloadSettings = ReloadSettings(),
+    var lean: LeanSettings = LeanSettings(),
 )
 
 /** `config/foreman/settings.json`, read once at start and written on every change (this user only: it holds a token). */
@@ -139,13 +166,20 @@ object Config {
 
     var settings = Settings()
         private set
+    private var loaded = false
 
+    /** Reads the file, once (lean mode reads the settings early, while the game is still being built). */
     fun load() {
+        if (loaded) return
+        loaded = true
         if (Files.exists(file)) {
             try {
                 settings = PRETTY_JSON.decodeFromString(Settings.serializer(), Files.readString(file))
             } catch (e: Exception) {
-                logger.warn("Could not read {}, using defaults", file, e)
+                // The defaults are saved over it next: keep what the player had, to fix by hand.
+                val kept = file.resolveSibling("${file.fileName}.unreadable")
+                runCatching { Files.copy(file, kept, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.COPY_ATTRIBUTES) }
+                logger.warn("Could not read {}, using defaults (the file is kept as {})", file, kept.fileName, e)
             }
         }
         save()

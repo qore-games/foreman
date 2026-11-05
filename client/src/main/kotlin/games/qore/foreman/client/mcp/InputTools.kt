@@ -49,8 +49,17 @@ object InputTools {
         var sprinting = 0
     }
 
+    /**
+     * Keys chosen a tick at a time (client_wander, client_path): each tick, [next] may turn the camera and returns the
+     * keys to hold, null once done. [done] completes then with null, or with why it was stopped.
+     */
+    class Driver(val next: (LocalPlayer) -> Set<KeyMapping>?) {
+        val done = CompletableFuture<String?>()
+    }
+
     // Client thread only
     private val plans = mutableListOf<Plan>()
+    private val drivers = mutableListOf<Driver>()
     private var down = emptySet<KeyMapping>()
 
     fun init() {
@@ -93,8 +102,17 @@ object InputTools {
         }
     }
 
+    /** Runs [driver] from the next tick, along with what other calls hold. */
+    fun drive(driver: Driver): CompletableFuture<String?> = ClientTools.onClient {
+        val minecraft = Minecraft.getInstance()
+        if (minecraft.player == null) throw ToolFailure("Not in a world")
+        minecraft.gui.screen()?.let { throw ToolFailure("A screen is open (${it.javaClass.simpleName}): key bindings only act in game (escape first)") }
+        drivers += driver
+        driver.done
+    }
+
     /** What [play] says once it released its keys. If the client stops ticking first, releases everything. */
-    fun await(done: CompletableFuture<String>, ticks: Int): String = try {
+    fun <T> await(done: CompletableFuture<T>, ticks: Int): T = try {
         done.get(ticks * 50L + 10_000, TimeUnit.MILLISECONDS)
     } catch (_: TimeoutException) {
         Minecraft.getInstance().execute { release("the client stopped ticking") }
@@ -134,7 +152,7 @@ object InputTools {
     }
 
     private fun tick(minecraft: Minecraft) {
-        if (plans.isEmpty() && down.isEmpty()) return
+        if (plans.isEmpty() && drivers.isEmpty() && down.isEmpty()) return
         val player = minecraft.player
         plans.removeAll { plan -> (++plan.tick == plan.ticks.size).also { if (it) finish(plan, null, player) } }
         val screen = minecraft.gui.screen()
@@ -143,6 +161,16 @@ object InputTools {
             screen != null -> stop("a screen opened (${screen.javaClass.simpleName})", player)
         }
         val now = plans.flatMapTo(HashSet()) { it.ticks[it.tick].keys }
+        if (player != null) drivers.removeAll { driver ->
+            val keys = try {
+                driver.next(player)
+            } catch (e: Exception) {
+                driver.done.completeExceptionally(e)
+                return@removeAll true
+            }
+            if (keys == null) driver.done.complete(null) else now += keys
+            keys == null
+        }
         for (key in down - now) (key as KeyMappingAccessor).`foreman$setDown`(false)
         for (key in now) press(key, key !in down)
         down = now
@@ -172,6 +200,8 @@ object InputTools {
     private fun stop(reason: String, player: LocalPlayer?) {
         plans.forEach { finish(it, reason, player) }
         plans.clear()
+        drivers.forEach { it.done.complete(reason) }
+        drivers.clear()
     }
 
     private fun finish(plan: Plan, stopped: String?, player: LocalPlayer?) {

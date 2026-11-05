@@ -59,6 +59,7 @@ subprojects {
         "implementation"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
         "compileOnly"("com.terraformersmc:modmenu:${prop("modmenu_version")}")
         "implementation"(project(":api"))
+        "implementation"(project(":fastload"))
         "testImplementation"(kotlin("test"))
     }
 
@@ -103,6 +104,8 @@ subprojects {
             rename { "${it}_$projectName" }
         }
         from(project(":api").the<SourceSetContainer>()["main"].output)
+        // fastload's package is its own: bundled as is, beside other copies of it (a launcher's agent, another mod).
+        from(project(":fastload").the<SourceSetContainer>()["main"].output)
     }
 
     tasks.named<JavaExec>("runClient") {

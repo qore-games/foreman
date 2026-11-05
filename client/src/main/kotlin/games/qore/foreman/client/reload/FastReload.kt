@@ -4,14 +4,14 @@ import com.google.common.collect.Lists
 import com.mojang.blaze3d.font.GlyphProvider
 import com.mojang.blaze3d.font.SpaceProvider
 import com.mojang.blaze3d.font.TrueTypeGlyphProvider
-import com.mojang.blaze3d.font.UnbakedGlyph
+import games.qore.fastload.Claims
+import games.qore.fastload.FontProviders
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.util.Chat
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.ints.IntList
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal
 import net.minecraft.client.Minecraft
@@ -22,12 +22,10 @@ import net.minecraft.client.gui.font.glyphs.SpecialGlyphs
 import net.minecraft.client.gui.font.providers.BitmapProvider
 import net.minecraft.client.gui.font.providers.UnihexProvider
 import net.minecraft.client.gui.screens.Overlay
-import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.util.Mth
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ForkJoinTask
-import java.util.function.Consumer
+import java.util.function.IntPredicate
 
 /**
  * Faster resource reloads, and playing through them (the mixins call it): the work vanilla does on one thread or on
@@ -36,6 +34,15 @@ import java.util.function.Consumer
  */
 object FastReload {
     @JvmStatic fun enabled(): Boolean = Config.settings.reload.fast
+
+    /** Foreman's name in fastload's [Claims]. */
+    const val OWNER = "foreman"
+
+    /**
+     * Foreman does [feature] (a [Claims] feature) itself: fast reloads are on and nothing else claimed it first (a
+     * launcher or another mod may have; then Foreman's mixins step aside). Claims it on the first call.
+     */
+    @JvmStatic fun handles(feature: String): Boolean = enabled() && Claims.claim(feature, OWNER)
 
     @JvmStatic fun keepsPlaying(): Boolean = enabled() && Config.settings.reload.keepPlaying
 
@@ -112,17 +119,6 @@ object FastReload {
         })
     }
 
-    /**
-     * Runs [action] on every sprite on the current fork-join pool (the background threads), the biggest sprites first:
-     * they take the longest, so they shouldn't be the last to start. Returns when all are done.
-     */
-    @JvmStatic fun inParallel(sprites: Collection<TextureAtlasSprite>, action: Consumer<TextureAtlasSprite>) {
-        val tasks = sprites.sortedByDescending { it.contents().width().toLong() * it.contents().height() }.map { ForkJoinTask.adapt { action.accept(it) } }
-        // Thieves take the oldest forks first: the biggest.
-        tasks.forEach { it.fork() }
-        tasks.forEach { it.join() }
-    }
-
     /** A font's providers in use and its glyphs by advance, as `FontSet.selectProviders` makes them. */
     class FontSelection(val options: Set<FontOption>, val providers: List<GlyphProvider>, val byWidth: Int2ObjectMap<IntList>)
 
@@ -138,9 +134,12 @@ object FastReload {
         fonts[providers] = selectProviders(providers, fontOptions())
     }
 
-    /** The selection prepared for these providers and options, or null to let vanilla select them. */
-    @JvmStatic fun preparedFont(providers: List<GlyphProvider.Conditional>, options: Set<FontOption>): FontSelection? =
-        fonts[providers]?.takeIf { it.options == options }
+    /**
+     * The selection prepared for these providers and options, else made now for a font set reloaded outside a resource
+     * reload (font options changed, or a mod reloads fonts after one), or null to let vanilla select them.
+     */
+    @JvmStatic fun fontSelection(providers: List<GlyphProvider.Conditional>, options: Set<FontOption>): FontSelection? =
+        fonts[providers]?.takeIf { it.options == options } ?: if (handles(Claims.FONTS)) selectProviders(providers, options) else null
 
     /** Fonts start loading, or were applied: no selection is kept (a failed reload never applies its fonts). */
     @JvmStatic fun forgetFonts() = fonts.clear()
@@ -148,38 +147,29 @@ object FastReload {
     /**
      * `FontSet.selectProviders`, without touching the font set. Vanilla tries every provider for every codepoint, which
      * is quadratic for fonts made of many small providers (one per icon); a provider of vanilla's kinds has a glyph
-     * exactly for its supported codepoints, so each can claim those not taken yet, in order. Other kinds: vanilla's way.
+     * exactly for its supported codepoints, so fastload's [FontProviders] gives each codepoint to the first that has
+     * it, in linear time. Providers of other kinds (a mod's wrapper) are asked about the codepoints still free at their
+     * turn, as vanilla asks them.
      */
     private fun selectProviders(providers: List<GlyphProvider.Conditional>, options: Set<FontOption>): FontSelection {
         val selected = providers.filter { it.filter().apply(options) }.map { it.provider() }
+        val supported = Array(selected.size) { selected[it].takeIf { p -> p !is AllMissingGlyphProvider }?.supportedGlyphs?.toIntArray() }
+        val has = Array(selected.size) { i ->
+            val provider = selected[i]
+            if (provider is AllMissingGlyphProvider || provider.javaClass in EXACT_PROVIDERS) null
+            else IntPredicate { provider.getGlyph(it) != null }
+        }
+        val selection = FontProviders.select(supported, has)
         val used = HashSet<GlyphProvider>()
         val byWidth = Int2ObjectOpenHashMap<IntList>()
-        fun take(provider: GlyphProvider, codepoint: Int, glyph: UnbakedGlyph) {
+        selected.forEachIndexed { i, provider ->
+            if (!selection.used(i)) return@forEachIndexed
             used.add(provider)
-            if (glyph.info() !== SpecialGlyphs.MISSING) byWidth.computeIfAbsent(Mth.ceil(glyph.info().getAdvance(false))) { IntArrayList() }.add(codepoint)
-        }
-        if (selected.all { it.javaClass in EXACT_PROVIDERS || it is AllMissingGlyphProvider }) {
-            val supported = IntOpenHashSet()
-            selected.forEach { supported.addAll(it.supportedGlyphs) }
-            val taken = IntOpenHashSet()
-            for (provider in selected) {
-                if (provider is AllMissingGlyphProvider) {
-                    if (taken.size < supported.size) used.add(provider)
-                    break
-                }
-                provider.supportedGlyphs.forEach { codepoint ->
-                    if (codepoint !in taken) provider.getGlyph(codepoint)?.let { taken.add(codepoint); take(provider, codepoint, it) }
-                }
-            }
-        } else {
-            val supported = IntOpenHashSet()
-            selected.forEach { supported.addAll(it.supportedGlyphs) }
-            supported.forEach { codepoint ->
-                for (provider in selected) {
-                    val glyph = provider.getGlyph(codepoint) ?: continue
-                    take(provider, codepoint, glyph)
-                    break
-                }
+            // The fallback's glyphs are the missing glyph.
+            if (provider is AllMissingGlyphProvider) return@forEachIndexed
+            for (codepoint in selection.codepoints(i)) {
+                val glyph = provider.getGlyph(codepoint) ?: continue
+                if (glyph.info() !== SpecialGlyphs.MISSING) byWidth.computeIfAbsent(Mth.ceil(glyph.info().getAdvance(false))) { IntArrayList() }.add(codepoint)
             }
         }
         return FontSelection(options, selected.filter { it in used }, byWidth)

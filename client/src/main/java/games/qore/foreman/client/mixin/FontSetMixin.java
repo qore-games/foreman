@@ -16,16 +16,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.List;
 import java.util.Set;
 
-/** A font set takes the providers selected while its font was prepared (FontManagerMixin) instead of selecting them now. */
+/**
+ * A font set takes the providers selected while its font was prepared (FontManagerMixin), or selected in linear time
+ * when it reloads outside a resource reload, instead of vanilla's pass.
+ */
 @Mixin(FontSet.class)
 public class FontSetMixin {
     @Shadow @Final private Int2ObjectMap<IntList> glyphsByWidth;
 
     @Inject(method = "selectProviders", at = @At("HEAD"), cancellable = true)
-    private void foreman$prepared(List<GlyphProvider.Conditional> providers, Set<FontOption> options, CallbackInfoReturnable<List<GlyphProvider>> cir) {
-        FastReload.FontSelection prepared = FastReload.preparedFont(providers, options);
-        if (prepared == null) return;
-        glyphsByWidth.putAll(prepared.getByWidth());
-        cir.setReturnValue(prepared.getProviders());
+    private void foreman$selected(List<GlyphProvider.Conditional> providers, Set<FontOption> options, CallbackInfoReturnable<List<GlyphProvider>> cir) {
+        FastReload.FontSelection selection = FastReload.fontSelection(providers, options);
+        if (selection == null) return;
+        glyphsByWidth.putAll(selection.getByWidth());
+        cir.setReturnValue(selection.getProviders());
     }
 }

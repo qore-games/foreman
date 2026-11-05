@@ -1,6 +1,7 @@
 package games.qore.foreman.client.mixin;
 
 import com.mojang.blaze3d.font.GlyphProvider;
+import games.qore.fastload.Claims;
 import games.qore.foreman.client.reload.FastReload;
 import net.minecraft.client.gui.font.FontManager;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,7 +21,7 @@ import java.util.List;
 public class FontManagerMixin {
     @Inject(method = "finalizeProviderLoading", at = @At("HEAD"), cancellable = true)
     private void foreman$selectProviders(List<GlyphProvider.Conditional> list, GlyphProvider.Conditional fallback, CallbackInfo ci) {
-        if (!FastReload.enabled()) return;
+        if (!FastReload.handles(Claims.FONTS)) return;
         list.add(0, fallback);
         FastReload.prepareFont(list);
         ci.cancel();

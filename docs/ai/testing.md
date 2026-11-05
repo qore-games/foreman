@@ -84,6 +84,54 @@ cleanup.
   `/foreman-record <name>` and `/foreman-record stop` (or the key in Foreman's controls), and the AI keeps it as a test.
   Login commands (`/login`, `/register`…) are never recorded.
 
+## Bots that move
+
+`client_wander` and `client_path` walk the player as a player would: they hold the movement keys and turn the camera
+each tick (what `client_input` does), so the server sees ordinary movement, and they need no frames, so they run on
+[lean clients](lean-clients.md).
+
+- `client_wander` (`radius`, `duration_ms`, `seed`, `speed`: `walk` or `sprint`, `jump`, `stuck_ms`): random
+  waypoints within `radius` blocks of where it starts. A waypoint is a block the player can stand on (solid below, two
+  blocks of room, no liquid, fire, cactus…) that a straight walk reaches on safe ground from where they are: a block up
+  at most (it jumps), three down at most, no lava, water, cliff or void. It takes the next one on arrival, or after
+  `stuck_ms` (2 s) without getting closer; when none looks reachable it waits half a second and tries again
+  (`no_waypoint`). The same `seed` from the same place picks the same waypoints; how long each walk takes depends on
+  the server.
+- `client_path` (`points`, `loop`, `speed`, `jump`, `duration_ms`, `stuck_ms`): the points in order, exact positions;
+  one is skipped after `stuck_ms` without getting closer, and `loop` goes round until `duration_ms`.
+
+Both answer JSON, the outcome first (`distance` in blocks, `waypoints_reached` or `reached` and `skipped`, `stuck`,
+`jumps`), then the time, `blocks_per_s`, the `start` and `final` positions; `teleports` counts the ticks the server
+moved the player more than two blocks (a teleport, a setback). `client_input` without steps stops them early.
+
+```json
+{"name": "walk-around", "steps": [
+  {"client": "packets_record", "args": {"action": "start", "contents": false}},
+  {"client": "client_wander", "args": {"radius": 16, "duration_ms": 60000, "seed": 1, "speed": "sprint"},
+   "expect": {"number": "\"waypoints_reached\":(\\d+)", "min": 5}},
+  {"client": "packets_record", "args": {"action": "stop"}},
+  {"client": "packets_stats", "args": {"gap_ms": 500},
+   "expect": {"number": "\"gaps\":\\{\"over_ms\":\\d+,\"count\":(\\d+)", "max": 0}}
+]}
+```
+
+Several bots are several clients, each running its own test at the same time: a script or launcher starts them.
+
+### What the network numbers mean
+
+`packets_stats` reads the recording as JSON: packets and bytes on the wire each way and per type, per-second rates and
+a series over time, the silences from the server of `gap_ms` or more (with `at_ms`, since the recording's start, and
+`started_at`, its epoch ms, to line them up with the server's own timeline), and keep-alives: `answer_ms`, how long
+this client took to answer each one, `interval_ms` between them, and `server_ping_ms`, the round trip the server
+measured with them and sends with the tab list.
+
+The connection is TCP: nothing sent is lost on the way. A bad link resends, and its packets arrive late and together,
+so "drops" show as silences (`gaps`) followed by a burst in the series, keep-alives further apart than the server's
+interval, a higher `server_ping_ms`, and at worst a timeout. A silence is a stall only when the server would have sent
+something: near other players or mobs it sends their moves every tick, so silences are rare there, while in an empty
+spot they're normal. The client can't tell a stalled server from a held link: compare with the server's tick times for
+the same seconds.
+
 ## A dupe test
 
 ```json
@@ -96,6 +144,11 @@ cleanup.
 ```
 
 See [dupe testing](../server/dupe-testing.md) for the dupes worth a test.
+
+## Test clients
+
+A test can run in your own game, or in clients started for it next to yours: [lean clients](lean-clients.md) draw
+frames only when a tool needs them and open no sound device, so several cost less than one normal client.
 
 ## For the AI
 

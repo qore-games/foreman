@@ -17,7 +17,7 @@ The mod keeps its files in `config/foreman/`:
 | `chats/<server>/` | Your chats, in the folder of the server each started on (every chat is listed on every server) |
 | `local-locations/` | Your local location sets |
 | `packets/` | Packet recordings written by `/packets export` |
-| `client-mcp.json` | How outside agents connect, while you allow them |
+| `client-mcp.json` | How outside agents connect, while you allow them, and where the game is (`state`) |
 
 Download it from the [releases](https://github.com/qore-games/foreman/releases): each release has the mod for each
 Minecraft version (`foreman-<version>+<minecraft>.jar`) and the server plugin (`foreman-server-<version>.jar`).

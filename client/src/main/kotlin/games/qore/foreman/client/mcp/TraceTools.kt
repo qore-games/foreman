@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mcp
 
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.util.arr
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.double
@@ -22,11 +23,11 @@ import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.nio.file.Files
 import java.util.Locale
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import javax.imageio.stream.MemoryCacheImageOutputStream
 
 /**
  * What the client itself sees, tick by tick (`client_trace`) and frame by frame (`client_frames`): for movement and
@@ -211,12 +212,17 @@ object TraceTools {
         args["command"].str()?.removePrefix("/")?.takeIf { it.isNotBlank() }?.let { command ->
             ClientTools.onClient { (Minecraft.getInstance().connection ?: throw ToolFailure("Not connected")).sendCommand(command) }
         }
+        // Lean: the world built once, before the first frame; then a frame drawn for each (waiting for it each time would
+        // space them by seconds)
+        Lean.awaitPixels()
         val start = System.currentTimeMillis()
         val shots = mutableListOf<Pair<Long, BufferedImage>>()
         repeat(count) { i ->
             if (i > 0) Thread.sleep((start + i * every - System.currentTimeMillis()).coerceAtLeast(0))
             if (turn != 0f && i > 0) ClientTools.onClient { Minecraft.getInstance().player?.let { it.yRot += turn; it.yHeadRot = it.yRot } }
-            shots += (System.currentTimeMillis() - start) to capture(width)
+            Lean.awaitFrame()
+            val at = System.currentTimeMillis() - start
+            shots += at to capture(width)
         }
         val tileWidth = shots.maxOf { it.second.width }
         val tileHeight = shots.maxOf { it.second.height }
@@ -235,7 +241,8 @@ object TraceTools {
             g.drawString(label, x + 4, y + 15)
         }
         g.dispose()
-        return ByteArrayOutputStream().also { ImageIO.write(sheet, "png", it) }.toByteArray()
+        // ImageIO caches a stream's image in a temporary file unless told to keep it in memory
+        return ByteArrayOutputStream().also { out -> MemoryCacheImageOutputStream(out).use { ImageIO.write(sheet, "png", it) } }.toByteArray()
     }
 
     /** The main render target now, downscaled to about [width] pixels wide. */
@@ -250,10 +257,7 @@ object TraceTools {
             try {
                 Screenshot.takeScreenshot(target, downscale) { shot ->
                     try {
-                        val file = Files.createTempFile("foreman-frame", ".png")
-                        shot.use { it.writeToFile(file) }
-                        future.complete(ImageIO.read(file.toFile()))
-                        Files.deleteIfExists(file)
+                        future.complete(shot.use { BufferedImage(it.width, it.height, BufferedImage.TYPE_INT_RGB).apply { setRGB(0, 0, it.width, it.height, it.pixels, 0, it.width) } })
                     } catch (e: Exception) {
                         future.completeExceptionally(e)
                     }
@@ -262,6 +266,7 @@ object TraceTools {
                 future.completeExceptionally(e)
             }
         }
+        Lean.awaitFrame()
         return future.get(10, TimeUnit.SECONDS)
     }
 

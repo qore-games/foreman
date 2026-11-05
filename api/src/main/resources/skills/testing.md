@@ -55,6 +55,10 @@ A test has `steps`, `cleanup` (run whatever happened), `vars` (defaults, overrid
 - A dupe test: `server item_ledger` with `reset`, the burst (`client inventory_actions`, `per_tick`) under `network` and
   `drop` with a `packets` check, then `item_ledger` again expecting "No change". The **dupe-testing** skill has the
   dupe classes.
+- Bots and network tests: `client_wander` (random waypoints on safe ground around the start, `seed` for the same ones)
+  or `client_path` (given points), between `packets_record` start and stop, then `packets_stats` (JSON: silences from
+  the server, keep-alives, the ping it measured). Check its numbers with `expect.number` on the JSON
+  (`"\"waypoints_reached\":(\\d+)"`). Over TCP nothing is lost: trouble shows as silences then bursts, not missing packets.
 
 ## One agent at a time
 

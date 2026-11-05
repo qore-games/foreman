@@ -2,6 +2,7 @@ package games.qore.foreman.client.mixin;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.platform.Transparency;
+import games.qore.fastload.Claims;
 import games.qore.foreman.client.reload.FastMipmaps;
 import games.qore.foreman.client.reload.FastReload;
 import net.minecraft.client.renderer.texture.MipmapGenerator;
@@ -18,6 +19,6 @@ public class MipmapGeneratorMixin {
     @Inject(method = "generateMipLevels", at = @At("HEAD"), cancellable = true)
     private static void foreman$generateMipLevels(Identifier name, NativeImage[] currentMips, int newMipLevel, MipmapStrategy mipmapStrategy,
                                                   float alphaCutoffBias, Transparency transparency, CallbackInfoReturnable<NativeImage[]> cir) {
-        if (FastReload.enabled()) cir.setReturnValue(FastMipmaps.generateMipLevels(name, currentMips, newMipLevel, mipmapStrategy, alphaCutoffBias, transparency));
+        if (FastReload.handles(Claims.MIPMAPS)) cir.setReturnValue(FastMipmaps.generateMipLevels(name, currentMips, newMipLevel, mipmapStrategy, alphaCutoffBias, transparency));
     }
 }

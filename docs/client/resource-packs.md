@@ -11,12 +11,21 @@ On by default, in the hub's **Debug → Resource packs**. The same resources, so
 - **Mipmaps** for every sprite at once, the biggest first, on arrays of the whole image. Vanilla makes an atlas's one
   by one on a single thread; a 2048×2048 cutout texture alone took it half a second.
 - **Fonts** pick their glyph providers in linear time, off the main thread. Vanilla tries every provider for every
-  codepoint while the game is frozen, which is quadratic for fonts made of one provider per icon.
+  codepoint while the game is frozen, which is quadratic for fonts made of one provider per icon. Providers a mod
+  wraps (ModernFix's lazy unifont) keep it linear, and so do font reloads outside a resource reload (a font option, or
+  ImmediatelyFast after a server pack).
 - **Zip packs** list a folder from an index, instead of going through every entry of the zip for each folder.
 - **The loading screen** closes as soon as the packs are loaded.
 
 A 70 MB pack of 58,000 files went from 9–11 seconds to about 1, and its longest freeze from 1.3 seconds to 0.2. The
 mipmaps match vanilla's to the bit: every level of 20,000 sprites was checked.
+
+The algorithms are a small library of their own, **fastload** (`games.qore:fastload`, plain Java, no dependencies,
+MIT), which other mods and launchers can bundle: `fastload/API.md` in Foreman's repository. Since several of them may
+want to speed up the same thing, each feature (`loading-screen`, `title-fade`, `mipmaps`, `fonts`, `zip-index`) is
+claimed by whoever comes first, in a system property `fastload.claim.<feature>`. Foreman claims those it does the
+first time it would use them, and leaves a feature someone else claimed to them: vanilla's code, or theirs, runs
+instead. Keep playing's progress bar stays Foreman's either way.
 
 ## Keep playing
 
@@ -28,8 +37,9 @@ no frame is drawn during it, so you never see it half done. The game's start kee
 
 Each reload prints its time and longest freeze in chat. The hub's page (**Performance**) lists the last one's steps
 (textures, models, fonts, shaders…): when each was prepared, and its time preparing off the main thread and applying on
-it. The last step prepared is the one the others waited for. Timing turns on vanilla's own reload profiler; with fast
-reloads and the chat report both off, Foreman leaves reloads alone.
+it. The last step prepared is the one the others waited for. Foreman times the steps itself, without vanilla's reload
+profiler (with ModernFix, a profiled reload never ends); with fast reloads and the chat report both off, Foreman leaves
+reloads alone.
 
 ## Issues
 

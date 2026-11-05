@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mcp
 
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.int
@@ -58,7 +59,8 @@ object PerfTools {
             last = 0L
             frames = LongArray(seconds * 2000)
         }
-        Thread.sleep(seconds * 1000L)
+        // lean: every frame drawn while it measures
+        Lean.everyFrame { Thread.sleep(seconds * 1000L) }
         val (samples, focused, effects) = ClientTools.onClient {
             val minecraft = Minecraft.getInstance()
             val taken = frames!!.copyOf(count)

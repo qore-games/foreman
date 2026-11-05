@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mcp
 
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.packets.PacketInspector
 import games.qore.foreman.client.reload.ReloadTimer
@@ -24,6 +25,8 @@ object ResourceTools {
                 "contains" to "string: for available, ids containing this"),
             acts = { false },
         ) { _, args ->
+            // lean: the post effects applied are known once a frame applied them
+            Lean.awaitFrame()
             val (text, failed) = ClientTools.onClient {
                 val state = Mc.postEffects()
                 val failed = state.failed.map { it.toString() }

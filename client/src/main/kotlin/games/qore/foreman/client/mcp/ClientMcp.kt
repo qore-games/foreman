@@ -1,6 +1,7 @@
 package games.qore.foreman.client.mcp
 
 import games.qore.foreman.client.config.Config
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.util.JSON
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.newToken
@@ -12,6 +13,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
+import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.screens.ConnectScreen
+import net.minecraft.client.gui.screens.LevelLoadingScreen
 import org.slf4j.LoggerFactory
 import java.io.BufferedInputStream
 import java.io.InputStream
@@ -20,6 +26,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.Executors
 
 /** What a chat lets its client tools do (folders the file tools may touch, commands, screenshots). */
@@ -46,7 +54,8 @@ class ToolFailure(message: String) : Exception(message)
 /**
  * The client's own MCP server (Streamable HTTP, one JSON answer per request) on the loopback interface: the tools that
  * need the game client (screenshots, commands as the player, the camera, the player's context) and the chat's
- * workspace folders. Each chat has its path `/mcp/<chat id>`, so its scope applies; a random token guards it.
+ * workspace folders. Each chat has its path `/mcp/<chat id>`, so its scope applies; a random token guards it. Outside
+ * agents use `/mcp/external` with the token of the connection file, which also opens `/stream` ([FrameStream]).
  * A minimal HTTP server: launcher runtimes don't always ship `jdk.httpserver`.
  */
 object ClientMcp {
@@ -80,11 +89,27 @@ object ClientMcp {
     /** The scope used for calls on `/mcp/<id>` (a chat registers itself before each run). */
     fun scope(id: String, scope: ToolScope) = synchronized(scopes) { scopes[id] = scope }
 
+    /**
+     * Outside access as the launch's system properties set it, for scripts and launchers: over the settings, for this
+     * launch only (nothing saved). Null when not set.
+     */
+    object Launch {
+        /** `-Dforeman.mcp.external=true`: outside agents may connect, without the hub's switch. */
+        val external: Boolean? = System.getProperty("foreman.mcp.external")?.trim()?.toBooleanStrictOrNull()
+        /** `-Dforeman.mcp.port=<n>`: the client MCP server's port, 0 for any free one. */
+        val port: Int? = System.getProperty("foreman.mcp.port")?.trim()?.toIntOrNull()?.takeIf { it in 0..65535 }
+        /** `-Dforeman.mcp.allow=commands,screenshots`: what outside agents may do, only what is listed (empty: neither). */
+        val allow: Set<String>? = System.getProperty("foreman.mcp.allow")?.split(',')?.map { it.trim().lowercase() }?.filter { it.isNotEmpty() }?.toSet()
+    }
+
+    /** Whether outside agents may use the client's tools: the hub's switch, or `-Dforeman.mcp.external`. */
+    val externalEnabled get() = Launch.external ?: Config.settings.external.enabled
+
     /** Outside sessions' scope: no workspace folder (they have their own file tools), commands and screenshots as allowed. */
     private object External : ToolScope {
         override val folders: List<String> get() = emptyList()
-        override val allowCommands get() = Config.settings.external.allowCommands
-        override val allowScreenshots get() = Config.settings.external.allowScreenshots
+        override val allowCommands get() = Launch.allow?.contains("commands") ?: Config.settings.external.allowCommands
+        override val allowScreenshots get() = Launch.allow?.contains("screenshots") ?: Config.settings.external.allowScreenshots
     }
 
     val externalUrl get() = "http://127.0.0.1:$port/mcp/external"
@@ -98,17 +123,50 @@ object ClientMcp {
         writeConnection()
     }
 
+    /**
+     * Where the game is, in the connection file, for a launcher waiting until it can test: `starting` (loading),
+     * `menu` (no world: the title screen, or a server that refused it), `joining`, `in_game`, `stopped`.
+     */
+    @Volatile
+    private var state = "starting"
+    /** When the server started listening, in the connection file: with `pid`, it tells a stale file from a live one. */
+    private var startedAt = ""
+
+    private fun state(minecraft: Minecraft): String {
+        val screen = minecraft.gui.screen()
+        return when {
+            minecraft.level != null && minecraft.player != null && screen !is LevelLoadingScreen -> "in_game"
+            minecraft.level != null || screen is ConnectScreen || screen is LevelLoadingScreen -> "joining"
+            state == "starting" && (minecraft.gui.overlay() != null || screen == null) -> "starting"
+            else -> "menu"
+        }
+    }
+
+    private fun updateState(minecraft: Minecraft) {
+        // `stopped` is the last word: the game may still tick while its shutdown hooks run.
+        if (!externalEnabled || state == "stopped") return
+        val now = state(minecraft)
+        if (now == state) return
+        state = now
+        writeConnection()
+    }
+
     /** `claude mcp add …`: how an outside Claude Code session connects. */
     fun externalCommand() = "claude mcp add --transport http foreman-client $externalUrl --header \"Authorization: Bearer ${Config.settings.external.token}\""
 
     private fun writeConnection() {
         val file = Config.dir.resolve("client-mcp.json")
         try {
-            if (!Config.settings.external.enabled || socket == null) return run { Files.deleteIfExists(file) }
+            if (!externalEnabled || socket == null) return run { Files.deleteIfExists(file) }
             val json = buildJsonObject {
                 put("url", externalUrl)
                 put("token", Config.settings.external.token)
                 put("claude", externalCommand())
+                put("state", state)
+                put("pid", ProcessHandle.current().pid())
+                put("lean", Lean.enabled)
+                put("version", FabricLoader.getInstance().getModContainer("foreman").map { it.metadata.version.friendlyString }.orElse(""))
+                put("started_at", startedAt)
             }
             writePrivateFile(file, json.toString())
         } catch (e: Exception) {
@@ -119,11 +177,19 @@ object ClientMcp {
     /** Starts the server, once every tool is registered (they are read from its threads). */
     fun start() {
         if (socket != null) return
+        if (externalEnabled && Config.settings.external.token.isEmpty()) Config.update { external.token = newToken() }
         // A fixed port, so outside sessions keep their address from one launch to the next.
-        val server = runCatching { ServerSocket(Config.settings.external.port, 50, InetAddress.getLoopbackAddress()) }.getOrNull()
+        val server = runCatching { ServerSocket(Launch.port ?: Config.settings.external.port, 50, InetAddress.getLoopbackAddress()) }.getOrNull()
             ?: ServerSocket(0, 50, InetAddress.getLoopbackAddress())
         socket = server
+        startedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()
         writeConnection()
+        ClientTickEvents.END_CLIENT_TICK.register(::updateState)
+        // quitting, closing the window, or a SIGTERM
+        Runtime.getRuntime().addShutdownHook(Thread({
+            state = "stopped"
+            if (externalEnabled) writeConnection()
+        }, "foreman-client-mcp-stopped"))
         Thread({
             while (!server.isClosed) {
                 val client = try { server.accept() } catch (_: Exception) { break }
@@ -148,12 +214,15 @@ object ClientMcp {
             val (method, path) = requestLine.split(' ').let { it.getOrElse(0) { "" } to it.getOrElse(1) { "" } }
             // MCP clients send no Origin: a web page must not reach the game, even from this machine.
             if (headers["origin"] != null) return respond(socket, 403, null)
-            val external = path == "/mcp/external"
-            val expected = if (external) Config.settings.external.takeIf { it.enabled && it.token.isNotEmpty() }?.token else token
+            val stream = path.substringBefore('?') == "/stream"
+            val external = stream || path == "/mcp/external"
+            val expected = if (external) Config.settings.external.token.takeIf { externalEnabled && it.isNotEmpty() } else token
             val sent = headers["authorization"]?.removePrefix("Bearer ")
             if (expected == null || sent == null || !MessageDigest.isEqual(sent.encodeToByteArray(), expected.encodeToByteArray())) {
                 return respond(socket, 401, null)
             }
+            // a live screenshot: refused where outside agents may not take screenshots
+            if (stream) return if (External.allowScreenshots) FrameStream.serve(socket, method, path.substringAfter('?', "")) else respond(socket, 403, null)
             val length = headers["content-length"]?.toIntOrNull() ?: 0
             if (length > MAX_BODY) return respond(socket, 413, null)
             val body = input.readNBytes(length).decodeToString()
@@ -197,7 +266,7 @@ object ClientMcp {
         return null
     }
 
-    private fun respond(socket: Socket, status: Int, json: String?, header: String? = null) {
+    internal fun respond(socket: Socket, status: Int, json: String?, header: String? = null) {
         val bytes = json?.encodeToByteArray() ?: ByteArray(0)
         val head = "HTTP/1.1 $status ${if (status in 200..299) "OK" else "Error"}\r\n" +
             (if (json != null) "Content-Type: application/json\r\n" else "") +

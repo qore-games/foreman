@@ -3,7 +3,9 @@
 	"package": "games.qore.foreman.client.mc.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
-		"GameRendererAccessor"
+		"GameRendererAccessor",
+		"LeanSurfaceMixin",
+		"LeanWindowMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

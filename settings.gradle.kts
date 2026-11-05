@@ -17,8 +17,9 @@ rootProject.name = "foreman"
 
 // api: the location/overlay API other plugins use; paper: its Paper side, standalone or shaded into a plugin;
 // server: the Foreman plugin (world MCP server, bridge); server-api: what other plugins use to publish MCP tools on it;
+// fastload: the fast-loading algorithms and their claims, plain Java, bundled into the mod (and other mods or agents);
 // client: the Fabric mod, a project per Minecraft version (client/versions/<minecraft>).
-include("api", "paper", "server", "server-api")
+include("api", "fastload", "paper", "server", "server-api")
 file("client/versions").listFiles { it.resolve("gradle.properties").isFile }!!.forEach {
     include(":client:${it.name}")
     project(":client:${it.name}").projectDir = it

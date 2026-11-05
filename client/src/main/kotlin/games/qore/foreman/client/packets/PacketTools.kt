@@ -4,12 +4,14 @@ import games.qore.foreman.client.mcp.ClientMcp
 import games.qore.foreman.client.mcp.ClientTool
 import games.qore.foreman.client.mcp.ClientTools
 import games.qore.foreman.client.mcp.ToolFailure
+import games.qore.foreman.client.util.JSON
 import games.qore.foreman.client.util.arr
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.double
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.int
 import games.qore.foreman.client.util.str
+import kotlinx.serialization.json.JsonElement
 
 /** The AI's packet tools: record the connection, then read the summary, lists and timeline to find what floods it. */
 object PacketTools {
@@ -111,6 +113,22 @@ object PacketTools {
         ) { _, args -> listOf(ClientMcp.text(PacketReports.timeline(args["bucket_ms"].int() ?: 1000, args["type"].str()?.takeIf { it.isNotBlank() }))) })
 
         ClientMcp.register(ClientTool(
+            "packets_stats",
+            "The recording's numbers as compact JSON, for test reports and scripts: packets and bytes on the wire each way " +
+                "(totals, per second avg/min/max, a series over time), per type, the silences from the server of `gap_ms` or " +
+                "more (count, the longest with when they began, ms since the start; `started_at` is the start's epoch ms), and " +
+                "keep-alives (how long the client took to answer, time between them, the ping the server measured and sent for " +
+                "the tab list). Over TCP nothing is lost on the way: a bad link or a stalled server shows as silences then " +
+                "bursts, stretched keep-alive intervals, a higher ping or a timeout, never as missing packets.",
+            ClientTools.schema(
+                "since_ms" to "integer: only from this many ms after the start; negative: the last that many ms",
+                "gap_ms" to "integer: shortest silence counted (default 250, min 100)",
+                "top" to "integer: types each way and silences listed (default 15)",
+            ),
+            acts = { false },
+        ) { _, args -> listOf(ClientMcp.text(stats(args["since_ms"].int() ?: 0, (args["gap_ms"].int() ?: 250).coerceAtLeast(100), (args["top"].int() ?: 15).coerceIn(1, 100)))) })
+
+        ClientMcp.register(ClientTool(
             "packets_export",
             "Writes the recording (summary, timeline per second, every kept packet) to a text file and returns its path.",
             ClientTools.schema(),
@@ -122,6 +140,36 @@ object PacketTools {
     }
 
     private fun names() = ClientTools.onClient { PacketReports.Names.capture() }
+
+    /** packets_stats: types over the whole recording, or from the kept packets when [sinceMs] narrows it. */
+    private fun stats(sinceMs: Int, gapMs: Int, top: Int): String {
+        if (!PacketRecorder.hasData) throw ToolFailure("Nothing recorded: packets_record start first")
+        val elapsed = PacketRecorder.elapsedNanos()
+        val since = (if (sinceMs >= 0) sinceMs * 1_000_000L else elapsed + sinceMs * 1_000_000L).coerceIn(0L, elapsed)
+        var typesFrom = 0L
+        val types = if (since == 0L) PacketRecorder.types().map { PacketStats.Type(it.name, it.outbound, it.count, it.wire) } else {
+            val counts = LinkedHashMap<Pair<String, Boolean>, LongArray>()
+            var oldest = Long.MAX_VALUE
+            for (e in PacketRecorder.events()) {
+                oldest = minOf(oldest, e.t)
+                if (e.t < since) continue
+                val c = counts.getOrPut(e.type to e.outbound) { LongArray(2) }
+                c[0]++
+                c[1] += e.wire.toLong()
+            }
+            if (oldest != Long.MAX_VALUE && oldest > since) typesFrom = oldest
+            counts.map { (key, c) -> PacketStats.Type(key.first, key.second, c[0], c[1]) }
+        }
+        val seconds = PacketRecorder.seconds().map {
+            PacketStats.Second(it[PacketRecorder.IN_COUNT], it[PacketRecorder.IN_WIRE], it[PacketRecorder.OUT_COUNT], it[PacketRecorder.OUT_WIRE])
+        }
+        val (gaps, gapsLeftOut) = PacketRecorder.gaps()
+        val recording = PacketStats.Recording(
+            PacketRecorder.server, PacketRecorder.startedAt, PacketRecorder.recording, elapsed, types, typesFrom, seconds,
+            gaps, gapsLeftOut, PacketRecorder.lastReceived(), PacketRecorder.keepAlives(), PacketRecorder.pings(),
+        )
+        return JSON.encodeToString(JsonElement.serializer(), PacketStats.json(recording, since, gapMs, top))
+    }
 
     fun status(): String = when {
         PacketRecorder.recording -> "Recording for ${PacketReports.clock(PacketRecorder.elapsedNanos())}: ${PacketReports.count(PacketRecorder.total)} packets."

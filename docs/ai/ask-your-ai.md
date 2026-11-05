@@ -13,9 +13,8 @@ itself.
 ```text
 Read https://qore-games.github.io/foreman/llms-full.txt to learn Foreman.
 Then connect yourself to it:
-- my dev server runs the Foreman plugin; its MCP endpoint is http://127.0.0.1:25599/mcp (mcp.port in
-  plugins/Foreman/config.yml), with the token in plugins/Foreman/mcp-token.txt (or mcp.token) sent as
-  "Authorization: Bearer <token>": add it as an MCP server named "minecraft".
+- my dev server runs the Foreman plugin; while it runs, plugins/Foreman/mcp.json in the server's folder gives its MCP
+  endpoint (url) and token, sent as "Authorization: Bearer <token>": add it as an MCP server named "minecraft".
 - my game runs the Foreman mod: I allowed outside agents in the hub (AI → Agents); the address and token are in
   config/foreman/client-mcp.json of my Minecraft instance: add it as an MCP server named "foreman-client".
 List the tools and skills you get, and tell me what you can now do for me.

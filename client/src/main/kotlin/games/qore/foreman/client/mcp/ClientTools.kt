@@ -1,7 +1,10 @@
 package games.qore.foreman.client.mcp
 
 import games.qore.foreman.client.agent.PromptContext
+import games.qore.foreman.client.lean.Lean
+import games.qore.foreman.client.move.MoveTools
 import games.qore.foreman.client.util.Chat
+import games.qore.foreman.client.util.Images
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.double
 import games.qore.foreman.client.util.int
@@ -54,6 +57,7 @@ object ClientTools {
         ClientTickEvents.END_CLIENT_TICK.register { synchronized(waiting) { repeat(waiting.size) { waiting.removeFirst()() } } }
         ScreenTools.init()
         InputTools.init()
+        MoveTools.init()
         TraceTools.init()
         PerfTools.init()
         MetricTools.init()
@@ -325,6 +329,7 @@ object ClientTools {
         val shown = hideHud && onClient { hideHud(true) }
         try {
             waitTicks(3)
+            Lean.awaitPixels()
             val future = CompletableFuture<ByteArray>()
             minecraft.execute {
                 val target = minecraft.gameRenderer.mainRenderTarget()
@@ -335,11 +340,8 @@ object ClientTools {
                 try {
                     Screenshot.takeScreenshot(target, downscale) { shot ->
                         try {
-                            val file = Files.createTempFile("foreman-shot", ".png")
                             val image = region?.let { r -> shot.use { crop(it, r, guiScale, maxWidth) } } ?: shot
-                            image.use { it.writeToFile(file) }
-                            future.complete(Files.readAllBytes(file))
-                            Files.deleteIfExists(file)
+                            future.complete(image.use { Images.png(it) })
                         } catch (e: Exception) {
                             future.completeExceptionally(e)
                         }
@@ -348,6 +350,8 @@ object ClientTools {
                     future.completeExceptionally(e)
                 }
             }
+            // lean: the copy goes to the GPU with the next frame
+            Lean.awaitFrame()
             return future.get(10, TimeUnit.SECONDS)
         } finally {
             if (shown) minecraft.execute { hideHud(false) }

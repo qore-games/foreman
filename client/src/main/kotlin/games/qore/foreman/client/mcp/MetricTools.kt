@@ -1,6 +1,7 @@
 package games.qore.foreman.client.mcp
 
 import com.mojang.blaze3d.systems.RenderSystem
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.util.bool
 import games.qore.foreman.client.util.get
@@ -10,13 +11,22 @@ import net.minecraft.client.Screenshot
 import net.minecraft.client.resources.sounds.SoundInstance
 import net.minecraft.client.sounds.SoundEngine
 import net.minecraft.util.ARGB
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.lang.management.BufferPoolMXBean
+import java.lang.management.ManagementFactory
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.Locale
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * The client's numbers: a snapshot of what it renders and holds (`client_stats`), the sounds it plays over a while
- * (`client_sounds`), and exact pixel values of the world, without the HUD (`client_pixels`).
+ * The client's numbers: a snapshot of what it renders and holds (`client_stats`), what the process uses
+ * (`client_usage`), the sounds it plays over a while (`client_sounds`), and exact pixel values of the world, without the
+ * HUD (`client_pixels`).
  */
 object MetricTools {
     private const val MAX_PIXELS = 512
@@ -36,6 +46,17 @@ object MetricTools {
             ClientTools.schema(),
             acts = { false },
         ) { _, _ -> listOf(ClientMcp.text(stats())) })
+
+        ClientMcp.register(ClientTool(
+            "client_usage",
+            "What the client process itself uses: heap (used, committed, max) and other JVM memory, resident memory (RSS, " +
+                "where the system says), CPU time since start and CPU % over `seconds`, threads, the JVM's garbage collector, " +
+                "processors and memory flags, frames drawn and loops without one, and lean mode. To see what a test client " +
+                "costs, or check a launch's flags; `json` gives one object, for scripts.",
+            ClientTools.schema("seconds" to "integer: measure CPU % over this long (default 0: not measured, max 60)",
+                "json" to "boolean: one JSON object instead of lines (default false)"),
+            acts = { false },
+        ) { _, args -> listOf(ClientMcp.text(usage((args["seconds"].int() ?: 0).coerceIn(0, 60), args["json"].bool() == true))) })
 
         ClientMcp.register(ClientTool(
             "client_sounds",
@@ -119,7 +140,53 @@ object MetricTools {
         }
         lines += "Post effects: " + Mc.postEffects().applied.joinToString().ifEmpty { "none" }
         lines += "Resource packs: ${minecraft.resourcePackRepository.selectedPacks.size} selected"
+        if (Lean.enabled) lines += "Lean mode: frames drawn on demand (FPS and the sections above are the last frame's); client_usage for the process"
         lines.joinToString("\n")
+    }
+
+    private fun usage(seconds: Int, json: Boolean): String {
+        fun cpuNanos() = ProcessHandle.current().info().totalCpuDuration().map { it.toNanos() }.orElse(-1L)
+        val cpu0 = cpuNanos()
+        val wall0 = System.nanoTime()
+        if (seconds > 0) Thread.sleep(seconds * 1000L)
+        val cpu = cpuNanos()
+        val cpuPercent = if (seconds > 0 && cpu >= 0) (cpu - cpu0) * 100.0 / (System.nanoTime() - wall0) else null
+        val heap = ManagementFactory.getMemoryMXBean().heapMemoryUsage
+        val nonHeap = ManagementFactory.getMemoryMXBean().nonHeapMemoryUsage
+        val direct = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean::class.java).firstOrNull { it.name == "direct" }?.memoryUsed
+        val runtime = ManagementFactory.getRuntimeMXBean()
+        // the kernel's view (Linux): resident memory, its peak, and every thread, the driver's and audio's too
+        val status = runCatching { Files.readAllLines(Path.of("/proc/self/status")) }.getOrNull().orEmpty()
+            .associate { it.substringBefore(':') to it.substringAfter(':').trim() }
+        fun kb(key: String) = status[key]?.substringBefore(' ')?.toLongOrNull()
+        val gcs = ManagementFactory.getGarbageCollectorMXBeans()
+        val flags = runtime.inputArguments.filter { it.startsWith("-X") }
+        val mb = 1_048_576L
+        if (json) return buildJsonObject {
+            put("heap_used_mb", heap.used / mb); put("heap_committed_mb", heap.committed / mb); put("heap_max_mb", heap.max / mb)
+            put("non_heap_mb", nonHeap.used / mb); direct?.let { put("direct_mb", it / mb) }
+            kb("VmRSS")?.let { put("rss_mb", it / 1024) }; kb("VmHWM")?.let { put("rss_peak_mb", it / 1024) }
+            put("cpu_seconds", cpu / 1e9); cpuPercent?.let { put("cpu_percent", it); put("cpu_seconds_measured", seconds) }
+            kb("Threads")?.let { put("threads", it) }; put("jvm_threads", ManagementFactory.getThreadMXBean().threadCount)
+            put("uptime_seconds", runtime.uptime / 1000); put("processors", Runtime.getRuntime().availableProcessors())
+            put("gc", buildJsonArray { gcs.forEach { add(buildJsonObject { put("name", it.name); put("count", it.collectionCount); put("ms", it.collectionTime) }) } })
+            put("jvm_flags", buildJsonArray { flags.forEach { add(JsonPrimitive(it)) } })
+            put("frames", Lean.frames); put("loops_without_frame", Lean.skipped)
+            put("lean", Lean.enabled)
+            if (Lean.enabled) { put("lean_fps", Lean.fps); put("lean_window", Lean.window.name.lowercase()); put("lean_render_distance", Lean.renderDistance) }
+        }.toString()
+        return listOfNotNull(
+            "Heap ${heap.used / mb} MB used, ${heap.committed / mb} MB committed, ${heap.max / mb} MB max; non-heap ${nonHeap.used / mb} MB" +
+                (direct?.let { ", direct buffers ${it / mb} MB" } ?: ""),
+            kb("VmRSS")?.let { "Resident (RSS) ${it / 1024} MB, peak ${kb("VmHWM")?.div(1024) ?: "?"} MB" } ?: "Resident memory: not readable on this system",
+            "CPU %.1f s since start".format(Locale.ROOT, cpu / 1e9) + (cpuPercent?.let { ", %.1f %% of one core over %d s".format(Locale.ROOT, it, seconds) } ?: ""),
+            "Threads ${kb("Threads") ?: "?"} (${ManagementFactory.getThreadMXBean().threadCount} JVM), up ${runtime.uptime / 1000} s, ${Runtime.getRuntime().availableProcessors()} processors",
+            "GC " + gcs.joinToString { "${it.name} ×${it.collectionCount} (${it.collectionTime} ms)" } + "; flags " + flags.joinToString(" ").ifEmpty { "none" },
+            "Frames ${Lean.frames} drawn, ${Lean.skipped} loops without one",
+            if (Lean.enabled) "Lean mode on: window ${Lean.window.name.lowercase()}, frames on demand" +
+                (if (Lean.fps > 0) " and ${Lean.fps} per second" else " only") + ", render distance ${Lean.renderDistance}, no sound device"
+            else "Lean mode off",
+        ).joinToString("\n")
     }
 
     private fun pixels(args: kotlinx.serialization.json.JsonObject): String {
@@ -131,6 +198,7 @@ object MetricTools {
         try {
             // a few frames without the HUD
             Thread.sleep(150)
+            Lean.awaitPixels()
             val future = CompletableFuture<String>()
             minecraft.execute {
                 val target = minecraft.gameRenderer.mainRenderTarget()
@@ -154,6 +222,7 @@ object MetricTools {
                     future.completeExceptionally(e)
                 }
             }
+            Lean.awaitFrame()
             return future.get(10, TimeUnit.SECONDS)
         } finally {
             if (shown) minecraft.execute { ClientTools.hideHud(false) }

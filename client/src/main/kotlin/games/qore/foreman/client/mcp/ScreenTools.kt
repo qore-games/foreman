@@ -3,6 +3,7 @@ package games.qore.foreman.client.mcp
 import com.google.gson.JsonParser
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.serialization.JsonOps
+import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.ui.kit.KitScreen
 import games.qore.foreman.client.util.Chat
 import games.qore.foreman.client.util.bool
@@ -60,7 +61,7 @@ object ScreenTools {
                 "texts…) with its index, kind, text, position and size in GUI units, and whether it is inactive or focused.",
             ClientTools.schema(),
             acts = { false },
-        ) { _, _ -> listOf(ClientMcp.text(ClientTools.onClient { describe() })) })
+        ) { _, _ -> listOf(ClientMcp.text(describeNow())) })
 
         ClientMcp.register(ClientTool(
             "client_dialog_preview",
@@ -78,15 +79,15 @@ object ScreenTools {
                 else -> dialog.str()?.trim()?.let { if (it.startsWith("{")) JsonParser.parseString(it) else com.google.gson.JsonPrimitive(it) }
                     ?: throw ToolFailure("dialog: a JSON object or a dialog id")
             }
-            val opened = ClientTools.onClient {
+            ClientTools.onClient {
                 val minecraft = Minecraft.getInstance()
                 val registries = minecraft.connection?.registryAccess() ?: RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY)
                 val holder = Dialog.CODEC.parse(RegistryOps.create(JsonOps.INSTANCE, registries), json).getOrThrow { ToolFailure("Bad dialog: $it") }
                 val screen = DialogScreens.createFromData(holder.value(), minecraft.gui.screen(), PreviewAccess)
                     ?: throw ToolFailure("This client has no screen for dialogs of type ${BuiltInRegistries.DIALOG_TYPE.getKey(holder.value().codec())}")
                 minecraft.gui.setScreen(screen)
-                describe()
             }
+            val opened = describeNow()
             val image = if (args["screenshot"].bool() != false && scope.allowScreenshots)
                 runCatching { ClientTools.screenshot(1280, keepScreen = true) }.getOrNull() else null
             listOfNotNull(ClientMcp.text("Preview (local only):\n$opened"), image?.let { ClientMcp.image(it) })
@@ -102,6 +103,7 @@ object ScreenTools {
             enabled = { it.allowCommands },
         ) { _, args ->
             val label = args["label"].str()
+            if (label != null) Lean.awaitFrame()
             val done = ClientTools.onClient {
                 val screen = screen()
                 val (x, y, what) = if (label != null) {
@@ -126,7 +128,7 @@ object ScreenTools {
                 "Clicked $what" + if (handled) "" else " (nothing there took the click)"
             }
             Thread.sleep((args["wait_ms"].int() ?: 400).coerceIn(0, 5000).toLong())
-            listOf(ClientMcp.text(done + "\n\n" + ClientTools.onClient { describe() }))
+            listOf(ClientMcp.text(done + "\n\n" + describeNow()))
         })
 
         ClientMcp.register(ClientTool(
@@ -150,6 +152,8 @@ object ScreenTools {
                 "Pointing at ${x.toInt()},${y.toInt()}"
             }
             Thread.sleep((args["wait_ms"].int() ?: 200).coerceIn(0, 5000).toLong())
+            // lean: hover looks and the hovered slot come with a frame
+            Lean.awaitFrame()
             listOf(ClientMcp.text(done))
         })
 
@@ -173,7 +177,7 @@ object ScreenTools {
             val done = if (inScreen) dragInScreen(pair(args["from"]), pair(args["to"]), right, steps, ms)
             else dragInWorld(args["look_from"], args["look_to"], right, steps, ms)
             Thread.sleep(300)
-            listOf(ClientMcp.text(done + if (inScreen) "\n\n" + ClientTools.onClient { describe() } else ""))
+            listOf(ClientMcp.text(done + if (inScreen) "\n\n" + describeNow() else ""))
         })
 
         ClientMcp.register(ClientTool(
@@ -184,12 +188,13 @@ object ScreenTools {
             enabled = { it.allowCommands },
         ) { _, args ->
             val amount = args["amount"].double() ?: throw ToolFailure("Give amount")
-            listOf(ClientMcp.text(ClientTools.onClient {
+            Lean.awaitFrame()
+            ClientTools.onClient {
                 val screen = screen()
                 val window = Minecraft.getInstance().window
                 screen.mouseScrolled(args["x"].double() ?: (window.guiScaledWidth / 2.0), args["y"].double() ?: (window.guiScaledHeight / 2.0), 0.0, amount)
-                "Scrolled $amount\n\n" + describe()
-            }))
+            }
+            listOf(ClientMcp.text("Scrolled $amount\n\n" + describeNow()))
         })
 
         ClientMcp.register(ClientTool(
@@ -241,7 +246,7 @@ object ScreenTools {
                 }
             }
             if (holdMs == null || args["wait"].bool() != false) Thread.sleep((args["wait_ms"].int() ?: 400).coerceIn(0, 5000).toLong())
-            listOf(ClientMcp.text(done + "\n\n" + ClientTools.onClient { describe() }))
+            listOf(ClientMcp.text(done + "\n\n" + describeNow()))
         })
     }
 
@@ -358,6 +363,15 @@ object ScreenTools {
 
     /** A Foreman screen's own units against GUI units: its widgets' positions are multiplied by it. */
     private fun zoom(screen: Screen) = (screen as? KitScreen)?.zoom?.toDouble() ?: 1.0
+
+    /**
+     * [describe] from a tool's thread, after a fresh frame in lean mode: some screens place their widgets while drawing
+     * (option lists, for one), so a screen not drawn yet has them all at 0,0.
+     */
+    private fun describeNow(): String {
+        Lean.awaitFrame()
+        return ClientTools.onClient { describe() }
+    }
 
     internal fun describe(): String {
         val minecraft = Minecraft.getInstance()

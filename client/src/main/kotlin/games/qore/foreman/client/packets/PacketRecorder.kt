@@ -16,14 +16,18 @@ import net.minecraft.network.VarInt
 import net.minecraft.network.protocol.BundlePacket
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.PacketFlow
+import net.minecraft.network.protocol.common.ClientboundKeepAlivePacket
+import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket
 import net.minecraft.world.entity.EntityType
 
 /**
  * Records the game connection's packets, both ways, while it is on: for each packet its type, size decoded and on the
  * wire (after compression), whether it repeats one just seen, and what it is about (an entity, a chunk) and says; and
- * how long the client thread took to handle each type. Totals cover the whole recording; the last
- * [games.qore.foreman.client.config.PacketSettings.capacity] packets are kept one by one.
+ * how long the client thread took to handle each type; the silences from the server, its keep-alives and the latency it
+ * measured. Totals cover the whole recording; the last [games.qore.foreman.client.config.PacketSettings.capacity]
+ * packets are kept one by one.
  *
  * The mixins (`PacketDecoderMixin`…) call in from Netty's thread and the client thread. Off, they read [recording]
  * and nothing else runs.
@@ -39,6 +43,10 @@ object PacketRecorder {
     private const val SLOW_KEPT = 30
     /** Handlings faster than this are never listed among the slowest. */
     private const val SLOW_MIN = 1_000_000L
+    /** Silences from the server shorter than this aren't kept. */
+    const val GAP_MIN = 100_000_000L
+    private const val MAX_GAPS = 20_000
+    private const val MAX_KEEP_ALIVES = 10_000
 
     /** Per second: packets and bytes each way, client-thread time, the longest frame spent on packets. */
     const val IN_COUNT = 0
@@ -129,6 +137,15 @@ object PacketRecorder {
     private val seconds = ArrayList<LongArray>()
     private val slowest = ArrayList<Slow>()
     private var worstFrame: Frame? = null
+    /** Silences from the server of [GAP_MIN] or more: when each began and how long, since the start. */
+    private val gaps = ArrayList<LongArray>()
+    private var gapsLeftOut = 0L
+    /** The last packet received (0: none yet, a silence counts from the start). */
+    private var lastReceived = 0L
+    /** The server's keep-alives: id, when received, when answered (-1 until then). */
+    private val keepAlives = ArrayList<LongArray>()
+    /** The player's latency as the server measured it (the tab list's): when, ms. */
+    private val pings = ArrayList<LongArray>()
 
     // The kept packets, a ring of parallel arrays.
     private var capacity = 0
@@ -197,6 +214,7 @@ object PacketRecorder {
         types.clear(); typeIndexes.forEach { it.clear() }
         entities.clear(); chunks.clear(); entityTypes.clear(); seconds.clear(); slowest.clear()
         worstFrame = null; slowFloor = SLOW_MIN
+        gaps.clear(); gapsLeftOut = 0L; lastReceived = 0L; keepAlives.clear(); pings.clear()
     }
 
     /** Stops a timed recording once its time is up (each client tick); true when it just stopped. */
@@ -299,6 +317,7 @@ object PacketRecorder {
         val subject = if (outbound) Subject.NONE else PacketInspector.subject(packet)
         val detail = if (contents) PacketInspector.describe(packet) else null
         val spawned = packet as? ClientboundAddEntityPacket
+        val ping = (packet as? ClientboundPlayerInfoUpdatePacket)?.let { ownLatency(it) }
         synchronized(this) {
             if (!recording) return
             val t = now - startNanos
@@ -324,6 +343,17 @@ object PacketRecorder {
             }
             if (subject != Subject.NONE) subjectStat(subject)?.add(type, wire)
             if (spawned != null) entityTypes.put(spawned.id, spawned.type)
+            if (!outbound) {
+                if (t - lastReceived >= GAP_MIN) {
+                    if (gaps.size < MAX_GAPS) gaps += longArrayOf(lastReceived, t - lastReceived) else gapsLeftOut++
+                }
+                lastReceived = t
+            }
+            when (packet) {
+                is ClientboundKeepAlivePacket -> if (keepAlives.size < MAX_KEEP_ALIVES) keepAlives += longArrayOf(packet.id, t, -1)
+                is ServerboundKeepAlivePacket -> keepAlives.lastOrNull { it[0] == packet.id && it[2] < 0 }?.set(2, t)
+            }
+            if (ping != null && pings.size < MAX_KEEP_ALIVES) pings += longArrayOf(t, ping.toLong())
 
             val i = (total % capacity).toInt()
             times[i] = t
@@ -447,6 +477,25 @@ object PacketRecorder {
     fun slowest(): List<Slow> = synchronized(this) { slowest.toList() }
 
     fun worstFrame(): Frame? = synchronized(this) { worstFrame }
+
+    /** Silences from the server of [GAP_MIN] or more ([start, length] since the start), and how many more weren't kept. */
+    fun gaps(): Pair<List<LongArray>, Long> = synchronized(this) { gaps.map { it.clone() } to gapsLeftOut }
+
+    /** When the last packet was received, since the start (0: none). */
+    fun lastReceived(): Long = synchronized(this) { lastReceived }
+
+    /** The server's keep-alives: [id, received, answered or -1], since the start. */
+    fun keepAlives(): List<LongArray> = synchronized(this) { keepAlives.map { it.clone() } }
+
+    /** The player's latency the server sent (tab list updates): [when, ms]. */
+    fun pings(): List<LongArray> = synchronized(this) { pings.map { it.clone() } }
+
+    /** The latency [packet] gives the player of this connection, if it updates it. */
+    private fun ownLatency(packet: ClientboundPlayerInfoUpdatePacket): Int? {
+        if (ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY !in packet.actions()) return null
+        val id = Minecraft.getInstance().connection?.localGameProfile?.id ?: return null
+        return packet.entries().firstOrNull { it.profileId() == id }?.latency()
+    }
 
     /** Packets kept one by one (the last [capacity]). */
     fun kept(): Long = synchronized(this) { minOf(total, capacity.toLong()) }

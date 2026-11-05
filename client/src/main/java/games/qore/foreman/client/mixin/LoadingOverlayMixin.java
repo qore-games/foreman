@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mixin;
 
+import games.qore.fastload.Claims;
 import games.qore.foreman.client.reload.FastReload;
 import games.qore.foreman.client.reload.ReloadOverlay;
 import games.qore.foreman.client.reload.ReloadTimer;
@@ -24,7 +25,8 @@ import java.util.function.Consumer;
  * The loading screen's frames and its closing, for the reload timer. With fast reloads it closes as soon as the packs
  * are loaded (vanilla keeps it at least a second, then fades it out for two more, taking no input meanwhile); with keep
  * playing, a reload's (not the game's start) is only a thin progress bar over the game, which goes on. Both are the
- * settings the reload started with: changing them midway would leave it open for good.
+ * settings the reload started with: changing them midway would leave it open for good. While someone else claimed the
+ * loading screen (fastload's Claims), a full loading screen is theirs, or vanilla's; keep playing's bar stays Foreman's.
  */
 @Mixin(LoadingOverlay.class)
 public abstract class LoadingOverlayMixin extends Overlay implements ReloadOverlay {
@@ -36,8 +38,8 @@ public abstract class LoadingOverlayMixin extends Overlay implements ReloadOverl
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void foreman$init(Minecraft minecraft, ReloadInstance reload, Consumer<Optional<Throwable>> onFinish, boolean fadeIn, CallbackInfo ci) {
-        foreman$fast = FastReload.enabled();
         foreman$background = fadeIn && FastReload.keepsPlaying();
+        foreman$fast = foreman$background || FastReload.handles(Claims.LOADING_SCREEN);
     }
 
     @Override

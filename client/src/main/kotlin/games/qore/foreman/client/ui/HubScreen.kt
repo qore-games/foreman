@@ -230,7 +230,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             val ix = if (s.group.label != null) 18 else 12
             val badge = when (s) {
                 Section.CHATS -> Chats.running.size.takeIf { it > 0 }?.let { "$it" to Theme.AI }
-                Section.AGENTS -> if (Config.settings.external.enabled) "●" to Theme.OK else null
+                Section.AGENTS -> if (ClientMcp.externalEnabled) "●" to Theme.OK else null
                 Section.LOCATIONS -> if (Tools.active === LocationEditor) "●" to Theme.ACCENT else null
                 Section.SELECTION -> if (Tools.active === SelectionTool || Tools.active === WorldEditTool) "●" to Theme.ACCENT else null
                 Section.PACKETS -> if (PacketRecorder.recording) "●" to Theme.ERROR else null
@@ -602,15 +602,23 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
 
         val y = y0 + h1 + 10
         val e = Config.settings.external
+        val launch = ClientMcp.Launch
         val half = (contentWidth - pad) / 2
-        ui.card(x0, y, contentWidth, if (e.enabled) 72 else 30)
-        ui.switch(x0 + 10, y + 7, contentWidth - 20, "Agents outside the game may use the client's tools", e.enabled,
+        val enabled = ClientMcp.externalEnabled
+        // what -Dforeman.mcp.* set holds for this launch: the switches show it and leave it as it is
+        val bySystemProperty = { message = "Set for this launch by the game's -Dforeman.mcp.* system properties" }
+        ui.card(x0, y, contentWidth, if (enabled) 72 else 30)
+        ui.switch(x0 + 10, y + 7, contentWidth - 20, "Agents outside the game may use the client's tools", enabled,
             "For Claude Code in a terminal, or another agent on this computer: screens, the HUD inspector, packets, entities, " +
                 "screenshots, commands. They connect to ${ClientMcp.externalUrl} with a token (written to config/foreman/client-mcp.json, " +
-                "readable by you only)") { ClientMcp.setExternal(!e.enabled) }
-        if (e.enabled) {
-            ui.switch(x0 + 10, y + 29, half - 20, "They may run commands as you", e.allowCommands) { Config.update { external.allowCommands = !external.allowCommands } }
-            ui.switch(x0 + half + pad, y + 29, half - 10, "They may take screenshots", e.allowScreenshots) { Config.update { external.allowScreenshots = !external.allowScreenshots } }
+                "readable by you only)") { if (launch.external != null) bySystemProperty() else ClientMcp.setExternal(!e.enabled) }
+        if (enabled) {
+            ui.switch(x0 + 10, y + 29, half - 20, "They may run commands as you", launch.allow?.contains("commands") ?: e.allowCommands) {
+                if (launch.allow != null) bySystemProperty() else Config.update { external.allowCommands = !external.allowCommands }
+            }
+            ui.switch(x0 + half + pad, y + 29, half - 10, "They may take screenshots", launch.allow?.contains("screenshots") ?: e.allowScreenshots) {
+                if (launch.allow != null) bySystemProperty() else Config.update { external.allowScreenshots = !external.allowScreenshots }
+            }
             ui.button(x0 + 10, y + 50, 190, 16, "Copy the claude mcp add command", tooltip = ClientMcp.externalCommand()) {
                 minecraft.keyboardHandler.setClipboard(ClientMcp.externalCommand())
                 message = "Copied: run it once in a terminal, in the folder Claude Code works in"

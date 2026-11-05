@@ -18,9 +18,12 @@ Available on any server, to chats and to [outside agents](outside-agents.md).
 | `client_teleport` | Teleports the player (a `/tp` as them) |
 | `client_look` | Turns the camera to a point, or a yaw and pitch |
 | `client_input` | Holds key bindings across ticks, in steps, as the player holding keys: walking, sprinting, sneaking, a double jump, a dash, holding use or attack (needs Commands) |
+| `client_wander` | Walks the player around like a bot, to random waypoints within a radius of where it starts, on safe ground, for a time; JSON: distance, waypoints reached, times stuck, jumps, final position (needs Commands). See [bots that move](testing.md#bots-that-move) |
+| `client_path` | Walks the player through given points in order (or round in a loop), skipping one it can't get closer to; JSON: each point reached or skipped and how long it took (needs Commands) |
 | `client_trace` | The client's own view, tick by tick: the player's position, velocity, ground and collision flags and pose, and nearby entities' boxes, optionally while holding keys; a summary line first (ticks on the ground and in the air, height range, each entity's feet range) (needs Commands) |
 | `client_record`, `client_replay` | Record what the player does (keys, look, hotbar slot, commands, path), saved with a test that replays it from where it started and says where its path left the recorded one (needs Commands). Players record with `/foreman-record <name>` and `/foreman-record stop`, or a key |
 | `client_stats` | A snapshot of the client: FPS, memory, graphics device, distances, rendered sections and entities, particles, ping, post effects, packs |
+| `client_usage` | What the client process uses: heap and other JVM memory, resident memory, CPU time and CPU % over a few seconds, threads, the JVM's flags, frames drawn, [lean mode](lean-clients.md); `json` for scripts |
 | `client_sounds` | The sounds the client plays over a few seconds: which, where, how far, volume and pitch |
 | `client_pixels` | Exact colours of a rectangle of the world as rendered (post effects included, the HUD hidden), or a region's numbers (`stats`: mean colour, luminance spread, a grid of cell means) |
 | `client_perf` | The client's frame times over a few seconds (average FPS, 1% and 0.1% lows, worst frame), optionally after a command: what a change costs |
@@ -69,6 +72,7 @@ answers a line a step, and the lines around a failure. A test is saved by `name`
 | `packets_suspects` | The traffic grouped by what likely sends it, with clues to search for |
 | `packets_list` | Kept packets one by one, filtered |
 | `packets_timeline` | Packets and bytes per time bucket, with the peaks |
+| `packets_stats` | The recording's numbers as compact JSON for reports: packets and bytes each way and per type, rates per second over time, silences from the server, keep-alives and the ping the server measured |
 | `packets_export` | Writes the recording to a file |
 
 ### HUD
