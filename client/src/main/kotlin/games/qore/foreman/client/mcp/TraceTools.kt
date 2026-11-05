@@ -76,6 +76,7 @@ object TraceTools {
             traceSchema(),
             enabled = { it.allowCommands },
             acts = { it["steps"].arr()?.isNotEmpty() == true },
+            group = "Testing",
         ) { _, args -> listOf(ClientMcp.text(trace(args))) })
 
         ClientMcp.register(ClientTool(
@@ -92,6 +93,7 @@ object TraceTools {
                 "max_width" to "integer: the sheet's width in pixels (default 1600)",
             ),
             enabled = { it.allowScreenshots },
+            group = "Testing",
         ) { _, args -> listOf(ClientMcp.image(frames(args)), ClientMcp.text("Frames, left to right then down")) })
     }
 

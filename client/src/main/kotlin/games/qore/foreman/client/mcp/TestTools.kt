@@ -74,6 +74,7 @@ object TestTools {
                 "(how to write tests that hold: read it first), list, show or delete saved tests.",
             schema(),
             enabled = { it.allowCommands },
+            group = "Testing",
         ) { scope, args -> call(scope, args) })
     }
 

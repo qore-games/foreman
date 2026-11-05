@@ -24,6 +24,7 @@ object ResourceTools {
             ClientTools.schema("available" to "boolean: list the declared post effects too (default false)",
                 "contains" to "string: for available, ids containing this"),
             acts = { false },
+            group = "Client",
         ) { _, args ->
             // lean: the post effects applied are known once a frame applied them
             Lean.awaitFrame()
@@ -58,6 +59,7 @@ object ResourceTools {
                 "downloaded again), waits for the end, and returns how long each step took and the warnings and errors logged meanwhile.",
             ClientTools.schema("reload" to "boolean: reload the packs first (default false)", "lines" to "integer: for reload, log lines shown (default 60)"),
             acts = { it["reload"].bool() == true },
+            group = "Client",
         ) { _, args ->
             val minecraft = Minecraft.getInstance()
             val log = if (args["reload"].bool() == true) {

@@ -10,16 +10,19 @@ import kotlinx.serialization.json.put
 /**
  * opencode: `opencode run --format json` with a config (OPENCODE_CONFIG) adding the Foreman server's and the client's MCP
  * servers and turning off every other tool (but its file tools when the chat has workspace folders: it then runs in the
- * first one). The game context goes first in the message (opencode has no system prompt flag).
+ * first one).
  */
 class OpencodeAgent : CliAgent("opencode") {
     override fun command(request: AgentRequest): List<String> {
         val s = request.settings
         reported.clear()
+        model = request.model
+        effort = request.effort.takeIf { request.model.isNotBlank() }.orEmpty()
         return executable(s.opencodeCommand, "opencode") + listOf("run", "--format", "json", "--standalone", "--auto") +
-            (if (s.opencodeModel.isNotBlank()) listOf("--model", s.opencodeModel) else emptyList()) +
+            // The effort is a variant of the model (`provider/model#high`): opencode has no other way.
+            (if (request.model.isNotBlank()) listOf("--model", request.model + if (request.effort.isNotBlank()) "#${request.effort}" else "") else emptyList()) +
             (request.resume?.let { listOf("--session", it) } ?: emptyList()) +
-            listOf(request.system + "\n\n" + request.prompt)
+            listOf(request.prompt)
     }
 
     override fun environment(request: AgentRequest, env: MutableMap<String, String>) {
@@ -49,6 +52,8 @@ class OpencodeAgent : CliAgent("opencode") {
     }
 
     private val reported = HashSet<String>()
+    private var model = ""
+    private var effort = ""
     private val usage = TokenUsage()
     private var steps = 0
 
@@ -79,6 +84,6 @@ class OpencodeAgent : CliAgent("opencode") {
     }
 
     override fun finished(listener: AgentListener) {
-        if (steps > 0) listener.info(usage.done(steps))
+        if (steps > 0) listener.info(usage.done(steps, model, effort))
     }
 }

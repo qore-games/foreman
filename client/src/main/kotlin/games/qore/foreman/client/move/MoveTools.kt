@@ -69,6 +69,7 @@ object MoveTools {
                 "stuck_ms" to "integer: no closer for this long is stuck (default 2000)",
             ),
             enabled = { it.allowCommands },
+            group = "Movement",
         ) { _, args -> listOf(ClientMcp.text(wander(args))) })
 
         ClientMcp.register(ClientTool(
@@ -94,6 +95,7 @@ object MoveTools {
                 put("required", buildJsonArray { add(JsonPrimitive("points")) })
             },
             enabled = { it.allowCommands },
+            group = "Movement",
         ) { _, args -> listOf(ClientMcp.text(path(args))) })
     }
 

@@ -182,6 +182,11 @@ class ChatScreen(private val initial: String = "", open: Chat? = null) : KitScre
         ui.button(x, 32, w, 16, label, tooltip = "Workspaces and folders the AI may read and edit (configs, code)" +
             chat.data.folders.joinToString("") { "\n$it" }) { minecraft.gui.setScreen(WorkspacesScreen(this, chat)) }
         x += w + 6
+        val model = "◆ " + ModelScreen.label(chat)
+        val mw = font.width(model) + 14
+        ui.button(x, 32, mw, 16, model, tooltip = "The model and effort of this chat (the defaults: the hub's AI → Agents)" +
+            (chat.data.usedModel.takeIf { it.isNotBlank() }?.let { "\nLast run on $it" } ?: "")) { minecraft.gui.setScreen(ModelScreen(this, chat)) }
+        x += mw + 6
         chat.status()?.let { ui.text(ui.fit("● $it", width - pad - x), width - pad - font.width(ui.fit("● $it", width - pad - x)), 36, Theme.AI) }
     }
 
@@ -495,5 +500,86 @@ class WorkspacesScreen(private val parent: Screen, private val chat: Chat) : Kit
 
     override fun onClose() {
         minecraft.gui.setScreen(parent)
+    }
+}
+
+/**
+ * A chat's model and effort: the default, the backend's suggestions or any model typed, the efforts it takes, and
+ * making them the defaults of the backend's new chats.
+ */
+class ModelScreen(private val parent: Screen, private val chat: Chat) : KitScreen("Chat model") {
+    private lateinit var field: EditBox
+    private val w get() = 380.coerceAtMost(width - 20)
+    private val x get() = (width - w) / 2
+    private var message = ""
+
+    override fun build() {
+        field = addRenderableWidget(EditBox(font, x, 0, w - 60, 18, Component.literal("Model")).also {
+            it.setMaxLength(200)
+            it.setHint(Component.literal(if (chat.data.backend == AgentBackend.OPENCODE) "Any model: provider/model" else "Any model by its name or alias"))
+            it.value = chat.data.model.takeIf { m -> m !in chat.data.backend.models }.orEmpty()
+        })
+    }
+
+    private fun use() {
+        val model = field.value.trim().ifEmpty { return }
+        chat.update { this.model = model }
+        message = ""
+    }
+
+    override fun keyPressed(event: KeyEvent): Boolean {
+        if (event.isConfirmation && focused === field) {
+            use()
+            return true
+        }
+        return super.keyPressed(event)
+    }
+
+    override fun draw(ui: Ui) {
+        val backend = chat.data.backend
+        val settings = Config.settings.agent
+        ui.title("Model and effort", x, 12)
+        ui.text(ui.fit("of \"${chat.data.title}\", on ${backend.label}", w), x, 30, Theme.MUTED)
+        var y = 48
+        ui.text("Model", x, y, Theme.TEXT)
+        y += 14
+        for (m in listOf("") + backend.models) {
+            val label = if (m.isEmpty()) "Default: " + settings.model(backend).ifBlank { "${backend.label}'s own" } else m
+            ui.button(x, y, w, 16, label, if (chat.data.model == m) Style.PRIMARY else Style.NORMAL) { chat.update { model = m } }
+            y += 19
+        }
+        field.setPosition(x, y + 2)
+        ui.button(x + w - 56, y + 2, 56, 18, "Use", Style.PRIMARY) { use() }
+        y += 30
+        ui.text("Effort", x, y, Theme.TEXT)
+        y += 14
+        val efforts = listOf("") + backend.efforts
+        val defaultEffort = settings.effort(backend).takeIf { it.isNotBlank() }?.let { "Default ($it)" } ?: "Default"
+        ui.segmented(x, y, efforts.map { it.ifEmpty { defaultEffort } }, efforts.indexOf(chat.data.effort).coerceAtLeast(0)) { i -> chat.update { effort = efforts[i] } }
+        y += 22
+        if (backend == AgentBackend.OPENCODE) y += ui.paragraph("opencode takes the effort as a variant of the model (provider/model#high): it needs a model with that variant.", x, y, w) + 4
+        y += ui.paragraph("Runs on " + label(chat) + (chat.data.usedModel.takeIf { it.isNotBlank() }?.let { "; the last run said $it" } ?: "") + ".", x, y, w) + 8
+        ui.button(x, y, w, 18, "Make these the defaults of new ${backend.label} chats") {
+            Config.update { agent.setDefaults(backend, chat.model, chat.effort) }
+            message = "Saved: new ${backend.label} chats run on ${label(chat)}"
+        }
+        if (message.isNotEmpty()) ui.text(ui.fit(message, w), x, y + 24, Theme.OK)
+        ui.button(width / 2 - 40, height - 24, 80, 18, "Done", Style.PRIMARY) { onClose() }
+    }
+
+    override fun onClose() {
+        minecraft.gui.setScreen(parent)
+    }
+
+    companion object {
+        /** `opus · high`, `haiku (default)`, `default (claude-opus-5-5)`: what [chat] runs on, and whether it's its own choice. */
+        fun label(chat: Chat): String {
+            val model = when {
+                chat.data.model.isNotBlank() -> chat.data.model
+                chat.model.isNotBlank() -> "${chat.model} (default)"
+                else -> chat.data.usedModel.takeIf { it.isNotBlank() }?.let { "default ($it)" } ?: "default model"
+            }
+            return model + (chat.effort.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+        }
     }
 }

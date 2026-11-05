@@ -13,14 +13,17 @@ import kotlinx.serialization.json.put
 
 /**
  * Claude Code in print mode with the builder's own login: `claude -p --output-format stream-json`, with two MCP
- * servers (`minecraft`: the Foreman server, when there is one; `client`: this client's tools) and only their tools
- * allowed, plus its file tools on the chat's workspace folders.
+ * servers (`minecraft`: the Foreman server, when there is one; `client`: this client's tools) and only their tools,
+ * plus its file tools on the chat's workspace folders.
  */
 class ClaudeCodeAgent : CliAgent("Claude Code") {
     override val promptViaStdin = true
 
     /** Whether the current assistant message already streamed its text (partial messages). */
     private var streamed = false
+    /** The model Claude Code says it runs, and the effort asked for, for the last line. */
+    private var model: String? = null
+    private var effort = ""
 
     override fun command(request: AgentRequest): List<String> {
         val config = buildJsonObject {
@@ -31,15 +34,18 @@ class ClaudeCodeAgent : CliAgent("Claude Code") {
         }
         val file = writePrivate("claude-mcp-${request.chatId}.json", config.toString())
         val s = request.settings
-        val allowed = mutableListOf("mcp__minecraft__*", "mcp__client__*")
-        if (request.folders.isNotEmpty()) allowed += listOf("Read", "Edit", "MultiEdit", "Write", "Glob", "Grep", "LS")
+        effort = request.effort
+        val files = if (request.folders.isEmpty()) emptyList() else listOf("Read", "Edit", "Write", "Glob", "Grep")
         return executable(s.claudeCommand, "claude") + listOf(
             "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--mcp-config", file.toString(), "--strict-mcp-config",
-            "--allowedTools", allowed.joinToString(","),
-            "--append-system-prompt", request.system,
+            // Only the built-in tools a chat uses, the others' definitions cost every request: ToolSearch, which loads
+            // the MCP tools' definitions when they are needed (without it all of them are sent each time), and the file tools.
+            "--tools", (listOf("ToolSearch") + files).joinToString(","),
+            "--allowedTools", (listOf("mcp__minecraft__*", "mcp__client__*") + files).joinToString(","),
         ) + request.folders.drop(1).flatMap { listOf("--add-dir", it) } +
-            (if (s.claudeModel.isNotBlank()) listOf("--model", s.claudeModel) else emptyList()) +
+            (if (request.model.isNotBlank()) listOf("--model", request.model) else emptyList()) +
+            (if (request.effort.isNotBlank()) listOf("--effort", request.effort) else emptyList()) +
             (request.resume?.let { listOf("--resume", it) } ?: emptyList())
     }
 
@@ -55,6 +61,7 @@ class ClaudeCodeAgent : CliAgent("Claude Code") {
     override fun handle(event: JsonObject, listener: AgentListener): String? {
         event["session_id"].str()?.let(listener::session)
         when (event["type"].str()) {
+            "system" -> if (event["subtype"].str() == "init") event["model"].str()?.let { model = it; listener.model(it) }
             "stream_event" -> {
                 val e = event["event"]
                 if (e["type"].str() == "content_block_delta" && e["delta"]["type"].str() == "text_delta") {
@@ -84,7 +91,7 @@ class ClaudeCodeAgent : CliAgent("Claude Code") {
                 val usage = event["usage"]
                 fun n(key: String) = usage[key].long() ?: 0
                 val cached = n("cache_read_input_tokens")
-                listener.info(TokenUsage(n("input_tokens") + n("cache_creation_input_tokens") + cached, cached, n("output_tokens")).done(event["num_turns"].int()))
+                listener.info(TokenUsage(n("input_tokens") + n("cache_creation_input_tokens") + cached, cached, n("output_tokens")).done(event["num_turns"].int(), model, effort))
             }
         }
         return null

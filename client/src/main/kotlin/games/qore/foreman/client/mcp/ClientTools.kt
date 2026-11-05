@@ -33,6 +33,7 @@ import net.minecraft.world.phys.Vec3
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Locale
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.isDirectory
@@ -74,6 +75,7 @@ object ClientTools {
             "Where the player is and looks, the block or entity at the crosshair, their selection, dimension, and the last chat lines.",
             schema(),
             acts = { false },
+            group = "Player",
         ) { _, _ -> listOf(ClientMcp.text(onClient { PromptContext.build() } + "\n\nRecent chat:\n" + recent(Long.MIN_VALUE).takeLast(15).joinToString("\n"))) })
 
         ClientMcp.register(ClientTool(
@@ -84,6 +86,7 @@ object ClientTools {
                 "hide_hud" to "boolean: without the HUD and the hand, as F1 (default false)"),
             enabled = { it.allowScreenshots },
             acts = { it["keep_screen"].bool() != true },
+            group = "Player",
         ) { _, args ->
             listOf(ClientMcp.image(screenshot(args["max_width"].int() ?: 1280, keepScreen = args["keep_screen"].bool() == true, hideHud = args["hide_hud"].bool() == true)),
                 ClientMcp.text("Screenshot of the player's view"))
@@ -95,6 +98,7 @@ object ClientTools {
                 "in chat in the next `wait_ms` (default 800). For server commands: /tp, /give, /gamemode, plugin commands…",
             schema("command" to "string: the command, e.g. `time set day`", "wait_ms" to "integer: how long to collect the output (default 800, max 5000)"),
             enabled = { it.allowCommands },
+            group = "Player",
         ) { _, args ->
             val command = args["command"].str()?.removePrefix("/")?.takeIf { it.isNotBlank() } ?: throw ToolFailure("Give command")
             listOf(ClientMcp.text(command(command, (args["wait_ms"].int() ?: 800).coerceIn(100, 5000))))
@@ -108,20 +112,23 @@ object ClientTools {
             schema("address" to "string: host or host:port (default: the last server it logged in to, or tried to)", "disconnect" to "boolean: only leave (default false)",
                 "wait_ms" to "integer: how long to wait to be in game (default 90000)"),
             enabled = { it.allowCommands },
+            group = "Player",
         ) { _, args -> listOf(ClientMcp.text(connect(args["address"].str(), args["disconnect"].bool() == true, (args["wait_ms"].int() ?: 90_000).coerceIn(1000, 300_000)))) })
 
         ClientMcp.register(ClientTool(
             "client_teleport",
-            "Teleports the player (a /tp as the player: needs the permission) to x, y, z, optionally facing yaw/pitch or a point to look at.",
+            "Teleports the player to x, y, z, optionally facing yaw/pitch or a point to look at: vanilla's /minecraft:tp as the " +
+                "player (needs the permission), else /tp where the server keeps namespaced commands from players. Says when neither moved them.",
             schema("x" to "number", "y" to "number", "z" to "number", "yaw" to "number: optional", "pitch" to "number: optional",
                 "look_at" to "array: optional [x, y, z] to face"),
             enabled = { it.allowCommands },
+            group = "Player",
         ) { _, args ->
             val x = args["x"].double() ?: throw ToolFailure("Give x, y, z")
             val y = args["y"].double() ?: throw ToolFailure("Give x, y, z")
             val z = args["z"].double() ?: throw ToolFailure("Give x, y, z")
-            val rotation = if (args["yaw"] != null || args["pitch"] != null) " ${args["yaw"].double() ?: 0.0} ${args["pitch"].double() ?: 0.0}" else ""
-            val out = command("tp @s $x $y $z$rotation", 600)
+            val rotation = if (args["yaw"] != null || args["pitch"] != null) " %.2f %.2f".format(Locale.ROOT, args["yaw"].double() ?: 0.0, args["pitch"].double() ?: 0.0) else ""
+            val out = teleport(Vec3(x, y, z), rotation)
             point(args["look_at"])?.let { target -> waitTicks(3); onClient { Minecraft.getInstance().player?.lookAt(EntityAnchorArgument.Anchor.EYES, target) } }
             listOf(ClientMcp.text(out))
         })
@@ -130,6 +137,7 @@ object ClientTools {
             "client_look",
             "Turns the player's camera: at a point [x, y, z], or to a yaw and pitch (yaw 0 = south, 90 = west, pitch 90 = down).",
             schema("at" to "array: [x, y, z] to face", "yaw" to "number", "pitch" to "number"),
+            group = "Player",
         ) { _, args ->
             onClient {
                 val player = Minecraft.getInstance().player ?: throw ToolFailure("Not in a world")
@@ -148,6 +156,7 @@ object ClientTools {
             "The last chat and system messages the player received (command outputs, plugin messages).",
             schema("lines" to "integer: how many (default 30)"),
             acts = { false },
+            group = "Player",
         ) { _, args -> listOf(ClientMcp.text(recent(Long.MIN_VALUE).takeLast(args["lines"].int() ?: 30).joinToString("\n").ifEmpty { "(nothing yet)" })) })
 
         // ---- Workspace files: the folders the player added to the chat (CLI agents use their own file tools on them) ----
@@ -156,6 +165,7 @@ object ClientTools {
             "client_list_files", "Files of the chat's workspace folders (recursively), optionally matching a glob like `**/*.yml`.",
             schema("path" to "string: a folder inside the workspace (default all of them)", "glob" to "string: optional"), files,
             acts = { false },
+            group = "Files",
         ) { scope, args ->
             val roots = args["path"].str()?.let { listOf(resolve(scope, it)) } ?: scope.folders.map { Path.of(it) }
             val matcher = args["glob"].str()?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
@@ -168,6 +178,7 @@ object ClientTools {
             "client_read_file", "Reads a text file of the workspace (lines `offset`.., at most `limit`).",
             schema("path" to "string", "offset" to "integer: first line (default 1)", "limit" to "integer: lines (default 400)"), files,
             acts = { false },
+            group = "Files",
         ) { scope, args ->
             val path = resolve(scope, args["path"].str() ?: throw ToolFailure("Give path"))
             val lines = Files.readAllLines(path)
@@ -179,6 +190,7 @@ object ClientTools {
             "client_write_file", "Writes a text file of the workspace (creates it, or replaces it whole). Read it first to keep what you don't change.",
             schema("path" to "string", "content" to "string"), files,
             acts = { false },
+            group = "Files",
         ) { scope, args ->
             val path = resolve(scope, args["path"].str() ?: throw ToolFailure("Give path"))
             Files.createDirectories(path.parent)
@@ -189,6 +201,7 @@ object ClientTools {
             "client_search_files", "Lines matching a regular expression in the workspace's files (optionally only files matching `glob`).",
             schema("pattern" to "string: a regex", "glob" to "string: optional, e.g. `**/*.yml`"), files,
             acts = { false },
+            group = "Files",
         ) { scope, args ->
             val regex = Regex(args["pattern"].str() ?: throw ToolFailure("Give pattern"))
             val matcher = args["glob"].str()?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
@@ -244,6 +257,24 @@ object ClientTools {
     }
 
     private fun recent(since: Long) = synchronized(log) { log.filter { it.first >= since }.map { it.second } }
+
+    /**
+     * Teleports the player with vanilla's /minecraft:tp: a plugin's /tp (an essentials plugin, a network's own) takes
+     * other arguments. Some servers keep namespaced commands from players: when that didn't bring them there, the plain
+     * /tp, vanilla's where no plugin took it. What each try got back, and a last line when neither moved them.
+     */
+    internal fun teleport(target: Vec3, rotation: String = ""): String {
+        val coords = "%.4f %.4f %.4f".format(Locale.ROOT, target.x, target.y, target.z) + rotation
+        val replies = mutableListOf<String>()
+        for (line in listOf("minecraft:tp @s $coords", "tp @s $coords")) {
+            replies += command(line, 600)
+            if (onClient { Minecraft.getInstance().player?.position()?.let { arrived(it, target) } } == true) return replies.joinToString("\n")
+        }
+        return replies.joinToString("\n") + "\nThe player isn't there: the server refused both (its /tp may be a plugin's): teleport with its own command (client_run_command)."
+    }
+
+    /** At [target] after a teleport: on it across, and at most a fall below it (the reply takes a moment to come). */
+    private fun arrived(at: Vec3, target: Vec3) = Math.hypot(at.x - target.x, at.z - target.z) < 1.0 && at.y in target.y - 12..target.y + 1
 
     /** Sends a command as the player and collects the chat lines that came back within [waitMs]. */
     private fun command(command: String, waitMs: Int): String {

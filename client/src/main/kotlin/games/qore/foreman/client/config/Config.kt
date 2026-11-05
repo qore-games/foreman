@@ -66,24 +66,56 @@ data class OverlaySettings(
     var hudAreas: Boolean = true,
 )
 
-enum class AgentBackend(val label: String) { CLAUDE_CODE("Claude Code"), OPENCODE("opencode"), OPENROUTER("OpenRouter") }
+/**
+ * An AI backend: the [models] its chats' picker suggests (any other can be typed) and the [efforts] it takes: Claude
+ * Code's `--effort`, opencode's model variant (`provider/model#variant`), OpenRouter's reasoning effort.
+ */
+enum class AgentBackend(val label: String, val models: List<String>, val efforts: List<String>) {
+    CLAUDE_CODE("Claude Code", listOf("opus", "sonnet", "haiku", "fable"), listOf("low", "medium", "high", "xhigh", "max")),
+    OPENCODE("opencode", emptyList(), listOf("low", "medium", "high", "max")),
+    OPENROUTER("OpenRouter", listOf("anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "anthropic/claude-haiku-5.5"), listOf("low", "medium", "high")),
+}
 
 @Serializable
 data class AgentSettings(
     var backend: AgentBackend = AgentBackend.CLAUDE_CODE,
     var claudeCommand: String = "claude",
     var claudeModel: String = "",
+    var claudeEffort: String = "",
     var opencodeCommand: String = "opencode",
     var opencodeModel: String = "",
+    var opencodeEffort: String = "",
     var openRouterKey: String = "",
-    var openRouterModel: String = "anthropic/claude-sonnet-4.5",
+    var openRouterModel: String = "anthropic/claude-sonnet-5.5",
+    var openRouterEffort: String = "",
     /** Tool-call rounds before the OpenRouter loop stops. */
     var maxTurns: Int = 60,
     /** Overrides the MCP URL the server announces (when its public-url is wrong for this machine). */
     var mcpUrlOverride: String = "",
     /** Added to every prompt (house rules, language…). */
     var extraInstructions: String = "",
-)
+) {
+    /** The model of chats on [backend] that don't choose one (empty: the backend's own default). */
+    fun model(backend: AgentBackend) = when (backend) {
+        AgentBackend.CLAUDE_CODE -> claudeModel
+        AgentBackend.OPENCODE -> opencodeModel
+        AgentBackend.OPENROUTER -> openRouterModel
+    }
+
+    /** The effort of chats on [backend] that don't choose one (empty: the backend's own default). */
+    fun effort(backend: AgentBackend) = when (backend) {
+        AgentBackend.CLAUDE_CODE -> claudeEffort
+        AgentBackend.OPENCODE -> opencodeEffort
+        AgentBackend.OPENROUTER -> openRouterEffort
+    }
+
+    /** Makes [model] and [effort] the defaults of [backend]'s chats. */
+    fun setDefaults(backend: AgentBackend, model: String, effort: String) = when (backend) {
+        AgentBackend.CLAUDE_CODE -> { claudeModel = model; claudeEffort = effort }
+        AgentBackend.OPENCODE -> { opencodeModel = model; opencodeEffort = effort }
+        AgentBackend.OPENROUTER -> { openRouterModel = model; openRouterEffort = effort }
+    }
+}
 
 /**
  * AI sessions outside the game (Claude Code in a terminal, another agent on this computer) may use the client's tools

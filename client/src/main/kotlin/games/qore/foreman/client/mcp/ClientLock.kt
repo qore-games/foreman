@@ -61,6 +61,7 @@ object ClientLock {
                 "seconds" to "integer: with wait, how long to wait at most (default 120)",
             ),
             acts = { false },
+            group = "Testing",
         ) { _, args ->
             val holder = caller.get() ?: throw ToolFailure("No caller")
             val minutes = args["minutes"].int()?.coerceIn(1, MAX_MINUTES)

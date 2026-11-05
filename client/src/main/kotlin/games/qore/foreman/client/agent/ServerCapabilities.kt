@@ -6,7 +6,7 @@ import games.qore.foreman.client.util.str
 /**
  * What the Foreman server plugin can do ([ForemanTool], shared with the server), so the AI recognises a request it
  * can't serve here ("place a chair" → place_furniture, missing) and says why in one line instead of searching for a
- * workaround. Told in each run's system prompt: nothing when every Foreman tool is there. Tools other plugins publish
+ * workaround. Told with a chat's first prompt and when it changes: nothing when every Foreman tool is there. Tools other plugins publish
  * aren't known in advance: the AI sees them in the server's tool list while their plugin runs.
  */
 object ServerCapabilities {

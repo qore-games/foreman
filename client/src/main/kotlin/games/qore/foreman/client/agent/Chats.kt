@@ -1,6 +1,7 @@
 package games.qore.foreman.client.agent
 
 import games.qore.foreman.client.config.AgentBackend
+import games.qore.foreman.client.config.AgentSettings
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.link.Bridge
 import games.qore.foreman.client.mcp.ClientMcp
@@ -44,7 +45,16 @@ data class ChatData(
     override var allowScreenshots: Boolean = true,
     val entries: MutableList<Entry> = mutableListOf(),
     val sessions: MutableMap<AgentBackend, String> = mutableMapOf(),
+    /** The instructions each backend's session was last given (they are sent again when they change). */
+    val told: MutableMap<AgentBackend, String> = mutableMapOf(),
     val openRouter: MutableList<JsonObject> = mutableListOf(),
+    /** The tool groups the OpenRouter conversation loaded ([OpenRouterAgent]): offered from its first request on. */
+    val openRouterGroups: MutableSet<String> = mutableSetOf(),
+    /** This chat's model and effort; empty: the defaults of the settings ([AgentSettings.model]). */
+    var model: String = "",
+    var effort: String = "",
+    /** The model the backend last said it ran, shown when the chat runs on a default. */
+    var usedModel: String = "",
 ) : ToolScope {
     /** Every folder the AI may read and edit: its workspaces' and its own. */
     override val folders: List<String>
@@ -63,6 +73,10 @@ class Chat(val data: ChatData) {
 
     val id get() = data.id
     val entries get() = data.entries
+
+    /** The model and effort a run uses: the chat's, else the settings' default for its backend (empty: the backend's own). */
+    val model get() = data.model.ifBlank { Config.settings.agent.model(data.backend) }
+    val effort get() = data.effort.ifBlank { Config.settings.agent.effort(data.backend) }
 
     private fun changed() {
         data.updated = System.currentTimeMillis()
@@ -97,7 +111,8 @@ class Chat(val data: ChatData) {
         val backend = data.backend
         val settings = Config.settings.agent.copy(backend = backend)
         if (data.title == "New chat") data.title = summarize(shown, 40)
-        val system = listOf(PromptContext.build(), movedNote(), settings.extraInstructions, workspaceNote(), workspaceInstructions()).filter { it.isNotBlank() }.joinToString("\n\n")
+        val context = listOf(PromptContext.build(), movedNote()).filter { it.isNotBlank() }.joinToString("\n\n")
+        val instructions = listOf(settings.extraInstructions, workspaceNote(), workspaceInstructions()).filter { it.isNotBlank() }.joinToString("\n\n")
         data.server = Chats.server
         ClientMcp.scope(id, data)
         // Without a Foreman server (another server, singleplayer) the AI has the client tools only, and is told which
@@ -106,14 +121,22 @@ class Chat(val data: ChatData) {
         val mcpToken = Bridge.token
         val folders = data.folders
         val resume = data.sessions[backend]
-        fun request() = AgentRequest(
-            prompt, listOf(system, ServerCapabilities.note(mcpUrl, mcpToken)).filter { it.isNotBlank() }.joinToString("\n\n"),
-            mcpUrl, mcpToken, ClientMcp.url(id), ClientMcp.token, id, folders, resume, settings,
-        )
+        val continuing = if (backend == AgentBackend.OPENROUTER) data.openRouter.isNotEmpty() else resume != null
+        val told = data.told[backend]
+        val runModel = model
+        val runEffort = effort
+        var standing = ""
+        // The game context with every prompt; the chat's instructions and what the server lacks once per session, and
+        // again when they change.
+        fun request(): AgentRequest {
+            standing = listOf(instructions, ServerCapabilities.note(mcpUrl, mcpToken)).filter { it.isNotBlank() }.joinToString("\n\n")
+            val text = listOf(context, if (continuing && standing == told) "" else standing, prompt).filter { it.isNotBlank() }.joinToString("\n\n")
+            return AgentRequest(text, mcpUrl, mcpToken, ClientMcp.url(id), ClientMcp.token, id, folders, resume, settings, runModel, runEffort)
+        }
         val agent = when (backend) {
             AgentBackend.CLAUDE_CODE -> ClaudeCodeAgent()
             AgentBackend.OPENCODE -> OpencodeAgent()
-            AgentBackend.OPENROUTER -> OpenRouterAgent(data.openRouter)
+            AgentBackend.OPENROUTER -> OpenRouterAgent(data.openRouter, data.openRouterGroups)
         }
 
         add(Entry(EntryKind.USER, shown))
@@ -144,6 +167,8 @@ class Chat(val data: ChatData) {
 
             override fun session(id: String) = minecraft.execute { data.sessions[backend] = id }
 
+            override fun model(name: String) = minecraft.execute { data.usedModel = name; changed() }
+
             override fun info(text: String) = minecraft.execute { add(Entry(EntryKind.INFO, text)) }
         }
 
@@ -160,6 +185,7 @@ class Chat(val data: ChatData) {
             minecraft.execute {
                 cancel = null
                 lastTool = null
+                data.told[backend] = standing
                 when {
                     token.cancelled -> add(Entry(EntryKind.INFO, "Cancelled"))
                     error != null -> add(Entry(EntryKind.ERROR, error))

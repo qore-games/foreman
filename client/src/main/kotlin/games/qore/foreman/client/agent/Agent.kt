@@ -11,13 +11,18 @@ interface AgentListener {
     fun toolResult(id: String, ok: Boolean, summary: String)
     /** The backend's session id, to continue the conversation next time. */
     fun session(id: String)
+    /** The model the backend says it runs (Claude Code's default when the chat names none). */
+    fun model(name: String)
     fun info(text: String)
 }
 
 class AgentRequest(
+    /**
+     * The player's prompt after the game context, and the chat's instructions when the session hasn't had them yet.
+     * The server's instructions are given by MCP. Nothing goes in a system prompt: a resumed Claude Code session keeps
+     * the one of its first run, and one that changes breaks the prompt cache of the whole conversation after it.
+     */
     val prompt: String,
-    /** The server's instructions are given by MCP; this is the game context and the player's extra instructions. */
-    val system: String,
     /** The Foreman server's MCP endpoint and this player's token: null on a server without Foreman. */
     val mcpUrl: String?,
     val token: String?,
@@ -31,6 +36,9 @@ class AgentRequest(
     /** The session to continue, from [AgentListener.session]. */
     val resume: String?,
     val settings: AgentSettings,
+    /** The chat's model and effort, or the defaults of the settings; empty: the backend's own. */
+    val model: String,
+    val effort: String,
 )
 
 /** Cancels a run: hooks registered by the backend (kill the process, close the stream) run once. */
@@ -61,9 +69,10 @@ interface Agent {
 
 /** The tokens a run used: input (read from the cache included), the part read from the cache, output. */
 class TokenUsage(var input: Long = 0, var cached: Long = 0, var output: Long = 0) {
-    /** `Done in 35 turns · 1.8M tokens in (1.7M cached) · 13.8k out` */
-    fun done(turns: Int?) = (if (turns != null) "Done in $turns turn${if (turns == 1) "" else "s"}" else "Done") +
-        " · ${count(input)} tokens in" + (if (cached > 0) " (${count(cached)} cached)" else "") + " · ${count(output)} out"
+    /** `Done in 35 turns · 1.8M tokens in (1.7M cached) · 13.8k out · claude-opus-5-5, effort high` */
+    fun done(turns: Int?, model: String? = null, effort: String = "") = (if (turns != null) "Done in $turns turn${if (turns == 1) "" else "s"}" else "Done") +
+        " · ${count(input)} tokens in" + (if (cached > 0) " (${count(cached)} cached)" else "") + " · ${count(output)} out" +
+        (model?.takeIf { it.isNotBlank() }?.let { " · $it" + if (effort.isNotBlank()) ", effort $effort" else "" } ?: "")
 
     private fun count(n: Long) = when {
         n < 1000 -> "$n"

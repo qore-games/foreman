@@ -65,6 +65,7 @@ object ClientLog {
                 "max_chars" to "integer: cut each line there (default 1000)",
             ),
             acts = { false },
+            group = "Client",
         ) { _, args ->
             val level = when (args["level"].str()?.lowercase()) {
                 null, "warn", "warning" -> Level.WARN

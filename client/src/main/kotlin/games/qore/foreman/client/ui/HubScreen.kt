@@ -21,6 +21,7 @@ import games.qore.foreman.client.locations.LocationEditor
 import games.qore.foreman.client.locations.LocationStore
 import games.qore.foreman.client.mcp.ClientLog
 import games.qore.foreman.client.mcp.ClientMcp
+import games.qore.foreman.client.mcp.ClientTools
 import games.qore.foreman.client.packets.PacketRecorder
 import games.qore.foreman.client.packets.PacketReports
 import games.qore.foreman.client.reload.PackIssues
@@ -41,6 +42,7 @@ import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
+import net.minecraft.world.phys.Vec3
 import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -576,15 +578,18 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         val backend = when (a.backend) {
             AgentBackend.CLAUDE_CODE -> listOf(
                 AgentField("Command", "claude (or its full path)", a.claudeCommand) { agent.claudeCommand = it },
-                AgentField("Model", "Empty: Claude Code's default", a.claudeModel) { agent.claudeModel = it },
+                AgentField("Model", "Empty: Claude Code's default (opus, sonnet, haiku, a full name…)", a.claudeModel) { agent.claudeModel = it },
+                AgentField("Effort", "low, medium, high, xhigh or max; empty: Claude Code's default", a.claudeEffort) { agent.claudeEffort = it },
             )
             AgentBackend.OPENCODE -> listOf(
                 AgentField("Command", "opencode (or its full path)", a.opencodeCommand) { agent.opencodeCommand = it },
                 AgentField("Model", "provider/model, empty: opencode's default", a.opencodeModel) { agent.opencodeModel = it },
+                AgentField("Effort", "The model's variant (low, medium, high, max…); empty: none", a.opencodeEffort) { agent.opencodeEffort = it },
             )
             AgentBackend.OPENROUTER -> listOf(
                 AgentField("API key", "Your OpenRouter key", a.openRouterKey) { agent.openRouterKey = it },
-                AgentField("Model", "e.g. anthropic/claude-sonnet-4.5", a.openRouterModel) { agent.openRouterModel = it },
+                AgentField("Model", "e.g. anthropic/claude-sonnet-5.5", a.openRouterModel) { agent.openRouterModel = it },
+                AgentField("Effort", "Reasoning: low, medium or high; empty: the model's default", a.openRouterEffort) { agent.openRouterEffort = it },
             )
         }
         return backend + listOf(
@@ -751,7 +756,8 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
     private fun goTo(source: String, category: String) {
         val player = minecraft.player ?: return
         val nearest = LocationStore.entries(source, category).minByOrNull { (it.x - player.x) * (it.x - player.x) + (it.y - player.y) * (it.y - player.y) + (it.z - player.z) * (it.z - player.z) } ?: return
-        player.connection.sendCommand("tp @s ${nearest.x} ${nearest.y} ${nearest.z}")
+        // As client_teleport does (vanilla's /minecraft:tp, else /tp), off the client thread: it waits for the replies.
+        java.util.concurrent.CompletableFuture.runAsync { runCatching { ClientTools.teleport(Vec3(nearest.x, nearest.y, nearest.z)) } }
         onClose()
     }
 

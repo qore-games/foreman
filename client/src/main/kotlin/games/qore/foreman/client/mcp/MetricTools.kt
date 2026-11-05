@@ -45,6 +45,7 @@ object MetricTools {
                 "effects applied and the resource packs. To see at a glance what weighs on the client, or check a setting.",
             ClientTools.schema(),
             acts = { false },
+            group = "Client",
         ) { _, _ -> listOf(ClientMcp.text(stats())) })
 
         ClientMcp.register(ClientTool(
@@ -56,6 +57,7 @@ object MetricTools {
             ClientTools.schema("seconds" to "integer: measure CPU % over this long (default 0: not measured, max 60)",
                 "json" to "boolean: one JSON object instead of lines (default false)"),
             acts = { false },
+            group = "Client",
         ) { _, args -> listOf(ClientMcp.text(usage((args["seconds"].int() ?: 0).coerceIn(0, 60), args["json"].bool() == true))) })
 
         ClientMcp.register(ClientTool(
@@ -65,6 +67,7 @@ object MetricTools {
                 "custom sounds), and from where.",
             ClientTools.schema("seconds" to "integer: how long (default 5)"),
             acts = { false },
+            group = "Client",
         ) { _, args -> listOf(ClientMcp.text(recordSounds((args["seconds"].int() ?: 5).coerceIn(1, 30)))) })
 
         ClientMcp.register(ClientTool(
@@ -86,6 +89,7 @@ object MetricTools {
             ),
             enabled = { it.allowScreenshots },
             acts = { false },
+            group = "Client",
         ) { _, args -> listOf(ClientMcp.text(pixels(args))) })
     }
 

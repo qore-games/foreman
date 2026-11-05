@@ -25,6 +25,7 @@ object PacketTools {
             ClientTools.schema("action" to "string: start, stop, clear or status", "seconds" to "integer: for start, how long to record (then stop)",
                 "contents" to "boolean: for start, keep each packet's fields (default: the player's setting)"),
             acts = { (it["action"].str() ?: "status") != "status" },
+            group = "Packets",
         ) { _, args ->
             when (args["action"].str() ?: "status") {
                 "start" -> {
@@ -51,6 +52,7 @@ object PacketTools {
                 "Start here, then dig with packets_timeline and packets_list.",
             ClientTools.schema("top" to "integer: types listed (default 15)"),
             acts = { false },
+            group = "Packets",
         ) { _, args -> listOf(ClientMcp.text(PacketReports.summary(names(), (args["top"].int() ?: 15).coerceIn(1, 100)))) })
 
         ClientMcp.register(ClientTool(
@@ -62,6 +64,7 @@ object PacketTools {
                 "sent a packet: search these clues in the plugins' sources and the server configs (the chat's folders) to find it.",
             ClientTools.schema("limit" to "integer: suspects listed (default 15)"),
             acts = { false },
+            group = "Packets",
         ) { _, args ->
             if (!PacketRecorder.hasData) throw ToolFailure("Nothing recorded")
             val infos = ClientTools.onClient { PacketSuspects.capture() }
@@ -88,6 +91,7 @@ object PacketTools {
                 "limit" to "integer: default 100, max 1000", "order" to "string: time (default) or size",
             ),
             acts = { false },
+            group = "Packets",
         ) { _, args ->
             fun parts(key: String) = args[key].str()?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
             val chunk = args["chunk"].arr()?.mapNotNull { it.int() }?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
@@ -110,6 +114,7 @@ object PacketTools {
                 "second or more, the client thread's time on packets and its longest frame. Small buckets (50 ms = a tick) show bursts.",
             ClientTools.schema("bucket_ms" to "integer: bucket length (default 1000, min 50)", "type" to "string: only types containing this"),
             acts = { false },
+            group = "Packets",
         ) { _, args -> listOf(ClientMcp.text(PacketReports.timeline(args["bucket_ms"].int() ?: 1000, args["type"].str()?.takeIf { it.isNotBlank() }))) })
 
         ClientMcp.register(ClientTool(
@@ -126,6 +131,7 @@ object PacketTools {
                 "top" to "integer: types each way and silences listed (default 15)",
             ),
             acts = { false },
+            group = "Packets",
         ) { _, args -> listOf(ClientMcp.text(stats(args["since_ms"].int() ?: 0, (args["gap_ms"].int() ?: 250).coerceAtLeast(100), (args["top"].int() ?: 15).coerceIn(1, 100)))) })
 
         ClientMcp.register(ClientTool(
@@ -133,6 +139,7 @@ object PacketTools {
             "Writes the recording (summary, timeline per second, every kept packet) to a text file and returns its path.",
             ClientTools.schema(),
             acts = { false },
+            group = "Packets",
         ) { _, _ ->
             if (!PacketRecorder.hasData) throw ToolFailure("Nothing recorded")
             listOf(ClientMcp.text("Written to ${PacketReports.export(names())}"))

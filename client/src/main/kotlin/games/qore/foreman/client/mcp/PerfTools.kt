@@ -35,6 +35,7 @@ object PerfTools {
                 "settle_ms" to "integer: after the command, before measuring (default 1000)",
             ),
             acts = { it["command"] != null },
+            group = "Client",
         ) { _, args -> listOf(ClientMcp.text(measure(args))) })
     }
 

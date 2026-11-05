@@ -32,6 +32,7 @@ object InventoryTools {
                 "what changed, and read the state id to spot desync. Needs a container open (inventory, chest, a plugin menu).",
             ClientTools.schema(),
             acts = { false },
+            group = "Screens",
         ) { _, _ -> listOf(ClientMcp.text(ClientTools.onClient { snapshot() })) })
 
         ClientMcp.register(ClientTool(
@@ -44,6 +45,7 @@ object InventoryTools {
                 "Returns the snapshot after. Needs a container open.",
             actionsSchema(),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args -> inventoryActions(args) })
     }
 

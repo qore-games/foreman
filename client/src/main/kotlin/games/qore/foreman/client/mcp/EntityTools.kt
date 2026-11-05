@@ -54,6 +54,7 @@ object EntityTools {
                 "limit" to "integer: default 20, max 200",
             ),
             acts = { false },
+            group = "Client",
         ) { _, args -> listOf(ClientMcp.text(ClientTools.onClient { list(args) })) })
 
         ClientMcp.register(ClientTool(
@@ -63,6 +64,7 @@ object EntityTools {
                 "JSON (id, count, every component the server set).",
             ClientTools.schema("slot" to "string|integer: a slot name or an inventory index"),
             acts = { false },
+            group = "Client",
         ) { _, args ->
             listOf(ClientMcp.text(ClientTools.onClient {
                 val player = Minecraft.getInstance().player ?: throw ToolFailure("Not in a world")

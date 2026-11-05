@@ -47,9 +47,34 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 - `plugins/Foreman/mcp.json`, written while the plugin's MCP server runs, for scripts, launchers and agents on the
   server's machine: `url`, `token`, `port`, `pid`, `server` (its folder's name), `version`, `started_at`. Readable by
   the server's user only (it holds the server's token). `/foreman status` gives the port it took.
+- Each tool says what it's for in `tools/list`, `_meta.group`: the client's (`Player`, `Screens`, `Movement`,
+  `Testing`, `Client`, `Packets`, `HUD`, `Files`) and the server's (the groups of `ForemanTool`, or the plugin that
+  publishes it).
 
 ### Client (Fabric mod, any server)
 
+- AI chats on Claude Code saw the game context of their first prompt in every later one: where the player stood,
+  looked and had selected, and the server they were on (a resumed session keeps the system prompt of its first run).
+  The context now comes with each prompt, and the chat's instructions (yours, its workspaces', the server tools
+  missing here) with its first prompt and again when they change, on every backend.
+- AI chats on Claude Code cost about a third of the tokens per request (7.7k instead of 24.8k with no folder, 10.5k
+  with folders): Claude Code gets only the tools a chat uses (tool search and, on its folders, the file tools), not
+  the definitions of all its others.
+- AI chats on OpenRouter send about 6k tokens per request instead of 47k: the model starts with the tools of the
+  `Player`, `Files` and `Skills` groups and the names of the others by group, and loads the groups a task needs
+  (`load_tools`), which the chat keeps. A new prompt cuts down what the earlier ones got back (images dropped, long
+  tool results to their first 1,800 characters), once each, so the cached part of the conversation stays the same. A
+  chat stays on one OpenRouter provider (`session_id`), and Anthropic's models cache (`cache_control`). The default
+  model is `anthropic/claude-sonnet-5.5`.
+- **Model and effort per chat:** the button beside Workspaces says what a chat runs on (its own choice, the
+  default, or the model the backend said it ran) and picks the chat's model and effort, or makes them the defaults of
+  the backend's new chats. Defaults per backend in AI → Agents, with a new effort setting each: Claude Code's
+  `--effort`, opencode's model variant, OpenRouter's reasoning effort. Each run's last line names the model and
+  effort.
+- `client_teleport` (and the hub's teleport to a location) failed on servers where a plugin owns `/tp` with its own
+  arguments: it runs vanilla's `/minecraft:tp` now, then `/tp` when the server keeps namespaced commands from players,
+  checks that the player got there (a fall below the target counts), and says when neither moved them. Coordinates are
+  written in full (`-12000000.0000`, not `-1.2E7`, which the command parser refused).
 - With ModernFix, a resource reload after the game's start (F3+T, the options' packs, a server's pack) never ended
   while Foreman timed it (fast reloads or the chat report on): the packs were prepared, then nothing applied and the
   loading screen stayed. To time the steps Foreman switched the reload to vanilla's profiled one, whose listeners

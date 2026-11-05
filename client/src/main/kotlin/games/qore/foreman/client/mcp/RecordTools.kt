@@ -111,6 +111,7 @@ object RecordTools {
                 "max_seconds" to "integer: with start, it stops itself then (default and max ${MAX_TICKS / 20})"),
             enabled = { it.allowCommands },
             acts = { (it["action"].str() ?: "status") != "status" },
+            group = "Testing",
         ) { _, args ->
             val text = when (args["action"].str() ?: "status") {
                 "start" -> start(args["name"].str() ?: throw ToolFailure("Give name"), ((args["max_seconds"].int() ?: (MAX_TICKS / 20)) * 20).coerceIn(20, MAX_TICKS))
@@ -138,6 +139,7 @@ object RecordTools {
                 "limit" to "integer: for entities (default 4)",
             ),
             enabled = { it.allowCommands },
+            group = "Testing",
         ) { _, args -> listOf(ClientMcp.text(args["recording"].str()?.let { replay(it, args) } ?: list())) })
     }
 

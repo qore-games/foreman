@@ -47,6 +47,8 @@ class ClientTool(
     val enabled: (ToolScope) -> Boolean = { true },
     /** Whether a call with these arguments acts on the game (takes the [ClientLock] lease) rather than only looking. */
     val acts: (JsonObject) -> Boolean = { true },
+    /** What it's for (`Player`, `Screens`, `Packets`…), as [games.qore.foreman.api.ForemanTool.group] for the server's: chats on OpenRouter load tools by group. */
+    val group: String,
     val run: (ToolScope, JsonObject) -> List<JsonObject>,
 )
 
@@ -320,7 +322,12 @@ object ClientMcp {
                 "tools/list" -> buildJsonObject {
                     put("tools", buildJsonArray {
                         tools.values.filter { it.enabled(scope) }.forEach { t ->
-                            add(buildJsonObject { put("name", t.name); put("description", t.description); put("inputSchema", t.schema) })
+                            add(buildJsonObject {
+                                put("name", t.name)
+                                put("description", t.description)
+                                put("inputSchema", t.schema)
+                                put("_meta", buildJsonObject { put("group", t.group) })
+                            })
                         }
                     })
                 }

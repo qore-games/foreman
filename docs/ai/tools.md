@@ -15,7 +15,7 @@ Available on any server, to chats and to [outside agents](outside-agents.md).
 | `client_screenshot` | What the player sees, as an image, optionally without the HUD (needs Vision) |
 | `client_run_command` | Runs a command as the player and returns what the server printed (needs Commands) |
 | `client_connect` | Joins a server (by default the last one joined) and waits until the player is in game, or leaves it (needs Commands) |
-| `client_teleport` | Teleports the player (a `/tp` as them) |
+| `client_teleport` | Teleports the player: vanilla's `/minecraft:tp` as them (a plugin's `/tp` takes other arguments), else `/tp` where the server keeps namespaced commands from players; says when neither moved them |
 | `client_look` | Turns the camera to a point, or a yaw and pitch |
 | `client_input` | Holds key bindings across ticks, in steps, as the player holding keys: walking, sprinting, sneaking, a double jump, a dash, holding use or attack (needs Commands) |
 | `client_wander` | Walks the player around like a bot, to random waypoints within a radius of where it starts, on safe ground, for a time; JSON: distance, waypoints reached, times stuck, jumps, final position (needs Commands). See [bots that move](testing.md#bots-that-move) |

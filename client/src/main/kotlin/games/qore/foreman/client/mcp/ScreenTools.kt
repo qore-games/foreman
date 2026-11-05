@@ -61,6 +61,7 @@ object ScreenTools {
                 "texts…) with its index, kind, text, position and size in GUI units, and whether it is inactive or focused.",
             ClientTools.schema(),
             acts = { false },
+            group = "Screens",
         ) { _, _ -> listOf(ClientMcp.text(describeNow())) })
 
         ClientMcp.register(ClientTool(
@@ -72,6 +73,7 @@ object ScreenTools {
                 "(client_chat_log), a dialog opening another opens it locally. Returns the screen's widgets, and a screenshot.",
             ClientTools.schema("dialog" to "object|string: the dialog's JSON (an object, or as a string), or a dialog id",
                 "screenshot" to "boolean: add a screenshot of it (default true)"),
+            group = "Screens",
         ) { scope, args ->
             val dialog = args["dialog"] ?: throw ToolFailure("Give dialog")
             val json = when (dialog) {
@@ -101,6 +103,7 @@ object ScreenTools {
             ClientTools.schema("label" to "string: part of the widget's text (case-insensitive)", "index" to "integer: which match (default 0)",
                 "x" to "number: GUI x", "y" to "number: GUI y", "button" to "integer: 0 left (default), 1 right", "wait_ms" to "integer: default 400"),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val label = args["label"].str()
             if (label != null) Lean.awaitFrame()
@@ -137,6 +140,7 @@ object ScreenTools {
                 "tooltips), and keeps it there until the player moves the real mouse. Then client_screenshot keep_screen shows it.",
             ClientTools.schema("x" to "number: GUI x", "y" to "number: GUI y", "wait_ms" to "integer: default 200"),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val x = args["x"].double() ?: throw ToolFailure("Give x and y")
             val y = args["y"].double() ?: throw ToolFailure("Give x and y")
@@ -169,6 +173,7 @@ object ScreenTools {
                 "button" to "integer: 0 left (default), 1 right", "ms" to "integer: default 500",
             ),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val ms = (args["ms"].int() ?: 500).coerceIn(50, 10_000)
             val steps = (ms / 50).coerceAtLeast(2)
@@ -186,6 +191,7 @@ object ScreenTools {
                 "scrolls up, < 0 down (one notch = 1). client_click by label scrolls its widget into view by itself.",
             ClientTools.schema("amount" to "number: notches, negative = down", "x" to "number", "y" to "number"),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val amount = args["amount"].double() ?: throw ToolFailure("Give amount")
             Lean.awaitFrame()
@@ -202,6 +208,7 @@ object ScreenTools {
             "Types `text` into the focused widget of the open screen (client_click a text field first), then presses Enter if `enter`.",
             ClientTools.schema("text" to "string", "enter" to "boolean: default false", "clear" to "boolean: empty the field first (default false)"),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val text = args["text"].str() ?: ""
             listOf(ClientMcp.text(ClientTools.onClient {
@@ -228,6 +235,7 @@ object ScreenTools {
             ClientTools.schema("key" to "string: a key binding id or escape", "hold_ms" to "integer: hold it down this long (default a tap: one tick)",
                 "wait" to "boolean: with hold_ms, return after the release (default true)", "wait_ms" to "integer: then wait this long (default 400)"),
             enabled = { it.allowCommands },
+            group = "Screens",
         ) { _, args ->
             val key = args["key"].str() ?: throw ToolFailure("Give key")
             val holdMs = args["hold_ms"].int()

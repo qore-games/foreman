@@ -29,6 +29,21 @@ staging. Each chat remembers the server it was last used on (shown next to it wh
 continue it elsewhere the AI is told: the positions, areas and edits earlier in the chat are in the other server's
 world, and its tools now act on this one.
 
+## Model and effort
+
+The button beside **Workspaces** at the top of a chat says what it runs on: `sonnet · high` when the chat chose them,
+`haiku (default)` when it follows the defaults, `default (claude-opus-5-5)` when the backend picks, with the model it
+said it ran. Click it to choose this chat's model (the default, one of the backend's, or any model by name) and its
+effort, or to make them the defaults of new chats on that backend. Each run's last line names them too:
+
+```text
+Done in 1 turn · 6.9k tokens in (1.5k cached) · 4 out · claude-sonnet-5-5, effort high
+```
+
+A chat can change them between prompts and keeps its conversation. The efforts are the backend's: Claude Code's
+`--effort` (`low` to `max`), opencode's model variants (`provider/model#high`: it needs a model), OpenRouter's
+reasoning effort (`low`, `medium`, `high`). The defaults are in the hub's **AI → Agents** ([backends](backends.md)).
+
 ## What a chat may do
 
 - **Folders:** the folders of its [workspaces](workspaces.md) and any folder added to this chat only. The AI reads and

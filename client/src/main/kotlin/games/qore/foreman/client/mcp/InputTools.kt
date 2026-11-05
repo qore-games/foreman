@@ -76,6 +76,7 @@ object InputTools {
                 "false (calls' keys add up; a call without steps releases everything).",
             schema(),
             enabled = { it.allowCommands },
+            group = "Movement",
         ) { _, args ->
             val steps = args["steps"].arr().orEmpty().map { it.obj() ?: throw ToolFailure("Each step is {keys, ms}") }
             listOf(ClientMcp.text(if (steps.isEmpty()) ClientTools.onClient { release("released by client_input") } else input(steps, args["wait"].bool() != false)))

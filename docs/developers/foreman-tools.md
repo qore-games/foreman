@@ -1,7 +1,8 @@
 # ForemanTools
 
 Publish tools the AI can call, next to Foreman's own, with your plugin as their provider. They show up in
-`/foreman tools`, in the client's hub and in every chat on the server.
+`/foreman tools`, in the client's hub and in every chat on the server. Chats that load tools by group (OpenRouter)
+see them as one group named after your plugin: keep its tools few and their descriptions short.
 
 ## Setup
 
