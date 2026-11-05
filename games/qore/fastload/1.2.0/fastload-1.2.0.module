@@ -1,0 +1,80 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "games.qore",
+    "module": "fastload",
+    "version": "1.2.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "files": [
+        {
+          "name": "fastload-1.2.0.jar",
+          "url": "fastload-1.2.0.jar",
+          "size": 16045,
+          "sha512": "379b161361b63a06645308fec6cc8a04aa0cb7f530efcf74118add0add04f0ea135019a7a6fa6ce88a78decd62296d6496f317c6856332045e05c8c973c2c8ca",
+          "sha256": "dd931ac385a1ef99938a12da9e5ac89275629d886daad5d0e8943c0c5051e011",
+          "sha1": "b6eea85921ffeefd12c8050a4b761fb4378d36a2",
+          "md5": "17303a3d523b26470f7d339b728b876f"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "fastload-1.2.0.jar",
+          "url": "fastload-1.2.0.jar",
+          "size": 16045,
+          "sha512": "379b161361b63a06645308fec6cc8a04aa0cb7f530efcf74118add0add04f0ea135019a7a6fa6ce88a78decd62296d6496f317c6856332045e05c8c973c2c8ca",
+          "sha256": "dd931ac385a1ef99938a12da9e5ac89275629d886daad5d0e8943c0c5051e011",
+          "sha1": "b6eea85921ffeefd12c8050a4b761fb4378d36a2",
+          "md5": "17303a3d523b26470f7d339b728b876f"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "fastload-1.2.0-sources.jar",
+          "url": "fastload-1.2.0-sources.jar",
+          "size": 10225,
+          "sha512": "e7a6a171d9dbd7db1c2c7c8308c0e9d40bf8b8f0271f1c20edd50a6926d289e15f88c3ce299059c5efd0b6f923a7d3296f7edd984814d80beef1a1990c4f5128",
+          "sha256": "658cd8bdbb9ddf38cfd6f73661cc7b4e8c1cd07e3d073f667147965828dfb2e4",
+          "sha1": "2b4ec17185947a5cae645085bb3b8b1196901b13",
+          "md5": "65b6dfe1415a36b46f724bd71442ba06"
+        }
+      ]
+    }
+  ]
+}
