@@ -1,5 +1,7 @@
 package games.qore.foreman.client.link
 
+import games.qore.foreman.client.mcp.ClientMcp
+import games.qore.foreman.client.agent.McpClient
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.gizmo.BlockBox
 import games.qore.foreman.client.net.Net
@@ -50,16 +52,20 @@ data class AIChange(val label: String, val by: String = "", val world: String, v
     val received: Long = System.currentTimeMillis()
 }
 
-/** The server's hello. [test]: the player has `foreman.test`, the server's opt-in for the packet options of dupe testing. */
+/**
+ * The server's hello: its MCP address and this player's token (when it runs its MCP server), [relay] (its tools through
+ * the game connection), [test] (the player has `foreman.test`, the server's opt-in for the packet options of dupe
+ * testing), and the [features] it offers.
+ */
 @Serializable
 data class Hello(
-    val mcpUrl: String, val token: String, val world: String = "", val dim: String = "", val version: Int = 1,
-    val test: Boolean = false,
+    val mcpUrl: String? = null, val token: String? = null, val world: String = "", val dim: String = "", val version: Int = 1,
+    val test: Boolean = false, val relay: Boolean = false, val features: List<String> = emptyList(),
 )
 
 /**
- * The `foreman:bridge` channel to the foreman plugin: JSON messages with a `type`. The server says hello (MCP URL and
- * this player's token), pushes areas, points, check issues and AI changes; the client sends its selection and
+ * The `foreman:bridge` channel to the foreman plugin: JSON messages with a `type`. The server says hello (how to reach
+ * its tools: MCP URL and this player's token, or the relay), pushes areas, points, check issues and AI changes; the client sends its selection and
  * which layers it wants. Protocol in the README.
  */
 object Bridge {
@@ -84,20 +90,31 @@ object Bridge {
 
     val connected get() = hello != null
 
-    /** Where the agent reaches the MCP server: the config override, else what the server announced. */
-    val mcpUrl: String? get() = Config.settings.agent.mcpUrlOverride.ifBlank { null } ?: hello?.mcpUrl
-    val token: String? get() = hello?.token
+    /**
+     * The server's tools go through the game connection ([Relay]): it relays, and announced no MCP address or one this
+     * computer doesn't reach (checked when it says hello).
+     */
+    @Volatile
+    var relayed = false
+        private set
+
+    /** Where the agent reaches the server's MCP: the config override, else what the server announced, else the relay. */
+    val mcpUrl: String? get() = override ?: if (relayed) ClientMcp.relayUrl else hello?.mcpUrl
+    val token: String? get() = if (override == null && relayed) ClientMcp.token else hello?.token
+    private val override get() = Config.settings.agent.mcpUrlOverride.ifBlank { null }
 
     /** This server runs Foreman and gives the player `foreman.test`. */
     val testing: Boolean get() = hello?.test == true
 
     fun init() {
+        Relay.init()
         Net.incoming(CHANNEL, { JSON.parseToJsonElement(it.decodeToString()).jsonObject }, ::handle)
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> reset() }
     }
 
     private fun reset() {
         hello = null
+        relayed = false
         world = ""
         areas = emptyList()
         points = emptyList()
@@ -109,8 +126,11 @@ object Bridge {
         try {
             when (message["type"]?.jsonPrimitive?.content) {
                 "hello" -> {
-                    hello = JSON.decodeFromJsonElement<Hello>(message)
-                    world = hello!!.world
+                    val hello = JSON.decodeFromJsonElement<Hello>(message)
+                    this.hello = hello
+                    world = hello.world
+                    relayed = hello.relay && hello.mcpUrl == null
+                    if (hello.relay && hello.mcpUrl != null && hello.token != null) probe(hello.mcpUrl, hello.token)
                     subscribe()
                 }
                 "world" -> world = message["world"]?.jsonPrimitive?.content ?: world
@@ -123,6 +143,14 @@ object Bridge {
             logger.warn("Bad foreman message {}", message, e)
         }
     }
+
+    /** Relays when the server's MCP address doesn't answer from here (a port only its own machine reaches). */
+    private fun probe(url: String, token: String) = Thread({
+        if (runCatching { McpClient(url, token).initialize() }.isFailure && hello?.mcpUrl == url) {
+            relayed = true
+            logger.info("The server's MCP at {} doesn't answer: its tools go through the game connection", url)
+        }
+    }, "foreman-mcp-probe").apply { isDaemon = true; start() }
 
     /** Subscribes to the layers the overlay settings show, unsubscribes from the others. */
     fun subscribe() {

@@ -1,15 +1,46 @@
+# What this server offers. dev: every feature below, for dev and build servers. production: what's safe on a live
+# server, the read-only server tools (diagnostics) for players with foreman.admin through their game connection
+# (relay), and no MCP port. /foreman status lists what's on.
+preset: dev
+# Single features on or off over the preset: uncomment one and set it.
+features:
+  # mcp: true           # The MCP server on mcp.host:mcp.port (the server's token, players' tokens through the mod)
+  # relay: true         # The mod's AI reaches the tools through the player's game connection, no port (audited)
+  # diagnostics: true   # Read-only server tools: the log, plugins and their jars, status, the profiler, listeners
+  # console: true       # server_command (commands as the console or a player) and plugin reloads (PlugMan)
+  # world: true         # World tools that read it (with FastAsyncWorldEdit): context, scans, renders, checks
+  # world-edit: true    # World tools that change it: edits, terrain, buildings, assets, furniture
+  # testing: true       # Dupe and test tools, the mod's network profiles and packet drops (foreman.test)
+  # test-players: true  # Registered test players let through the whitelist, every permission only when elevated
+  # plugin-tools: true  # Tools other plugins publish, and Foreman's tools for other plugins
+  # learning: true      # The AI saving lessons and skills for every later session
+
 mcp:
   # Bind to localhost unless the AI client runs on another machine. The server speaks plain HTTP: beyond this
   # machine, put it behind TLS (a reverse proxy) or a VPN.
   host: 127.0.0.1
+  # When it's taken (another server on this machine), the next free port up to port + 20, else any free one: the log
+  # and mcp.json (this folder) say which. strict-port: true fails instead, for setups that need this very port.
   port: 25599
+  strict-port: false
   # Clients send "Authorization: Bearer <token>". Empty: the token in mcp-token.txt (this folder), made at the first
   # start. Players with foreman.client also get their own through the foreman mod (tokens.yml, /foreman token revoke
   # <player>), accepted besides this one.
   token: ""
   # The URL the foreman mod gives its AI (it runs on the player's computer). Default: http://<host>:<port>/mcp,
-  # with the server's IP when host is 0.0.0.0. Set it when players reach the server through another address.
+  # with the server's IP when host is 0.0.0.0. Set it when players reach the server through another address; {port}
+  # in it is the port the MCP server took.
   public-url: ""
+
+relay:
+  # Tool calls a player may make per minute through their game connection (their calls run one at a time).
+  calls-per-minute: 120
+
+test-players:
+  # Test players count only when they connect from this machine (anyone may take a name on an offline-mode server).
+  local-only: true
+  # What an elevated test player gets besides every registered permission ("*" for plugins that check it as such).
+  grant: ["*"]
 
 # World used when a tool call names none. Empty: the world of the first online player.
 default-world: ""

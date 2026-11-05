@@ -2,9 +2,14 @@ package games.qore.foreman.server
 
 import games.qore.foreman.server.mcp.ToolError
 import games.qore.foreman.server.tools.AssetTools
+import games.qore.foreman.server.tools.ServerTools
+import games.qore.foreman.server.tools.TestPlayerTools
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.WorldEditSelections
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.JoinConfiguration
+import net.kyori.adventure.text.event.HoverEvent
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
@@ -15,14 +20,17 @@ import org.bukkit.entity.Player
  * `/foreman mark <name> [note…]` (WorldEdit selection, or where you stand), `unmark <name>`, `marks`,
  * `undo [count]`, `asset save <name> [tags…]` (WorldEdit selection), `token revoke <player>`, `tools [filter]`, `skills`,
  * `world show|export|import [world]` (the world's profile and areas as YAML in plugins/Foreman/worlds), `status`.
- * All but `token`, `tools`, `skills` and `status` are about the world: they need FastAsyncWorldEdit.
+ * All but `token`, `tools`, `skills` and `status` are about the world: they need FastAsyncWorldEdit and the world feature.
  */
 class ForemanCommand(private val plugin: Foreman) : TabExecutor {
     private val worldCommands = setOf("mark", "unmark", "marks", "undo", "asset", "world")
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.getOrNull(0) in worldCommands && !plugin.worldTools) {
-            Msg.error(sender, Component.text("/foreman ${args[0]} needs FastAsyncWorldEdit: the world tools are off without it"))
+            Msg.error(sender, Component.text(
+                if (plugin.features[Feature.WORLD]) "/foreman ${args[0]} needs FastAsyncWorldEdit: the world tools are off without it"
+                else "/foreman ${args[0]} needs the world tools, off on this server (features.world)",
+            ))
             return true
         }
         try {
@@ -117,13 +125,9 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
                     }
                 }
 
-                "status" -> {
-                    Msg.info(sender, Component.text(
-                        "MCP on http://${plugin.config.getString("mcp.host")}:${plugin.config.getInt("mcp.port")}/mcp, ${plugin.tools.size} tools, " +
-                            if (plugin.worldTools) "${plugin.assets.list().size} assets, ${plugin.worlds.areas.size} areas, ${Edits.recent.size} undoable changes"
-                            else "world tools off (no FastAsyncWorldEdit)"
-                    ))
-                }
+                "status" -> status(sender)
+
+                "testplayer" -> testPlayer(sender, args.drop(1))
 
                 else -> return usage(sender)
             }
@@ -133,24 +137,68 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
         return true
     }
 
+    /** What the server exposes: its features (hover: what each is), the MCP server, the tools published, the world's state. */
+    private fun status(sender: CommandSender) {
+        val features = plugin.features
+        Msg.info(sender, Component.text("Foreman ${plugin.pluginMeta.version}, preset ${features.preset}. Features:"))
+        sender.sendMessage(Component.join(JoinConfiguration.commas(true), Feature.entries.map { f ->
+            Component.text(features.label(f), if (features[f]) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY)
+                .hoverEvent(HoverEvent.showText(Component.text((if (features[f]) "On. " else "Off. ") + f.about)))
+        }))
+        val mcp = plugin.mcp
+        sender.sendMessage(Component.text(
+            if (mcp == null) "MCP: off, no port open and no token: nothing reaches the tools"
+            else "MCP: listening on ${plugin.config.getString("mcp.host", "127.0.0.1")}:${mcp.port} (${mcp.url}), ${plugin.bridge?.tokens?.names()?.size ?: 0} player tokens",
+            NamedTextColor.GRAY,
+        ))
+        sender.sendMessage(Component.text("${plugin.tools.size} tools published (/foreman tools); " +
+            if (plugin.worldTools) "${plugin.assets.list().size} assets, ${plugin.worlds.areas.size} areas, ${Edits.recent.size} undoable changes"
+            else if (features[Feature.WORLD]) "world tools off (no FastAsyncWorldEdit)" else "world tools off", NamedTextColor.GRAY))
+    }
+
+    /** `/foreman testplayer list | add <name> [elevated] | remove | elevate | demote <name>`: changes need foreman.admin. */
+    private fun testPlayer(sender: CommandSender, args: List<String>) {
+        val players = plugin.testPlayers ?: return Msg.error(sender, Component.text("Test players are off on this server (features.test-players)"))
+        val action = args.getOrNull(0) ?: "list"
+        val name = args.getOrNull(1)
+        if (action != "list" && (name == null || !sender.hasPermission(ServerTools.PERMISSION))) {
+            return Msg.error(sender, Component.text(if (name == null) "/foreman testplayer list | add <name> [elevated] | remove | elevate | demote <name>" else "This needs ${ServerTools.PERMISSION}"))
+        }
+        val done = when (action) {
+            "add" -> players.add(listOf(name!!), args.getOrNull(2) == "elevated")
+            "remove" -> players.remove(listOf(name!!))
+            "elevate" -> players.elevate(listOf(name!!), true)
+            "demote" -> players.elevate(listOf(name!!), false)
+            "list" -> emptyList()
+            else -> return Msg.error(sender, Component.text("/foreman testplayer list | add <name> [elevated] | remove | elevate | demote <name>"))
+        }
+        if (action != "list") {
+            if (done.isEmpty()) Msg.error(sender, Component.text("$name isn't a test player")) else Msg.success(sender, Component.text("$action: $name"))
+        }
+        TestPlayerTools.describe(players).lines().forEach { sender.sendMessage(Component.text(it, NamedTextColor.GRAY)) }
+    }
+
     private fun usage(sender: CommandSender): Boolean {
         Msg.info(sender, Component.text(
-            "/foreman mark <name> [note] | unmark <name> | marks | undo [count] | asset save <name> [tags…] | token revoke <player> | tools [filter] | skills | world show|export|import [world] | status"
+            "/foreman mark <name> [note] | unmark <name> | marks | undo [count] | asset save <name> [tags…] | token revoke <player> | tools [filter] | skills | world show|export|import [world] | testplayer … | status"
         ))
         return true
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, label: String, args: Array<out String>): List<String> =
         when (args.size) {
-            1 -> listOf("mark", "unmark", "marks", "undo", "asset", "token", "tools", "skills", "world", "status").filter { it.startsWith(args[0]) }
+            1 -> listOf("mark", "unmark", "marks", "undo", "asset", "token", "tools", "skills", "world", "testplayer", "status").filter { it.startsWith(args[0]) }
             2 -> when (args[0]) {
                 "unmark" -> if (plugin.worldTools) plugin.worlds.areas.map { it.name }.filter { it.startsWith(args[1]) } else emptyList()
                 "asset" -> listOf("save")
                 "token" -> listOf("revoke")
                 "world" -> listOf("show", "export", "import").filter { it.startsWith(args[1]) }
+                "testplayer" -> listOf("list", "add", "remove", "elevate", "demote").filter { it.startsWith(args[1]) }
                 else -> emptyList()
             }
             3 -> when (args[0]) {
+                "testplayer" -> (if (args[1] == "add") Bukkit.getOnlinePlayers().map { it.name } else plugin.testPlayers?.list()?.map { it.name }.orEmpty())
+                    .filter { it.startsWith(args[2], ignoreCase = true) }
                 "token" -> plugin.bridge?.tokens?.names().orEmpty().filter { it.startsWith(args[2], ignoreCase = true) }
                 "world" -> org.bukkit.Bukkit.getWorlds().map { it.name }.filter { it.startsWith(args[2]) }
                 else -> emptyList()

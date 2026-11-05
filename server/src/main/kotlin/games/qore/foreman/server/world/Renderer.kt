@@ -12,6 +12,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.util.EnumMap
 import javax.imageio.ImageIO
+import javax.imageio.stream.MemoryCacheImageOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
@@ -326,5 +327,7 @@ object Renderer {
         g.drawString(text, x, y)
     }
 
-    fun png(image: BufferedImage): ByteArray = ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
+    /** [image] as PNG, encoded in memory (ImageIO caches a stream's image in a temporary file unless told not to). */
+    fun png(image: BufferedImage): ByteArray =
+        ByteArrayOutputStream().also { out -> MemoryCacheImageOutputStream(out).use { ImageIO.write(image, "png", it) } }.toByteArray()
 }

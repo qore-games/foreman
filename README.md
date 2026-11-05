@@ -58,12 +58,13 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
 
 ### With the server plugin
 
-- **Dev-server tools.** Run a command and get everything it printed: replies, log lines, exceptions. Read the server
-  log since the last plugin reload, find plugins running an older jar than the one on disk, reload a plugin through
-  PlugMan, check TPS and memory, profile the server thread by plugin, and list an event's listeners in call order.
+- **Dev-server tools.** Run a command and get everything it printed: replies, log lines, exceptions. Read the server log
+  since the last plugin reload, find plugins running an older jar than the one on disk, reload a plugin through PlugMan
+  and check what it left behind, check TPS and memory, profile the server thread by plugin, list an event's listeners in
+  call order, and record what the server sends every player to find what spends bandwidth.
 - **Your other plugins, understood.** Skills teach the AI the commands of WorldEdit, WorldGuard, MythicMobs,
-  ModelEngine, LuckPerms, PlaceholderAPI, CoreProtect, EssentialsX, Citizens, TAB and Skript, each offered only while
-  its plugin runs and costing one line until it's needed. Add your own as a markdown file, or let the AI save the
+  ModelEngine, LuckPerms, PlaceholderAPI, CoreProtect, EssentialsX, Citizens, TAB, Skript and spark, each offered only
+  while its plugin runs and costing one line until it's needed. Add your own as a markdown file, or let the AI save the
   workflows it worked out.
 - **Dupe testing.** Hunt item duplication before your players do: count every copy of an item on the server, have the AI
   try the dupe tricks against a plugin's menus and shops (same-tick clicks, shift and swap spam, collect, drop races,
@@ -80,7 +81,8 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   commands as you, and read and edit the folders you give it (your plugins' configs and sources).
 - **Outside agents.** Let Claude Code in a terminal use the client through MCP: screenshots, commands, the open screen
   (clicks, typing), entities, items, packets and the HUD inspector. Write the plugin in your editor and let the agent
-  test it end to end in the running game.
+  test it end to end in the running game, or in lean test clients beside it (no window, frames only when a tool needs
+  them).
 
 ![A chat's report after a build: what it made and what the checks found](docs/assets/screenshots/ai-build-chat.png)
 
@@ -109,8 +111,11 @@ Working on Foreman itself: [AGENTS.md](AGENTS.md).
 | **Server** (`foreman-server-1.1.1.jar` in `plugins/`) | Paper 26.2 or 26.3. FastAsyncWorldEdit for the world tools (optional: the rest works without it). |
 
 Players with the `foreman.client` permission (ops by default) are connected to the server's tools when they join.
-The plugin's MCP server listens on `127.0.0.1:25599` by default (see `plugins/Foreman/config.yml`), with the token in
-`plugins/Foreman/mcp-token.txt`.
+The plugin's MCP server listens on `127.0.0.1:25599` by default (see `plugins/Foreman/config.yml`; the next free port
+when it's taken), with the token in `plugins/Foreman/mcp-token.txt`. While it runs, `plugins/Foreman/mcp.json` gives
+both, for scripts and agents. On a live server, set `preset: production` in the config: only the read-only server
+tools, through the players' game connections, and no port
+([Features](https://qore-games.github.io/foreman/server/setup/#features)).
 
 ## Quick start
 

@@ -150,6 +150,36 @@ See [dupe testing](../server/dupe-testing.md) for the dupes worth a test.
 A test can run in your own game, or in clients started for it next to yours: [lean clients](lean-clients.md) draw
 frames only when a tool needs them and open no sound device, so several cost less than one normal client.
 
+## Test players
+
+A server's own players are what a test should behave like: a test client with an op's powers can't tell you whether a
+real player can open that menu or run that command. With the `test-players` [feature](../server/setup.md#features) (on
+in `dev`), names registered as **test players** get in through the whitelist like the players on it, and are plain
+players otherwise. When a step needs more (a command to set the test up, a check only an op can make), `test_players`
+elevates them: every permission the server knows, plus `*` for plugins that check it as such, for as long as it lasts,
+on a permission attachment (nothing is written to `ops.json`); `demote` takes it back, at once. A permission plugin
+that answers from its own data only, ignoring Bukkit's permission attachments, leaves elevated players plain:
+`test_players` says so for each one it affects.
+
+```json
+{"action": "add", "names": ["Tester1", "Tester2"]}
+{"action": "elevate", "names": ["Tester1"]}
+{"action": "demote", "names": ["Tester1"]}
+```
+
+`/foreman testplayer list | add <name> [elevated] | remove | elevate | demote <name>` does the same in game (changes
+need `foreman.admin`). They're kept in `plugins/Foreman/test-players.yml`. A name counts only when it connects from the
+server's own machine: on an offline-mode server anyone may join with any name (`test-players.local-only: false` for
+bots on other machines). A launcher that starts test clients for a server registers them when it starts them, and
+removes them when they stop.
+
+```yaml
+test-players:
+  local-only: true
+  # What an elevated test player gets besides every registered permission.
+  grant: ["*"]
+```
+
 ## For the AI
 
 The `testing` skill tells an AI how to write tests that hold (state kept, absolute positions, summaries checked rather

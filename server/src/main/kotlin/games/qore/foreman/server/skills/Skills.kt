@@ -15,14 +15,19 @@ import java.util.jar.JarFile
  * skill's name and description in its instructions and reads the body ([read_skill]) when its task comes up: a skill
  * costs a line until it's needed, where a tool's definition is sent with every request.
  *
- * [plugin]: the plugin it is about; the skill is offered while that plugin is enabled. [source]: where it comes from.
+ * [plugin]: the plugin it is about; the skill is offered while that plugin is enabled. [command]: a command it is
+ * about, offered while the server has it (what the server itself bundles has no plugin: Paper's spark). [source]: where
+ * it comes from.
  */
-class Skill(val name: String, val description: String, val plugin: String?, val body: String, val source: String) {
-    val active get() = plugin == null || Bukkit.getPluginManager().isPluginEnabled(plugin)
+class Skill(val name: String, val description: String, val plugin: String?, val body: String, val source: String, val command: String? = null) {
+    val active get() = (plugin == null || Bukkit.getPluginManager().isPluginEnabled(plugin)) && (command == null || Bukkit.getCommandMap().getCommand(command) != null)
+
+    /** What it's about, for the AI's lists: its plugin, or its command. */
+    val about get() = plugin ?: command?.let { "/$it" }
 
     companion object {
         /**
-         * A skill file: front matter between `---` lines (`name`, `description`, `plugin`), then the body. [fallback]:
+         * A skill file: front matter between `---` lines (`name`, `description`, `plugin`, `command`), then the body. [fallback]:
          * the name when the front matter has none (the file's). Each front matter line is `key: value`, split at the
          * first colon: a description may hold colons without quotes (people write these by hand).
          */
@@ -39,6 +44,7 @@ class Skill(val name: String, val description: String, val plugin: String?, val 
                 front["plugin"]?.ifEmpty { null },
                 lines.drop(end + 1).joinToString("\n").trim(),
                 source,
+                front["command"]?.removePrefix("/")?.ifEmpty { null },
             )
         }
 
@@ -113,7 +119,7 @@ class Skills(private val plugin: Foreman) {
         if (skills.isEmpty()) return ""
         return "Skills: how to do a kind of task here (a plugin's commands, a workflow). When a request matches one, read it " +
             "with read_skill before starting.\n" + skills.joinToString("\n") { s ->
-            "- ${s.name}" + (s.plugin?.let { " ($it)" } ?: "") + ": " + s.description.take(Skill.MAX_DESCRIPTION).ifEmpty { "(no description)" }
+            "- ${s.name}" + (s.about?.let { " ($it)" } ?: "") + ": " + s.description.take(Skill.MAX_DESCRIPTION).ifEmpty { "(no description)" }
         }
     }
 
@@ -121,7 +127,7 @@ class Skills(private val plugin: Foreman) {
         val path = PluginJars.jar(other) ?: return emptyList()
         val modified = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrDefault(0L)
         jars[other.name]?.let { (at, skills) -> if (at == modified) return skills }
-        val skills = read(path, "foreman/skills/", other.name).map { s -> if (s.plugin == null) Skill(s.name, s.description, other.name, s.body, s.source) else s }
+        val skills = read(path, "foreman/skills/", other.name).map { s -> if (s.plugin == null) Skill(s.name, s.description, other.name, s.body, s.source, s.command) else s }
         jars[other.name] = modified to skills
         return skills
     }

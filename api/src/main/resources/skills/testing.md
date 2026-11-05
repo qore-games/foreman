@@ -42,6 +42,9 @@ A test has `steps`, `cleanup` (run whatever happened), `vars` (defaults, overrid
 - **The server's answer comes later**: `wait_ms` on commands, `until_ms` on checks of what follows.
 - **A death or a disconnect stops the test** and says so (a dead player is respawned for the cleanup). Out of the
   game, `client_connect` rejoins.
+- **Test as a real player.** Test clients registered as test players (`test_players`) are plain players: what fails
+  for them fails for players. When a step needs more (a setup command, an op-only check), `test_players` `elevate`
+  them for those steps and `demote` them after, rather than testing the whole thing with every permission.
 
 ## Seeing more than the output
 

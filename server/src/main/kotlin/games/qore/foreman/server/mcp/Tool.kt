@@ -28,12 +28,15 @@ class Tool(
     ) : this(tool.id, description, schema, modifies, provider, handler)
 }
 
-/** The tools the MCP server offers: Foreman's own and those other plugins publish ([games.qore.foreman.server.api.ForemanTools]). */
-class ToolRegistry {
+/**
+ * The tools the MCP server offers: Foreman's own and those other plugins publish ([games.qore.foreman.server.api.ForemanTools]),
+ * those [allowed] only (the server's features).
+ */
+class ToolRegistry(private val allowed: (Tool) -> Boolean = { true }) {
     private val tools = java.util.concurrent.ConcurrentHashMap<String, Tool>()
 
     fun add(tool: Tool) {
-        tools[tool.name] = tool
+        if (allowed(tool)) tools[tool.name] = tool
     }
 
     fun remove(name: String) = tools.remove(name)

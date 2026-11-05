@@ -3,49 +3,75 @@ package games.qore.foreman.server.mcp
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import games.qore.foreman.server.Secrets
+import java.net.BindException
 import java.net.InetSocketAddress
 import java.net.URI
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.logging.Level
 import java.util.logging.Logger
 
 /**
  * A minimal MCP server over the Streamable HTTP transport: JSON-RPC requests are POSTed to `/mcp` and answered with a
- * single JSON body (no SSE stream, no server-initiated messages). Enough for tools and prompts.
+ * single JSON body (no SSE stream, no server-initiated messages), by the [McpDispatcher] the relay shares.
  */
 class McpServer(
     private val logger: Logger,
     private val host: String,
-    private val port: Int,
+    /** The port asked for. When it's taken: the first free one of the [FALLBACK_PORTS] after it, else any free one. */
+    private val configuredPort: Int,
+    /** Fail when [configuredPort] is taken, rather than listen on another port. */
+    private val strictPort: Boolean,
     /** The server's token. Every request needs it or a player's. */
     private val token: String,
     /** The player a per-player token belongs to (the foreman bridge issues them), or null. */
     private val playerToken: (String) -> Caller?,
-    /** Read at each initialize: they include what the server learned since it started. */
-    private val instructions: () -> String,
-    private val tools: ToolRegistry,
-    /** Read at each request, so edited prompt files apply at once. */
-    private val prompts: () -> List<Prompt>,
-    /** Called after every tool call, from the HTTP thread, with the player whose token made the call (or null). */
-    private val onCall: (Tool, Args, ToolResult, Long, Caller?) -> Unit,
+    private val dispatcher: McpDispatcher,
 ) {
     private val gson = Gson()
     private lateinit var server: HttpServer
     private lateinit var executor: ExecutorService
 
+    /** The port it listens on, once started: [configuredPort], or another one when that was taken. */
+    val port: Int get() = server.address.port
+
+    /** Its address from this machine: `127.0.0.1` when it listens on every interface. */
+    val url: String get() = "http://${localHost()}:$port/mcp"
+
     fun start() {
+        server = bind()
         executor = Executors.newFixedThreadPool(4)
-        server = HttpServer.create(InetSocketAddress(host, port), 0)
         server.createContext("/mcp", ::handle)
         server.executor = executor
         server.start()
-        logger.info("MCP server listening on http://$host:$port/mcp (${tools.size} tools)")
+        logger.info("MCP server listening on http://$host:$port/mcp (${dispatcher.tools.size} tools)")
+    }
+
+    /** An HTTP server on [configuredPort], or, when it's taken and the port isn't strict, on the next free one. */
+    private fun bind(): HttpServer {
+        val taken = try {
+            return HttpServer.create(InetSocketAddress(host, configuredPort), 0)
+        } catch (e: BindException) {
+            if (strictPort) throw BindException("MCP port $configuredPort on $host: ${e.message} (mcp.strict-port is on)")
+            e
+        }
+        for (p in (configuredPort + 1..minOf(configuredPort + FALLBACK_PORTS, 65535)).asSequence() + 0) {
+            val server = try { HttpServer.create(InetSocketAddress(host, p), 0) } catch (_: BindException) { continue }
+            logger.warning(
+                "MCP port $configuredPort on $host is taken (${taken.message}): listening on ${server.address.port} instead. " +
+                    "plugins/Foreman/mcp.json gives the address; mcp.strict-port: true fails instead",
+            )
+            return server
+        }
+        throw taken
+    }
+
+    private fun localHost() = when (host.removeSurrounding("[", "]")) {
+        "", "0.0.0.0", "::" -> "127.0.0.1"
+        else -> if (':' in host && !host.startsWith("[")) "[$host]" else host
     }
 
     fun stop() {
@@ -73,17 +99,17 @@ class McpServer(
                     val body = try {
                         JsonParser.parseString(bytes.decodeToString())
                     } catch (e: Exception) {
-                        return respond(exchange, 400, error(null, -32700, "Parse error"))
+                        return respond(exchange, 400, McpDispatcher.error(null, -32700, "Parse error"))
                     }
                     if (body.isJsonArray && body.asJsonArray.size() > MAX_BATCH) {
-                        return respond(exchange, 400, error(null, -32600, "More than $MAX_BATCH requests in a batch"))
+                        return respond(exchange, 400, McpDispatcher.error(null, -32600, "More than $MAX_BATCH requests in a batch"))
                     }
 
                     val response: JsonElement? = if (body.isJsonArray) {
-                        JsonArray().apply { body.asJsonArray.mapNotNull { dispatch(it.asJsonObject, caller) }.forEach { add(it) } }
+                        JsonArray().apply { body.asJsonArray.mapNotNull { dispatcher.dispatch(it.asJsonObject, caller, "http") }.forEach { add(it) } }
                             .takeIf { it.size() > 0 }
                     } else {
-                        dispatch(body.asJsonObject, caller)
+                        dispatcher.dispatch(body.asJsonObject, caller, "http")
                     }
 
                     // Notifications and responses only: accepted, nothing to answer.
@@ -97,135 +123,6 @@ class McpServer(
                 }
             }
         }
-    }
-
-    private fun dispatch(request: JsonObject, caller: Caller?): JsonObject? {
-        val id = request.get("id")
-        val method = request.get("method")?.asString ?: return null
-        if (id == null || id.isJsonNull) return null
-
-        val params = request.getAsJsonObject("params") ?: JsonObject()
-        return try {
-            val result = when (method) {
-                "initialize" -> initialize(params)
-                "ping" -> JsonObject()
-                "tools/list" -> JsonObject().apply {
-                    add("tools", JsonArray().apply {
-                        tools.all().forEach { tool ->
-                            add(JsonObject().apply {
-                                addProperty("name", tool.name)
-                                addProperty("description", tool.description)
-                                add("inputSchema", tool.schema)
-                                // Who provides it, for the client's tool list.
-                                add("_meta", JsonObject().apply { addProperty("provider", tool.provider); addProperty("modifies", tool.modifies) })
-                            })
-                        }
-                    })
-                }
-
-                "tools/call" -> call(params, caller) ?: return error(id, -32602, "Unknown tool: ${params.get("name")}")
-                "prompts/list" -> JsonObject().apply {
-                    add("prompts", JsonArray().apply {
-                        prompts().forEach { prompt ->
-                            add(JsonObject().apply {
-                                addProperty("name", prompt.name)
-                                addProperty("description", prompt.description)
-                                add("arguments", JsonArray().apply {
-                                    prompt.arguments.forEach { a ->
-                                        add(JsonObject().apply {
-                                            addProperty("name", a.name)
-                                            addProperty("description", a.description)
-                                            addProperty("required", a.required)
-                                        })
-                                    }
-                                })
-                            })
-                        }
-                    })
-                }
-
-                "prompts/get" -> {
-                    val prompt = prompts().firstOrNull { it.name == params.get("name")?.asString }
-                        ?: return error(id, -32602, "Unknown prompt: ${params.get("name")}")
-                    val values = params.getAsJsonObject("arguments")?.entrySet()?.associate { it.key to it.value.asString } ?: emptyMap()
-                    val text = try {
-                        prompt.render(values)
-                    } catch (e: ToolError) {
-                        return error(id, -32602, e.message ?: "Bad arguments")
-                    }
-                    JsonObject().apply {
-                        addProperty("description", prompt.description)
-                        add("messages", JsonArray().apply {
-                            add(JsonObject().apply {
-                                addProperty("role", "user")
-                                add("content", JsonObject().apply {
-                                    addProperty("type", "text")
-                                    addProperty("text", text)
-                                })
-                            })
-                        })
-                    }
-                }
-
-                else -> return error(id, -32601, "Method not found: $method")
-            }
-
-            JsonObject().apply {
-                addProperty("jsonrpc", "2.0")
-                add("id", id)
-                add("result", result)
-            }
-        } catch (e: Exception) {
-            logger.log(Level.WARNING, "MCP request $method failed", e)
-            error(id, -32603, e.message ?: e.javaClass.simpleName)
-        }
-    }
-
-    private fun initialize(params: JsonObject): JsonObject {
-        val requested = params.get("protocolVersion")?.asString
-        return JsonObject().apply {
-            addProperty("protocolVersion", if (requested in PROTOCOL_VERSIONS) requested else PROTOCOL_VERSIONS.last())
-            add("capabilities", JsonObject().apply {
-                add("tools", JsonObject())
-                add("prompts", JsonObject())
-            })
-            add("serverInfo", JsonObject().apply {
-                addProperty("name", "foreman")
-                addProperty("version", "0.1")
-            })
-            addProperty("instructions", instructions())
-        }
-    }
-
-    private fun call(params: JsonObject, caller: Caller?): JsonObject? {
-        val tool = tools[params.get("name")?.asString] ?: return null
-        val args = Args(params.getAsJsonObject("arguments") ?: JsonObject()).also { it.caller = caller }
-
-        val start = System.currentTimeMillis()
-        val result = try {
-            tool.handler(args)
-        } catch (e: ToolError) {
-            ToolResult.error(e.message ?: "Error")
-        } catch (e: Exception) {
-            val cause = generateSequence<Throwable>(e) { it.cause }.last()
-            logger.log(Level.WARNING, "Tool ${tool.name} failed", e)
-            ToolResult.error("${cause.javaClass.simpleName}: ${cause.message}")
-        }
-        onCall(tool, args, result, System.currentTimeMillis() - start, caller)
-
-        return JsonObject().apply {
-            add("content", JsonArray().apply { result.content.forEach { add(it) } })
-            addProperty("isError", result.isError)
-        }
-    }
-
-    private fun error(id: JsonElement?, code: Int, message: String) = JsonObject().apply {
-        addProperty("jsonrpc", "2.0")
-        add("id", id)
-        add("error", JsonObject().apply {
-            addProperty("code", code)
-            addProperty("message", message)
-        })
     }
 
     private fun respond(exchange: HttpExchange, status: Int, body: JsonElement?) {
@@ -247,8 +144,9 @@ class McpServer(
     }
 
     companion object {
-        private val PROTOCOL_VERSIONS = listOf("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
         private const val MAX_BODY = 4 shl 20
         private const val MAX_BATCH = 50
+        /** How many ports after the configured one are tried before any free one. */
+        private const val FALLBACK_PORTS = 20
     }
 }

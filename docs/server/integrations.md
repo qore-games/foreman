@@ -20,6 +20,7 @@ Nothing to configure: install the plugin, and its skill is there the next time t
 | [Citizens](https://citizensnpcs.co) | Create, move, skin and script NPCs from the console, text above them | Skill (`/npc … --id`) |
 | [TAB](https://modrinth.com/plugin/tab-was-taken) | Tab list, name tags, prefixes, header/footer; why a value applies | Skill (`/tab parse`, `/tab group`) |
 | [Skript](https://modrinth.com/plugin/skript) | Write and fix scripts, read their errors on reload | Skill (`/sk reload`) |
+| [spark](https://spark.lucko.me) (bundled with Paper) | TPS, tick durations, CPU, memory pools, GC, slow ticks logged as they happen; profiles and heap summaries saved to files for spark's viewer, uploads only when asked | Skill (`/spark`), offered while the server has the command |
 | [PlugMan / PlugManX](https://modrinth.com/plugin/plugmanx) | Reload a plugin and report how it went | `server_reload_plugin` tool |
 
 ## An example: replacing blocks

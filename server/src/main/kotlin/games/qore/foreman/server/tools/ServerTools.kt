@@ -4,6 +4,7 @@ import games.qore.foreman.api.ForemanTool
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.admin.PlayerChat
 import games.qore.foreman.server.admin.PluginJars
+import games.qore.foreman.server.admin.ReloadCheck
 import games.qore.foreman.server.admin.Sampler
 import games.qore.foreman.server.admin.ServerLog
 import games.qore.foreman.server.mcp.Args
@@ -146,8 +147,9 @@ object ServerTools {
         ForemanTool.SERVER_RELOAD_PLUGIN,
         "Reloads a plugin through PlugMan (from its jar on disk now) and says how it went: what PlugMan replied, the " +
             "warnings and errors logged during the reload and just after (`wait_ms`), the plugin's version before and " +
-            "after, and whether the server now runs the jar on disk. Plugins that depend on it keep its old classes: " +
-            "reload them too, or restart.",
+            "after, whether the server now runs the jar on disk, and a check of the reload: clean, or what the old " +
+            "instance left (listeners, commands, tasks, services, channels, threads, its classes still loaded) and the " +
+            "plugins that depend on it, still on its old classes. Anything but clean: restart before trusting the server.",
         schema {
             string("plugin", "The plugin's name")
             int("wait_ms", "How long to keep collecting log lines after the reload (default 1500, max 60000)", required = false)
@@ -155,29 +157,46 @@ object ServerTools {
         modifies = true,
     ) { args ->
         admin(args)
-        val name = args.string("plugin")
+        val (old, version, r) = plugmanReload(plugin, args.string("plugin"), args.int("wait_ms", 1500).coerceIn(0, 60_000).toLong())
+        val name = old.name
+        try {
+            val now = find(name)
+            val out = StringBuilder("plugman reload $name (${r.ms} ms): ")
+            out.append(when {
+                now == null -> "$name isn't loaded any more"
+                !now.isEnabled -> "$name ${now.pluginMeta.version} is DISABLED (its enable failed: see below)"
+                else -> {
+                    val status = PluginJars.status(now)
+                    "$name " + (if (version != now.pluginMeta.version) "$version → ${now.pluginMeta.version}" else now.pluginMeta.version) + ", enabled" +
+                        (status.text?.let { ", $it" } ?: ", the server runs its jar on disk")
+                }
+            })
+            r.error?.let { out.append("\n").append(it) }
+            if (r.replies.isNotEmpty()) out.append("\nPlugMan replied:\n").append(r.replies.joinToString("\n") { "  $it" })
+            val problems = r.logged.filter { it.level.isMoreSpecificThan(Level.WARN) }
+            out.append(if (problems.isEmpty()) "\nNo warning or error logged." else "\nWarnings and errors logged (${problems.size}):\n" + ServerLog.format(problems, 100, 2000, true).prependIndent("  "))
+            out.append("\nReload check: ").append(ReloadCheck.check(listOf(old to now)).single().text)
+            ToolResult.text(out.toString())
+        } finally {
+            ReloadCheck.busy -= name
+        }
+    }
+
+    /**
+     * Runs `plugman reload` on [name]: the plugin as it was (held weakly, so the check can see its classes go), its
+     * version, and what the command printed. The old instance is held here only, so nothing keeps it once this returns.
+     */
+    private fun plugmanReload(plugin: Foreman, name: String, waitMs: Long): Triple<ReloadCheck.Before, String, Ran> {
         val target = find(name) ?: throw ToolError("No plugin '$name'" + close(name, Bukkit.getPluginManager().plugins.map { it.name }))
         if (target === plugin) throw ToolError("Foreman can't reload itself through its own MCP server (the call would never return): reload it from the console, or restart.")
-        val before = target.pluginMeta.version
-        val r = run("plugman reload ${target.name}", null, args.int("wait_ms", 1500).coerceIn(0, 60_000).toLong(), null)
-        val now = find(target.name)
-        val out = StringBuilder("plugman reload ${target.name} (${r.ms} ms): ")
-        out.append(when {
-            now == null -> "${target.name} isn't loaded any more"
-            !now.isEnabled -> "${target.name} ${now.pluginMeta.version} is DISABLED (its enable failed: see below)"
-            else -> {
-                val status = PluginJars.status(now)
-                "${target.name} " + (if (before != now.pluginMeta.version) "$before → ${now.pluginMeta.version}" else now.pluginMeta.version) + ", enabled" +
-                    (status.text?.let { ", $it" } ?: ", the server runs its jar on disk")
-            }
-        })
-        r.error?.let { out.append("\n").append(it) }
-        if (r.replies.isNotEmpty()) out.append("\nPlugMan replied:\n").append(r.replies.joinToString("\n") { "  $it" })
-        val problems = r.logged.filter { it.level.isMoreSpecificThan(Level.WARN) }
-        out.append(if (problems.isEmpty()) "\nNo warning or error logged." else "\nWarnings and errors logged (${problems.size}):\n" + ServerLog.format(problems, 100, 2000, true).prependIndent("  "))
-        val dependents = Bukkit.getPluginManager().plugins.filter { p -> p.isEnabled && p !== now && (target.name in p.pluginMeta.pluginDependencies || target.name in p.pluginMeta.pluginSoftDependencies) }
-        if (dependents.isNotEmpty()) out.append("\nPlugins that depend on it, still on its old classes: ${dependents.joinToString { it.name }} (reload them too, or restart).")
-        ToolResult.text(out.toString())
+        ReloadCheck.busy += target.name
+        val before = ReloadCheck.Before(target)
+        return try {
+            Triple(before, target.pluginMeta.version, run("plugman reload ${target.name}", null, waitMs, null))
+        } catch (e: Exception) {
+            ReloadCheck.busy -= target.name
+            throw e
+        }
     }
 
     /** With a per-player token: the player needs [PERMISSION]. */

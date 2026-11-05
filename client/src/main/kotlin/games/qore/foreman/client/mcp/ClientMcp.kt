@@ -1,5 +1,6 @@
 package games.qore.foreman.client.mcp
 
+import games.qore.foreman.client.link.Relay
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.lean.Lean
 import games.qore.foreman.client.util.JSON
@@ -114,6 +115,9 @@ object ClientMcp {
 
     val externalUrl get() = "http://127.0.0.1:$port/mcp/external"
 
+    /** The server's tools through the game connection, for chats (with [token]) and outside agents (`/relay/external`). */
+    val relayUrl get() = "http://127.0.0.1:$port/relay"
+
     /** Turns outside access on or off, and writes (or removes) the file that says how to connect. */
     fun setExternal(enabled: Boolean) {
         Config.update {
@@ -161,6 +165,7 @@ object ClientMcp {
             val json = buildJsonObject {
                 put("url", externalUrl)
                 put("token", Config.settings.external.token)
+                put("relay", "$relayUrl/external")
                 put("claude", externalCommand())
                 put("state", state)
                 put("pid", ProcessHandle.current().pid())
@@ -215,7 +220,7 @@ object ClientMcp {
             // MCP clients send no Origin: a web page must not reach the game, even from this machine.
             if (headers["origin"] != null) return respond(socket, 403, null)
             val stream = path.substringBefore('?') == "/stream"
-            val external = stream || path == "/mcp/external"
+            val external = stream || path == "/mcp/external" || path == "/relay/external"
             val expected = if (external) Config.settings.external.token.takeIf { externalEnabled && it.isNotEmpty() } else token
             val sent = headers["authorization"]?.removePrefix("Bearer ")
             if (expected == null || sent == null || !MessageDigest.isEqual(sent.encodeToByteArray(), expected.encodeToByteArray())) {
@@ -226,6 +231,7 @@ object ClientMcp {
             val length = headers["content-length"]?.toIntOrNull() ?: 0
             if (length > MAX_BODY) return respond(socket, 413, null)
             val body = input.readNBytes(length).decodeToString()
+            if (path == "/relay" || path == "/relay/external") return relay(socket, method, body)
             if (!path.startsWith("/mcp/")) return respond(socket, 404, null)
             val sessionId = headers["mcp-session-id"]
             val session = sessionId?.let { sessions[it] }
@@ -253,6 +259,31 @@ object ClientMcp {
             logger.warn("Client MCP request failed", e)
             runCatching { respond(socket, 500, null) }
         }
+    }
+
+    /**
+     * `/relay`: the server's tools through the game connection ([Relay]), for chats (`/relay/external` for outside
+     * agents). Each request goes to the server as it came, its answer comes back as the server wrote it.
+     */
+    private fun relay(socket: Socket, method: String, body: String) {
+        if (method == "DELETE") return respond(socket, 200, null)
+        if (method != "POST") return respond(socket, 405, null, "Allow: POST, DELETE")
+        val request = runCatching { JSON.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return respond(socket, 400, null)
+        // Notifications have nothing to answer, and the server's MCP keeps no session.
+        if (request["id"] == null) return respond(socket, 202, null)
+        val answer = try {
+            // The server refuses some requests before reading them (no foreman.client, too big): their answer has no id.
+            val reply = Relay.call(body)
+            val parsed = if (reply.length > 4096) null else runCatching { JSON.parseToJsonElement(reply) as? JsonObject }.getOrNull()
+            if (parsed != null && parsed["id"].let { it == null || it is kotlinx.serialization.json.JsonNull }) JsonObject(parsed + ("id" to request["id"]!!)).toString() else reply
+        } catch (e: java.io.IOException) {
+            buildJsonObject {
+                put("jsonrpc", "2.0")
+                put("id", request["id"]!!)
+                put("error", buildJsonObject { put("code", -32000); put("message", e.message ?: "Relay failed") })
+            }.toString()
+        }
+        respond(socket, 200, answer)
     }
 
     private fun readLine(input: InputStream): String? {

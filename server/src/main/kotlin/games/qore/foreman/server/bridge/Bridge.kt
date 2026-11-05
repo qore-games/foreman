@@ -3,6 +3,7 @@ package games.qore.foreman.server.bridge
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import games.qore.foreman.server.Feature
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Args
 import games.qore.foreman.server.mcp.Tool
@@ -28,9 +29,11 @@ import java.util.logging.Level
 /**
  * The `foreman:bridge` plugin channel to the foreman client mod, whose AI runs on the builder's computer.
  *
- * S2C: `hello` (MCP URL, the player's token, and `test`: whether they have `foreman.test`), `world`, `areas`, `points` (on subscribe and when they change), `issues` (after each check), `change` (after each modifying tool call). C2S: `selection`, `subscribe` and
- * `unsubscribe` {layers}. Messages are JSON objects with a `type`; the README has the fields. Without the world tools
- * (no FastAsyncWorldEdit) only `hello` is sent: the token, for the server tools.
+ * S2C: `hello` (MCP URL and the player's token with the MCP server, `relay` with the relay, `test`: whether they have
+ * `foreman.test` and testing is on, `features`: the server's), `world`, `areas`, `points` (on subscribe and when they change), `issues` (after each check), `change`
+ * (after each modifying tool call). C2S: `selection`, `subscribe` and `unsubscribe` {layers}. Messages are JSON objects
+ * with a `type`; the README has the fields. Without the world tools only `hello` is sent: the token, for the server
+ * tools. It runs with the MCP server or the relay: how to reach the tools is what it gives.
  */
 class Bridge(private val plugin: Foreman) : Listener {
     companion object {
@@ -48,10 +51,12 @@ class Bridge(private val plugin: Foreman) : Listener {
     private val lastSent = HashMap<String, Any>()
     private var poll: BukkitTask? = null
 
-    val mcpUrl: String by lazy {
-        plugin.config.getString("mcp.public-url").orEmpty().ifBlank {
+    /** The URL the mod gives its AI: `mcp.public-url` (`{port}` the port the MCP server took), else its own address. */
+    val mcpUrl: String get() {
+        val port = plugin.mcp?.port ?: plugin.config.getInt("mcp.port", 25599)
+        return plugin.config.getString("mcp.public-url").orEmpty().replace("{port}", port.toString()).ifBlank {
             val host = plugin.config.getString("mcp.host", "127.0.0.1")!!.let { if (it == "0.0.0.0" || it.isBlank()) Bukkit.getIp().ifBlank { "127.0.0.1" } else it }
-            "http://$host:${plugin.config.getInt("mcp.port", 25599)}/mcp"
+            "http://$host:$port/mcp"
         }
     }
 
@@ -99,10 +104,16 @@ class Bridge(private val plugin: Foreman) : Listener {
         }
         clients[player.uniqueId] = ConcurrentHashMap.newKeySet()
         send(player, message("hello") {
-            addProperty("mcpUrl", mcpUrl)
-            addProperty("token", tokens.issue(player))
+            // Where its AI reaches the tools: the MCP server with the player's token, and/or the relay over this connection.
+            if (plugin.mcp != null) {
+                addProperty("mcpUrl", mcpUrl)
+                addProperty("token", tokens.issue(player))
+            }
+            addProperty("relay", plugin.relay != null)
             // The server's opt-in for the client's packet options of dupe testing (network profiles, inbound drops).
-            addProperty("test", player.hasPermission(TestTools.PERMISSION))
+            addProperty("test", plugin.features[Feature.TESTING] && player.hasPermission(TestTools.PERMISSION))
+            // What the server offers, for the hub.
+            add("features", JsonArray().apply { Feature.entries.filter { plugin.features[it] }.forEach { add(it.key) } })
             addProperty("version", 1)
             addWorld(player.world)
         })

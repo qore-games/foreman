@@ -2,6 +2,7 @@ package games.qore.foreman.server
 
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -21,8 +22,16 @@ object Secrets {
         val path = file.toPath()
         Files.createDirectories(path.parent)
         if (Files.notExists(path)) runCatching { Files.createFile(path, PosixFilePermissions.asFileAttribute(OWNER_ONLY)) }
-        Files.writeString(path, content)
         runCatching { Files.setPosixFilePermissions(path, OWNER_ONLY) }
+        Files.writeString(path, content)
+    }
+
+    /** Appends [content] to [file], created readable by this user only where the system has POSIX permissions. */
+    fun append(file: File, content: String) {
+        val path = file.toPath()
+        Files.createDirectories(path.parent)
+        if (Files.notExists(path)) runCatching { Files.createFile(path, PosixFilePermissions.asFileAttribute(OWNER_ONLY)) }
+        Files.writeString(path, content, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
     }
 
     /** `mcp.token` when set, else the token in [file], made at the first start. */

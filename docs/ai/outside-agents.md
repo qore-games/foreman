@@ -14,7 +14,7 @@ plays the change in the running client (screens, commands, entities, items, pack
 The address and a token are also written to `config/foreman/client-mcp.json` (readable by you only), for other agents:
 
 ```json
-{"url": "http://127.0.0.1:25601/mcp/external", "token": "…", 
+{"url": "http://127.0.0.1:25601/mcp/external", "token": "…", "relay": "http://127.0.0.1:25601/relay/external",
  "claude": "claude mcp add --transport http foreman-client …", "state": "in_game", "pid": 41872, "lean": false,
  "version": "1.1.1+26.3", "started_at": "2026-11-04T18:12:03Z"}
 ```
@@ -27,6 +27,20 @@ game's process, `version` the mod's, `started_at` when its MCP server started (U
 The [server plugin](../server/setup.md#the-connection-file) writes the same kind of file for the server's MCP,
 `plugins/Foreman/mcp.json` in the server's folder (`url`, `token`, `port`, `pid`, `server`, `version`, `started_at`):
 an agent that tests on a dev server reads both, and finds the right server's MCP when several run on one machine.
+
+## The server's tools through your game
+
+On a server with the [relay](../server/setup.md#the-relay) (a live server opens no MCP port), your agent reaches the
+server's tools through the game you're connected with: `relay` in `client-mcp.json`, with the same token, as you (your
+permissions, every call in the server's audit log). Add it beside the client's:
+
+```sh
+claude mcp add --transport http foreman-server http://127.0.0.1:25601/relay/external \
+  --header "Authorization: Bearer <the token of client-mcp.json>"
+```
+
+It answers once the game is on such a server; elsewhere each call says the server doesn't relay. The mod's chats do
+the same by themselves on those servers.
 
 ## Without the hub
 

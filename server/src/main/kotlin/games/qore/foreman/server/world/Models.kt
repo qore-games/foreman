@@ -15,6 +15,7 @@ import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
+import javax.imageio.stream.MemoryCacheImageInputStream
 import kotlin.math.cos
 
 /**
@@ -204,7 +205,7 @@ object Models {
 
     fun texture(id: String): Texture? = textures.computeIfAbsent(if (':' in id) id else "minecraft:$id") { key ->
         Resources.read(Resources.path(key, "textures", ".png"))?.let { bytes ->
-            runCatching { ImageIO.read(bytes.inputStream())?.let { Texture.of(it) } }.getOrNull()
+            runCatching { MemoryCacheImageInputStream(bytes.inputStream()).use { ImageIO.read(it) }?.let { Texture.of(it) } }.getOrNull()
         }
     }
 

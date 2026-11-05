@@ -44,6 +44,8 @@ plugin: WorldGuard
 - **`name`:** lowercase letters, digits and `-`; the file name when it's missing.
 - **`description`:** when to read it. It's what the AI chooses by, so say what it's for and when it applies.
 - **`plugin`** (optional): the skill is offered only while that plugin is enabled.
+- **`command`** (optional): the skill is offered only while the server has that command, for what the server itself
+  bundles (`command: spark`: Paper's spark has no plugin).
 - **The body:** the how. Commands with their exact syntax, the order of steps, what to check, the pitfalls. Short and
   concrete beats long and general.
 

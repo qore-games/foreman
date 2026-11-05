@@ -5,6 +5,49 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ## [Unreleased]
 
+### Server (Paper plugin)
+
+- **Features and a production preset** for the plugin: `preset: dev` (everything, as before) or `preset: production`
+  (only the read-only server tools, for `foreman.admin`; no MCP port, no console tools, world edits, dupe testing,
+  plugins' tools or learning), and `features:` to turn single ones on or off over it: `mcp`, `diagnostics`, `console`,
+  `world`, `world-edit`, `testing`, `plugin-tools`, `learning`. A tool whose feature is off isn't published, whoever
+  registers it; the log says what's on at start, and `/foreman status` lists each feature, whether the MCP server
+  listens and where, and the tools published. The mod gets the server's `features` in `hello`. A warning when the MCP
+  server listens beyond the machine with `console` on.
+- **The relay:** the mod's AI reaches the server's tools through the player's game connection (`foreman:mcp`), for
+  servers that open no MCP port, and behind proxies. For players with `foreman.client`, as themselves; a player's
+  requests run one at a time, `relay.calls-per-minute` tool calls a minute (default 120). The `relay` feature, on in
+  both presets. The mod uses it on a server with no MCP address for the player, or one whose address doesn't answer
+  from their computer (the hub says *through the game*); outside agents through `/relay/external` (`relay` in
+  `client-mcp.json`). The `hello` has the MCP address and token only with the MCP server, and `relay`.
+- `plugins/Foreman/audit.log`: every tool call, a JSON line each (when, `relay` or `http`, the player, the tool, its
+  arguments cut short, the result, the time), readable by the server's user only; relayed calls also log a line.
+- **Test players** (the `test-players` feature, on in `dev`): names registered with `test_players` or
+  `/foreman testplayer` get in through the whitelist and are plain players, to test what a real player can and can't
+  do; elevated on demand, they have every permission (and `*`) on a permission attachment until demoted, nothing
+  written to `ops.json`. Kept in `test-players.yml`; a name counts only from the server's own machine
+  (`test-players.local-only`).
+- `server_packets`: what the server sends its players and gets from them, recorded on its side, every player at
+  once: packets and bytes per player and packet type (before compression and on the wire), bytes per second, and what
+  the packets are about (entities grouped by type, the plugins whose data they carry and what they ride; plugin
+  channels, teams, objectives). Handlers on the players' connections for the recording only.
+- `server_reload_plugin` checks the reload: `clean`, or `restart before trusting it` with what the old instance left
+  (listeners, commands, scheduled tasks, services, plugin channels), threads still running its code, the plugins that
+  depend on it, and whether its old classes were unloaded (up to two full collections). Bukkit's `/help` keeps the
+  commands of a plugin's first instance, and with them its classes: said, and clean (memory only). With the `console`
+  feature, reloads typed in the console or made by `/reload` are checked too, a line in the log each.
+- A `spark` skill for the profiler Paper bundles: the commands whose text the AI reads (`tps`, `health show`, `gc`,
+  `tickmonitor` with the slow ticks read back from the log), and profiles and heap summaries saved to files for
+  spark's viewer, uploading only when the player asks. Skills can be offered by command (`command: spark`), for what
+  the server bundles without a plugin.
+- The plugin's MCP server no longer fails when `mcp.port` is taken (two servers on one machine with the same config):
+  it listens on the next free port up to `port + 20`, else any free one, and says so in the log. `mcp.strict-port:
+  true` fails as before; `{port}` in `mcp.public-url` is the port it took, and the default URL the mod gets follows it.
+- World renders and model previews are made in memory: the image library no longer caches to a temporary file.
+- `plugins/Foreman/mcp.json`, written while the plugin's MCP server runs, for scripts, launchers and agents on the
+  server's machine: `url`, `token`, `port`, `pid`, `server` (its folder's name), `version`, `started_at`. Readable by
+  the server's user only (it holds the server's token). `/foreman status` gives the port it took.
+
 ### Client (Fabric mod, any server)
 
 - With ModernFix, a resource reload after the game's start (F3+T, the options' packs, a server's pack) never ended

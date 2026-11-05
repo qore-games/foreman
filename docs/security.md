@@ -30,6 +30,11 @@ instructions and…"), so:
 
 ## The server
 
+- **On a live server, use `preset: production`** ([Features](server/setup.md#features)): no MCP port, no console
+  tools, no world edits, no dupe testing, no tools from other plugins; only the read-only server tools, for players
+  with `foreman.admin`, through their game connection ([the relay](server/setup.md#the-relay)). `/foreman status`
+  shows what's on.
+- **Every tool call is audited** in `plugins/Foreman/audit.log`: who, which tool, its arguments, through what.
 - **Every MCP request needs a token**, on localhost too: the server's (`mcp.token`, or `mcp-token.txt` that Foreman
   makes) or a player's personal one. Requests from web pages are refused, so a site open in your browser can't reach
   it.
@@ -39,14 +44,16 @@ instructions and…"), so:
   console need `foreman.admin` ([Permissions and tokens](server/permissions.md)).
 - **The MCP server speaks plain HTTP.** It listens on `127.0.0.1` by default. To reach it from other machines, put it
   behind TLS (a reverse proxy) or a VPN, and don't open the port to the internet.
-- `mcp-token.txt` and `tokens.yml` are readable by the server's user only.
+- `mcp-token.txt`, `tokens.yml` and `mcp.json` (the MCP address with the server's token, for scripts and agents on the
+  server's machine) are readable by the server's user only.
 
 ## Your computer
 
 - The mod's tokens and keys (`config/foreman/settings.json`, `client-mcp.json`) are readable by your user only. On
   Windows they get your profile folder's permissions, private by default.
 - The client's MCP server listens on `127.0.0.1` only, refuses web pages, and needs a token: a new one each launch for
-  chats, a saved one for [outside agents](ai/outside-agents.md), which are off until you allow them.
+  chats, a saved one for [outside agents](ai/outside-agents.md), which are off until you allow them (in the hub, or
+  with the game's `-Dforeman.mcp.external=true`).
 - A chat's file tools stay inside its folders, links included.
 
 ## Reporting a vulnerability

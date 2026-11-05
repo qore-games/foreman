@@ -84,6 +84,7 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     TEST_RESTORE("test_restore", "Testing"),
     TEST_PLAYER("test_player", "Testing"),
     SERVER_TRACE("server_trace", "Testing"),
+    TEST_PLAYERS("test_players", "Testing"),
 
     // Server: developing plugins on the server (commands, log, plugin jars, performance).
     SERVER_COMMAND("server_command", "Server"),
@@ -93,8 +94,12 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     SERVER_STATUS("server_status", "Server"),
     SERVER_PROFILE("server_profile", "Server"),
     SERVER_LISTENERS("server_listeners", "Server"),
+    SERVER_PACKETS("server_packets", "Server"),
     SERVER_RELOAD_PLUGIN("server_reload_plugin", "Server", "PlugMan or PlugManX on the server"),
     ;
+
+    /** A world tool: it needs FastAsyncWorldEdit on the server. */
+    val world: Boolean get() = requires == WORLD_EDIT || requires == FURNITURE_PROVIDER
 
     companion object {
         private val byId = entries.associateBy { it.id }

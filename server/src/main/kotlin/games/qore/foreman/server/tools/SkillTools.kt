@@ -21,7 +21,7 @@ object SkillTools {
             if (name == null) {
                 val all = plugin.skills.active()
                 ToolResult.text(if (all.isEmpty()) "No skill on this server." else all.joinToString("\n") { s ->
-                    "- ${s.name} (${s.source}${s.plugin?.let { p -> ", for $p" }.orEmpty()}): ${s.description}"
+                    "- ${s.name} (${s.source}${s.about?.let { p -> ", for $p" }.orEmpty()}): ${s.description}"
                 })
             } else {
                 val skill = plugin.skills.get(name)

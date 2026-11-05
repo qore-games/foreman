@@ -25,10 +25,7 @@ object PlayerChat {
     private val methods = ConcurrentHashMap<Pair<Class<*>, String>, Method>()
 
     fun capture(player: Player, into: MutableList<String>): Capture? = try {
-        val handle = player.javaClass.getMethod("getHandle").invoke(player)
-        val listener = handle.javaClass.getField("connection").get(handle)
-        val connection = listener.javaClass.getField("connection").get(listener)
-        val channel = connection.javaClass.getField("channel").get(connection) as Channel
+        val channel = Channels.of(player) ?: return null
         val name = "foreman_chat_${counter.incrementAndGet()}"
         // Packets written by the server start at the pipeline's tail: the last handler sees them first, still as packets.
         channel.pipeline().addLast(name, object : ChannelOutboundHandlerAdapter() {

@@ -91,7 +91,8 @@ Available where the Foreman plugin runs.
 ### Dev server
 
 `server_command`, `server_log`, `server_log_mark`, `server_plugins`, `server_status`, `server_profile`,
-`server_listeners`, `server_reload_plugin` (with PlugMan or PlugManX). See [Dev-server tools](../server/dev-tools.md).
+`server_listeners`, `server_packets` (what the server sends and receives, every player at once),
+`server_reload_plugin` (with PlugMan or PlugManX). See [Dev-server tools](../server/dev-tools.md).
 
 ### Skills
 
@@ -105,7 +106,8 @@ test fires and who handles them), `test_restore` (save/restore inventories): see
 `test_player` saves and restores players as a test found them (position, game mode, health, hunger, effects,
 experience, inventory; optionally unhurt meanwhile), `server_trace` records the server's view of a player tick by tick,
 with the values plugins add ([your values in server traces](../developers/foreman-tools.md#your-values-in-server-traces)),
-to compare with `client_trace`. Need `foreman.test`.
+to compare with `client_trace`. Need `foreman.test`. `test_players` registers [test players](testing.md#test-players)
+(through the whitelist, plain players until elevated) and elevates or demotes them; it needs `foreman.admin`.
 
 ### Other plugins
 

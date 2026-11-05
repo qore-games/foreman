@@ -277,8 +277,11 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         // Server
         cardTitle(ui, l, y, colW, 78, "Server")
         if (Bridge.connected) {
-            ui.text("Foreman plugin linked", l + 10, y + 26, Theme.OK)
-            ui.text(ui.fit("World ${Bridge.world} · ${Bridge.areas.size} areas · ${Bridge.points.size} points", colW - 20), l + 10, y + 40, Theme.MUTED)
+            ui.text(ui.fit("Foreman plugin linked" + if (Bridge.relayed) " · through the game" else "", colW - 20), l + 10, y + 26, Theme.OK)
+            // A server without the world tools (a production preset): what it offers instead.
+            val features = Bridge.hello?.features.orEmpty()
+            val detail = if (features.isEmpty() || "world" in features) "World ${Bridge.world} · ${Bridge.areas.size} areas · ${Bridge.points.size} points" else "Offers: " + features.joinToString(", ")
+            ui.text(ui.fit(detail, colW - 20), l + 10, y + 40, Theme.MUTED)
         } else {
             ui.text("No Foreman plugin here", l + 10, y + 26, Theme.MUTED)
             ui.paragraph("Packets, the HUD inspector, locations and chats work on any server.", l + 10, y + 40, colW - 20)
