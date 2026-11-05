@@ -16,7 +16,7 @@ The address and a token are also written to `config/foreman/client-mcp.json` (re
 ```json
 {"url": "http://127.0.0.1:25601/mcp/external", "token": "…", "relay": "http://127.0.0.1:25601/relay/external",
  "claude": "claude mcp add --transport http foreman-client …", "state": "in_game", "pid": 41872, "lean": false,
- "version": "1.1.1+26.3", "started_at": "2026-11-04T18:12:03Z"}
+ "version": "1.2.0+26.3", "started_at": "2026-11-04T18:12:03Z"}
 ```
 
 The port stays the same from one launch to the next (`25601`, or another free one when it's taken). `state` says where

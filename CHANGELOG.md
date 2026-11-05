@@ -3,7 +3,7 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
-## [Unreleased]
+## [1.2.0] - 2026-11-05
 
 ### Server (Paper plugin)
 

@@ -9,7 +9,7 @@ Foreman publishes three artifacts. Most plugins need one of the first two:
 | `games.qore:foreman-api` | The location protocol (packets, codecs, builders) | comes with `foreman-paper` | no |
 
 They're in Foreman's Maven repository, `https://qore-games.github.io/foreman/maven/`. The examples use version
-`1.1.1`: the latest is on the [releases page](https://github.com/qore-games/foreman/releases).
+`1.2.0`: the latest is on the [releases page](https://github.com/qore-games/foreman/releases).
 
 ## The server API
 
@@ -26,7 +26,7 @@ They're in Foreman's Maven repository, `https://qore-games.github.io/foreman/mav
 
     dependencies {
         compileOnly("io.papermc.paper:paper-api:26.3.build.+")
-        compileOnly("games.qore:foreman-server-api:1.1.1")
+        compileOnly("games.qore:foreman-server-api:1.2.0")
     }
     ```
 
@@ -41,7 +41,7 @@ They're in Foreman's Maven repository, `https://qore-games.github.io/foreman/mav
 
     dependencies {
         compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
-        compileOnly 'games.qore:foreman-server-api:1.1.1'
+        compileOnly 'games.qore:foreman-server-api:1.2.0'
     }
     ```
 
@@ -63,7 +63,7 @@ They're in Foreman's Maven repository, `https://qore-games.github.io/foreman/mav
         <dependency>
             <groupId>games.qore</groupId>
             <artifactId>foreman-server-api</artifactId>
-            <version>1.1.1</version>
+            <version>1.2.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -189,7 +189,7 @@ Then `/foreman tools` lists them, and every chat on the server can use them. The
 
     dependencies {
         compileOnly("io.papermc.paper:paper-api:26.3.build.+")
-        implementation("games.qore:foreman-paper:1.1.1")
+        implementation("games.qore:foreman-paper:1.2.0")
     }
 
     tasks.shadowJar {
@@ -215,7 +215,7 @@ Then `/foreman tools` lists them, and every chat on the server can use them. The
 
     dependencies {
         compileOnly 'io.papermc.paper:paper-api:26.3.build.+'
-        implementation 'games.qore:foreman-paper:1.1.1'
+        implementation 'games.qore:foreman-paper:1.2.0'
     }
 
     shadowJar {
@@ -232,7 +232,7 @@ Then `/foreman tools` lists them, and every chat on the server can use them. The
         <dependency>
             <groupId>games.qore</groupId>
             <artifactId>foreman-paper</artifactId>
-            <version>1.1.1</version>
+            <version>1.2.0</version>
         </dependency>
     </dependencies>
 

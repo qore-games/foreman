@@ -14,6 +14,7 @@ Requirements: JDK 25.
 | `server-api` | `games.qore:foreman-server-api` | What other plugins compile against (`ForemanTools`, `ForemanWorlds`, `FurnitureProvider`) |
 | `paper` | `games.qore:foreman-paper` | The location API's Paper side, shaded into your plugin |
 | `api` | `games.qore:foreman-api` | The location protocol, and Foreman's tool names shared by the client and the server |
+| `fastload` | `games.qore:fastload` | The fast reload algorithms and their claims, plain Java for other mods and launchers to bundle ([API](https://github.com/qore-games/foreman/blob/main/fastload/API.md)) |
 
 `./gradlew :client:26.3:runClient` starts a development client (`:client:26.2:runClient` on 26.2). Each Minecraft
 version is a project in `client/versions/` that builds the shared sources (`client/src`) against it, with what

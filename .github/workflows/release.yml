@@ -28,7 +28,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - run: ./gradlew build -x test
-      - run: ./gradlew :api:publishAllPublicationsToReleaseRepository :paper:publishAllPublicationsToReleaseRepository :server-api:publishAllPublicationsToReleaseRepository
+      - run: ./gradlew :api:publishAllPublicationsToReleaseRepository :fastload:publishAllPublicationsToReleaseRepository :paper:publishAllPublicationsToReleaseRepository :server-api:publishAllPublicationsToReleaseRepository
 
       - name: Add the artifacts to the maven-repo branch
         run: |

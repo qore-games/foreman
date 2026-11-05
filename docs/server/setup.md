@@ -1,6 +1,6 @@
 # Setup and configuration
 
-1. Put `foreman-server-1.1.1.jar` in `plugins/` (with FastAsyncWorldEdit for the world tools) and start the server.
+1. Put `foreman-server-1.2.0.jar` in `plugins/` (with FastAsyncWorldEdit for the world tools) and start the server.
    The log shows the MCP address, `http://127.0.0.1:25599/mcp` by default, and
    [`plugins/Foreman/mcp.json`](#the-connection-file) gives it with the token.
 2. Join with the client mod and press ++y++, or connect another MCP client with the token Foreman made in
@@ -163,7 +163,7 @@ machine that look for the server: where it listens, its token, and what tells it
   "port": 25600,
   "pid": 41872,
   "server": "survival-test",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "started_at": "2026-11-04T18:12:03Z"
 }
 ```

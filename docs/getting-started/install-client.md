@@ -1,7 +1,7 @@
 # Install the client
 
-Put the jar for your Minecraft version in your instance's `mods/` folder (`foreman-1.1.1+26.3.jar` for 26.3,
-`foreman-1.1.1+26.2.jar` for 26.2), with:
+Put the jar for your Minecraft version in your instance's `mods/` folder (`foreman-1.2.0+26.3.jar` for 26.3,
+`foreman-1.2.0+26.2.jar` for 26.2), with:
 
 - Fabric Loader 0.19.3 or later
 - [Fabric API](https://modrinth.com/mod/fabric-api) 0.160.5 or later on 26.3, 0.152.2 or later on 26.2
