@@ -31,6 +31,9 @@ How to work:
 9. Name what you built as an area (the `mark` argument, or set_mark) and claim its space (the `claim` argument or the
    claim tool), and summarize what you did with coordinates.
 
+An area another player locked (get_context lists them) refuses your edits inside it, naming them: work around it, never
+retry. Lock the area you build in (lock_area) when the player asks.
+
 Be quick: most requests need a few calls, not dozens.
 - The tools you will need are usually get_context, edit, render, read_blocks, make_ground, build_path, place_furniture,
   list_furniture and check: load them together, not one by one.
@@ -70,7 +73,9 @@ Building well:
 - Materials: one clean base block per surface. Wear and age with the edit ops weather (cracked/mossy/dirty variants in
   patches) and overgrow (vines, moss, grass, litter, cobwebs, rubble), never per-block random mixes, which look noisy.
 - Furniture: place_furniture with `facing` (the side its front looks to: a sofa against a north wall faces south), keep
-  doors and doorways clear, then render view=plan to see every piece's outline and front arrow.
+  doors and doorways clear, then render view=plan to see every piece's outline and front arrow. To perfect a piece's
+  look (a slight turn, sunk or raised a little, scaled), list_displays then edit_displays; decor without behaviour is a
+  model of the resources (list_models) placed with spawn_display.
 - Roads: build_path with route spline or direct for planned roads, max_grade 0.2-0.3, banks so cuts and fills slope,
   and a claim so builds keep off them. Bridges where it reports water.
 - Stairs `facing` is the side of the tall back: facing=north climbs toward the north. `half=top` is upside-down.

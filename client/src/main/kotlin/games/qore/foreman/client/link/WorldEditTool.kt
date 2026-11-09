@@ -1,15 +1,20 @@
 package games.qore.foreman.client.link
 
+import com.mojang.blaze3d.platform.InputConstants
+import games.qore.foreman.client.editor.EditorKey
+import games.qore.foreman.client.editor.EditorTool
+import games.qore.foreman.client.editor.Hint
+import games.qore.foreman.client.editor.Note
+import games.qore.foreman.client.editor.Shown
+import games.qore.foreman.client.editor.ToolStatus
 import games.qore.foreman.client.gizmo.BlockBox
 import games.qore.foreman.client.gizmo.BoxGizmo
 import games.qore.foreman.client.input.MouseButton
 import games.qore.foreman.client.input.Ray
-import games.qore.foreman.client.input.Tool
 import games.qore.foreman.client.render.OverlayDraw
-import net.minecraft.client.Minecraft
+import games.qore.foreman.client.ui.HubScreen
+import games.qore.foreman.client.ui.Screens
 import net.minecraft.core.BlockPos
-import net.minecraft.world.level.ClipContext
-import net.minecraft.world.phys.HitResult
 import kotlin.math.abs
 
 /**
@@ -18,8 +23,18 @@ import kotlin.math.abs
  * gizmo's arrows to move it (`//shift`) and its knobs to resize it (selected again from scratch, stretched). Shapes
  * around a center grow on both sides. What the gizmo shows stays until WorldEdit has answered.
  */
-object WorldEditTool : Tool {
+object WorldEditTool : EditorTool {
     override val title = "WorldEdit selection"
+    override val id = "worldedit"
+
+    override fun keys() = listOf(
+        EditorKey(InputConstants.KEY_N, "The hub's Selection page") { Screens.open(HubScreen(HubScreen.Section.SELECTION)) },
+    )
+
+    /** Not while WorldEdit CUI (or WorldEdit) is installed: it owns the selection. */
+    override fun available() = WorldEditSelection.available
+
+    override fun snapNote() = "The selection: whole blocks"
 
     /** The shape as dragged, shown until WorldEdit sends the result. */
     private var preview: WeShape? = null
@@ -57,12 +72,7 @@ object WorldEditTool : Tool {
     }
 
     /** The block under the crosshair, however far: a selection is often bigger than the player's reach. */
-    private fun target(ray: Ray): BlockPos? {
-        val minecraft = Minecraft.getInstance()
-        val level = minecraft.level ?: return null
-        val hit = level.clip(ClipContext(ray.origin, ray.at(REACH), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, minecraft.player ?: return null))
-        return hit.blockPos.takeIf { hit.type == HitResult.Type.BLOCK }
-    }
+    private fun target(ray: Ray): BlockPos? = ray.block(REACH)?.blockPos
 
     private const val REACH = 256.0
 
@@ -93,12 +103,22 @@ object WorldEditTool : Tool {
         gizmo.draw(draw)
     }
 
-    override fun hud(): List<String> = when {
-        !WorldEditSelection.available -> listOf("§7WorldEdit CUI is installed: it draws the selection")
-        else -> listOfNotNull(
-            WorldEditSelection.shape()?.let { "§f${it.label}" } ?: "§7No selection from WorldEdit yet",
-            "§7Left / right click: //pos1 / //pos2",
-            if (WorldEditSelection.shape() != null) "§7Drag a knob to resize, an arrow to move" else null,
+    override fun status(): ToolStatus {
+        if (!WorldEditSelection.available) return ToolStatus(notes = listOf(Note("WorldEdit CUI is installed: it draws the selection")))
+        val shape = WorldEditSelection.shape()
+        return ToolStatus(
+            selected = shape?.let { Shown("WorldEdit selection", it.label) },
+            empty = "No selection from WorldEdit yet: click two blocks",
+            hints = when {
+                gizmo.dragging -> emptyList()
+                gizmo.hovered != null -> listOf(Hint(ToolStatus.DRAG, if (gizmo.hovered!!.face < 0) "//shift it" else "move this face"))
+                else -> listOfNotNull(
+                    Hint(ToolStatus.LEFT, "a block: //pos1"),
+                    Hint(ToolStatus.RIGHT, "a block: //pos2"),
+                    if (shape != null) Hint(ToolStatus.DRAG, "a knob resizes it, an arrow moves it") else null,
+                )
+            },
+            notes = if (WorldEditSelection.busy) listOf(Note("Waiting for WorldEdit…", Note.Tone.BUSY)) else emptyList(),
         )
     }
 }

@@ -1,14 +1,19 @@
 package games.qore.foreman.client.input
 
+import games.qore.foreman.client.editor.EditorMode
+import games.qore.foreman.client.editor.EditorTool
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.client.render.Overlays
 import net.minecraft.client.Minecraft
 
 enum class MouseButton { LEFT, RIGHT }
 
+/** The dimension the player is in (`minecraft:overworld`), as the tools tell their boxes apart; null out of a world. */
+fun playerDimension(): String? = Minecraft.getInstance().level?.dimension()?.identifier()?.toString()
+
 /**
  * An in-world tool driven by the crosshair (location editor, box selection). While a tool is active it receives the
- * attack and use clicks and the scroll wheel instead of the game.
+ * attack and use clicks and the scroll wheel instead of the game; an [EditorTool] active is editor mode on.
  */
 interface Tool {
     val title: String
@@ -26,8 +31,11 @@ interface Tool {
 
     fun draw(draw: OverlayDraw)
 
-    /** Lines shown under the tool's title in the HUD. */
-    fun hud(): List<String> = emptyList()
+    /** Esc pressed in game while active; true when used (else editor mode ends). */
+    fun escape(): Boolean = false
+
+    /** Called when it becomes the active tool. */
+    fun activated() {}
 
     fun deactivated() {}
 }
@@ -39,15 +47,24 @@ object Tools {
 
     private val held = mutableSetOf<MouseButton>()
 
+    /** Turns [tool] on (another one off), or off when it is on; true when it is on now. */
     fun toggle(tool: Tool): Boolean {
         if (active === tool) {
             deactivate()
             return false
         }
+        activate(tool)
+        return true
+    }
+
+    /** Makes [tool] the active one (the one before is turned off): for an [EditorTool], editor mode on it. */
+    fun activate(tool: Tool) {
+        if (active === tool) return
         active?.deactivated()
         active = tool
         held.clear()
-        return true
+        tool.activated()
+        if (tool is EditorTool) EditorMode.used(tool)
     }
 
     fun deactivate() {

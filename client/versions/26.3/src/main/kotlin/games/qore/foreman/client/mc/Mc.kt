@@ -2,7 +2,10 @@ package games.qore.foreman.client.mc
 
 import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.mc.mixin.GameRendererAccessor
+import games.qore.foreman.client.mc.mixin.ItemLayerQuadsAccessor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.item.ItemStackRenderState
+import net.minecraft.client.resources.model.geometry.BakedQuad
 import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket
 import net.minecraft.resources.Identifier
 
@@ -38,4 +41,7 @@ object Mc {
 
     /** The post effect ids the loaded resource packs declare. On the client thread. */
     fun availablePostEffects(): List<Identifier> = Minecraft.getInstance().shaderManager.availablePostEffects.toList()
+
+    /** The quads a layer of an item draws, in its own space (before the layer's transform). */
+    fun itemQuads(layer: ItemStackRenderState.LayerRenderState): List<BakedQuad> = (layer as ItemLayerQuadsAccessor).`foreman$quads`().all()
 }

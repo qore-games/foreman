@@ -245,6 +245,9 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
     /** While true (a pop-over is open) the screen under the overlay is drawn without hover and widgets get no click. */
     protected open val modal: Boolean get() = false
 
+    /** What covers the game behind the screen; 0 leaves it in view (a panel beside the world). */
+    protected open val scrim: Int get() = Theme.SCRIM
+
     /** Forgets a scroll area's position (another list shown in it). */
     protected fun resetScroll(id: String) {
         scrolls.remove(id)
@@ -257,7 +260,7 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
         drawnScrolls.clear()
         graphics.pose().pushMatrix()
         graphics.pose().scale(zoom, zoom)
-        graphics.fill(0, 0, width, height, Theme.SCRIM)
+        if (scrim != 0) graphics.fill(0, 0, width, height, scrim)
         val modal = modal
         draw(Ui(graphics, font, if (modal) -1 else mouseX, if (modal) -1 else mouseY, hits, scrolls, drawnScrolls, held))
         super.extractRenderState(graphics, if (modal) -1 else mouseX, if (modal) -1 else mouseY, a)

@@ -63,6 +63,7 @@ bukkit {
         register("foreman.admin") { description = "The dev-server tools (commands as the console, logs, reloads) with a personal token" }
         register("foreman.test") { description = "The testing tools: item ledger, inventory watch and restore, players kept and traced, and the mod's network profiles and packet drops" }
         register("foreman.watch") { description = "A chat line for each change an AI makes to the world" }
+        register("foreman.lock.bypass") { description = "Editing inside areas other players locked (lock_area), with Foreman and by hand" }
     }
 }
 

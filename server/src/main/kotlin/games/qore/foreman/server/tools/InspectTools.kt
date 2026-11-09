@@ -7,15 +7,18 @@ import com.sk89q.worldedit.math.BlockVector3
 import games.qore.foreman.api.ForemanTool
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Args
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.SchemaBuilder
 import games.qore.foreman.server.mcp.Tool
 import games.qore.foreman.server.mcp.ToolError
 import games.qore.foreman.server.mcp.ToolResult
 import games.qore.foreman.server.mcp.schema
+import games.qore.foreman.server.world.Area
 import games.qore.foreman.server.world.Blocks
 import games.qore.foreman.server.world.Box
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.Furniture
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.Renderer
 import games.qore.foreman.server.world.Sync
 import org.bukkit.Bukkit
@@ -35,10 +38,10 @@ object InspectTools {
             ForemanTool.GET_CONTEXT,
             "Start here. Online players (position, facing, the block they look at, their WorldEdit and foreman selections), " +
                 "the building profile of their worlds (theme and rules to follow there) and the zones they stand in, named " +
-                "areas, style guides, asset and furniture counts, limits and the recent AI changes. When the user says " +
+                "areas, style guides, asset and furniture counts, limits and your recent changes. When the user says " +
                 "\"here\", \"this house\" or \"where I look\", resolve it with this.",
             schema {},
-        ) { context(plugin) },
+        ) { args -> context(plugin, args.caller ?: Caller.CONSOLE) },
 
         Tool(
             ForemanTool.READ_STYLE_GUIDE,
@@ -129,13 +132,20 @@ object InspectTools {
             ForemanTool.SET_MARK,
             "Names a place for later (yours and the players'): an area, a box (from + to) or a point (from only). Use it " +
                 "to remember what you built (\"town_hall\", \"east_gate\"). theme makes it a zone with its own building " +
-                "rules (on top of the world's profile). delete=true removes the area. Areas are kept in the world.",
+                "rules (on top of the world's profile). tags label it; the tag `asset` makes it an asset of the library " +
+                "(list_assets, paste_asset), its note the description. A tag that names a plugin's area type (`ns:name`, " +
+                "layout_types) makes the area of that type: its `data` holds the type's fields (merged key by key, null " +
+                "removes one; replace_data replaces it), refused when it doesn't fit. delete=true removes the area. Areas " +
+                "are kept in the world.",
             schema {
                 string("name", "Area name")
-                vec("from", "Point, or a corner of the box (not needed to only change the theme)", required = false)
+                vec("from", "Point, or a corner of the box (not needed to only change the theme or tags)", required = false)
                 vec("to", "Opposite corner of the box", required = false)
                 string("note", "What it is", required = false)
                 string("theme", "Zone rules: palette, era, what to build there (empty: an ordinary area again)", required = false)
+                strings("tags", "Its tags, replacing the ones it has (lowercase a-z, 0-9, _, -, or an area type ns:name; [] removes them)", required = false)
+                prop("data", SchemaBuilder.type("object"), "Field values of its area types, merged into its data (null removes one)", required = false)
+                bool("replace_data", "`data` replaces the area's data instead of merging into it", required = false)
                 bool("delete", "Remove the area", required = false)
                 string("world", "World name", required = false)
             },
@@ -145,17 +155,26 @@ object InspectTools {
             if (args.bool("delete", false)) {
                 return@Tool ToolResult.text(if (plugin.worlds.remove(name, world)) "Removed area $name" else "No area $name")
             }
+            val tags = if (args.has("tags")) Area.tags(args.strings("tags")) else null
+            val layout = plugin.worlds.layout
+            val old = plugin.worlds.area(name, world)
+            val data = if (args.has("data")) layout.merge(old?.data ?: com.google.gson.JsonObject(), args.obj("data"), args.bool("replace_data", false)) else null
+            val types = layout.areaTypes(old?.kind, tags ?: old?.tags.orEmpty())
+            if (data != null || types != layout.areaTypes(old?.kind, old?.tags.orEmpty())) layout.require("Area $name", types, data ?: old?.data ?: com.google.gson.JsonObject())
             if (args.has("from")) {
                 val from = args.vec("from")
                 plugin.worlds.mark(name, world, Box.of(from, args.vec("to", from)!!), args.string("note", "")!!)
             }
             if (args.has("theme")) plugin.worlds.theme(name, world, args.string("theme"))
+            if (tags != null) plugin.worlds.tag(name, world, tags)
+            if (data != null) plugin.worlds.data(name, world, data)
             val area = plugin.worlds.area(name, world) ?: throw ToolError("No area $name: give from")
-            ToolResult.text("Saved ${area.describe()}" + if (area.theme.isNotEmpty()) "\nZone theme: ${area.theme}" else "")
+            ToolResult.text("Saved ${area.describe()}" + (if (area.theme.isNotEmpty()) "\nZone theme: ${area.theme}" else "") +
+                (tags?.let { layout.unknown(games.qore.foreman.server.api.LayoutType.Target.AREA, it) }?.let { "\n$it" } ?: ""))
         },
     )
 
-    private fun context(plugin: Foreman): ToolResult = Sync.main {
+    private fun context(plugin: Foreman, caller: Caller): ToolResult = Sync.main {
         val out = StringBuilder()
         out.appendLine("Default world: ${plugin.world(null).name}")
 
@@ -196,6 +215,10 @@ object InspectTools {
         if (areas.isEmpty()) out.appendLine("  (none)")
         if (areas.size <= 60) areas.forEach { out.appendLine("  ${it.describe()}") }
         else areas.groupBy { it.world }.forEach { (w, list) -> out.appendLine("  $w: " + list.joinToString(", ") { it.name + (it.kind?.let { k -> " ($k)" } ?: "") } + " — claim action=list for boxes") }
+        areas.filter { it.lock != null }.takeIf { it.isNotEmpty() }?.let { locked ->
+            out.appendLine("Locked areas (only their holder's Foreman edits go in" + (if (Locks.passes(caller)) "; you pass every lock" else "") + "): " +
+                locked.joinToString(", ") { "${it.name} in ${it.world} by ${it.lock!!.name}" + if (it.lock.uuid == caller.id) " (you)" else "" })
+        }
 
         val styles = plugin.stylesFolder.listFiles { f -> f.extension == "md" }?.map { it.nameWithoutExtension }?.sorted().orEmpty()
         out.appendLine("\nStyle guides: ${styles.ifEmpty { listOf("(none)") }.joinToString(", ")}")
@@ -207,11 +230,13 @@ object InspectTools {
         val limits = plugin.limits
         out.appendLine("\nLimits: ${limits.maxEditBlocks} blocks per edit, ${limits.maxReadBlocks} per read_blocks, ${limits.maxRenderBlocks} per render")
 
-        val recent = Edits.recent.take(8)
-        if (recent.isNotEmpty()) {
-            out.appendLine("\nRecent AI changes (newest first, undo pops them in this order):")
-            recent.forEach { out.appendLine("  ${it.label} (${it.blocks} blocks)") }
+        val own = Edits.of(caller)
+        if (own.isNotEmpty()) {
+            out.appendLine("\nYour recent changes (newest first, undo takes them back in this order):")
+            own.take(8).forEach { out.appendLine("  ${it.label} (${it.blocks} blocks)") }
         }
+        val others = Edits.recent.size - own.size
+        if (others > 0) out.appendLine("And $others changes by others (undo leaves them alone)")
         ToolResult.text(out.toString())
     }
 

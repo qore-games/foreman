@@ -72,7 +72,7 @@ object LocationCommands {
             .then(categoryArg(greedy = true).does { toggleCategory(it.string("source"), it.string("category")) })))
         .then(literal("editor").does {
             val on = Tools.toggle(LocationEditor)
-            Chat.success("Location editor ${if (on) "on: left click to select, drag the arrows, right click to place on a block" else "off"}")
+            Chat.success("Location editor ${if (on) "on (editor mode): left click to select, drag the arrows, right click to place on a block" else "off"}")
         })
         .then(literal("gizmo").does {
             LocationEditor.gizmoEnabled = !LocationEditor.gizmoEnabled
@@ -105,11 +105,11 @@ object LocationCommands {
     private fun help() {
         Chat.title("Location debugger")
         listOf(
-            "/locations settings" to "sources and categories (key L)",
+            "/locations settings" to "sources and categories (the hub's Locations page)",
             "/locations add <source> <category> [k=v…]" to "ask the server to add one here",
             "/locations list [source]" to "", "/locations toggle <source> [category]" to "show / hide",
             "/locations clear | status" to "",
-            "/locations editor" to "select, drag, place locations", "/locations gizmo" to "show / hide the arrows",
+            "/locations editor" to "editor mode's location editor: select, drag, place", "/locations gizmo" to "show / hide the arrows",
             "/locations relocate [x y z]" to "move the selection (default: your block)",
             "/locations rename <name> | source <s> | category <c>" to "", "/locations delete" to "",
             "/local …" to "local location sets",

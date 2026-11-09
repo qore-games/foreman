@@ -29,9 +29,16 @@ object Resources {
 
         fun read(path: String): ByteArray? = if (zip != null) zip.getEntry(path)?.let { e -> zip.getInputStream(e).use { it.readBytes() } }
         else File(file, path).takeIf { it.isFile }?.readBytes()
+
+        /** The paths of its files under [prefix], `/`-separated. */
+        fun list(prefix: String): Sequence<String> =
+            if (zip != null) zip.entries().asSequence().filter { !it.isDirectory && it.name.startsWith(prefix) }.map { it.name }
+            else File(file, prefix).walk().filter { it.isFile }.map { it.relativeTo(file).invariantSeparatorsPath }
     }
 
     private var sources: List<Source> = emptyList()
+    /** The vanilla client jar among the sources. */
+    private var vanilla: File? = null
     private var problem: String? = null
     private val listeners = mutableListOf<() -> Unit>()
 
@@ -41,7 +48,8 @@ object Resources {
     /** The source files, in priority order (last wins). */
     private fun files(plugin: Foreman): List<File> {
         val out = ArrayList<File>()
-        clientJar(plugin)?.let { out += it }
+        vanilla = clientJar(plugin)
+        vanilla?.let { out += it }
         val packs = plugin.config.getStringList("resources.packs")
         packs.forEach { p -> File(p).let { if (it.isAbsolute) it else File(plugin.server.worldContainer, p) }.takeIf { it.exists() }?.let { out += it } }
         return out
@@ -98,6 +106,21 @@ object Resources {
         ensure()
         for (i in sources.indices.reversed()) sources[i].read(path)?.let { return it }
         return null
+    }
+
+    /**
+     * The files whose path matches [pattern] in every source (searched under [prefix]), each with whether a resource pack
+     * has it (false: the vanilla client jar only).
+     */
+    @Synchronized
+    fun list(prefix: String, pattern: Regex): Map<String, Boolean> {
+        ensure()
+        val out = HashMap<String, Boolean>()
+        for (source in sources) {
+            val pack = source.file != vanilla
+            source.list(prefix).filter { pattern.matches(it) }.forEach { path -> if (pack || path !in out) out[path] = pack }
+        }
+        return out
     }
 
     fun json(path: String): JsonObject? = read(path)?.let { runCatching { JsonParser.parseString(it.decodeToString()).asJsonObject }.getOrNull() }
@@ -179,10 +202,35 @@ object Models {
     private val textures = ConcurrentHashMap<String, Texture?>()
     private val blocks = ConcurrentHashMap<String, Baked>()
     private val items = ConcurrentHashMap<String, ItemModel?>()
+    @Volatile private var itemIds: Map<String, Boolean>? = null
+    private val ITEM_DEFINITION = Regex("assets/([^/]+)/items/(.+)\\.json")
 
     init {
-        Resources.onReload { models.clear(); textures.clear(); blocks.clear(); items.clear() }
+        Resources.onReload { models.clear(); textures.clear(); blocks.clear(); items.clear(); itemIds = null }
     }
+
+    /**
+     * The item model ids of the sources (`assets/<ns>/items/<path>.json` → `<ns>:<path>`, what an item's `item_model`
+     * names), sorted, each with whether a resource pack defines it (false: vanilla only). Reads the sources once.
+     */
+    fun itemIds(): Map<String, Boolean> {
+        Resources.ensure()
+        itemIds?.let { return it }
+        val ids = Resources.list("assets/", ITEM_DEFINITION).entries.associate { (path, pack) ->
+            ITEM_DEFINITION.matchEntire(path)!!.destructured.let { (ns, id) -> "$ns:$id" } to pack
+        }.toSortedMap()
+        itemIds = ids
+        return ids
+    }
+
+    /** [itemIds] when they were read already, else null (and they are read in the background): for tab completion. */
+    fun itemIdsIfRead(): Map<String, Boolean>? = itemIds ?: null.also {
+        if (reading.compareAndSet(false, true)) org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(Foreman.instance, Runnable {
+            try { runCatching { itemIds() } } finally { reading.set(false) }
+        })
+    }
+
+    private val reading = java.util.concurrent.atomic.AtomicBoolean()
 
     /** An item model and its `fixed` display transform (what item displays and frames use). */
     class ItemModel(val baked: Baked, val fixed: Matrix4d)
@@ -205,7 +253,8 @@ object Models {
 
     fun texture(id: String): Texture? = textures.computeIfAbsent(if (':' in id) id else "minecraft:$id") { key ->
         Resources.read(Resources.path(key, "textures", ".png"))?.let { bytes ->
-            runCatching { MemoryCacheImageInputStream(bytes.inputStream()).use { ImageIO.read(it) }?.let { Texture.of(it) } }.getOrNull()
+            // ImageIO.read closes an ImageInputStream itself: closing it again throws on recent JDKs.
+            runCatching { ImageIO.read(MemoryCacheImageInputStream(bytes.inputStream()))?.let { Texture.of(it) } }.getOrNull()
         }
     }
 

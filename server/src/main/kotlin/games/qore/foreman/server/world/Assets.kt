@@ -83,8 +83,8 @@ class Assets(private val folder: File, private val fawe: File?) {
         return n
     }
 
-    /** A guess from the blocks: tree, plant, rock, ruin or structure. */
-    private fun category(counts: Map<Material, Int>, x: Int, y: Int, z: Int): String {
+    /** A guess from the blocks of an asset of [x] by [y] by [z]: tree, plant, rock, ruin or structure. */
+    fun category(counts: Map<Material, Int>, x: Int, y: Int, z: Int): String {
         val total = counts.values.sum().coerceAtLeast(1)
         fun share(p: (Material) -> Boolean) = counts.filterKeys(p).values.sum().toDouble() / total
         // A tree is mostly logs and leaves once the ground and plants saved with it are left out.

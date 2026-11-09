@@ -6,8 +6,10 @@ import com.google.gson.JsonParser
 import games.qore.foreman.server.Feature
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Args
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.Tool
 import games.qore.foreman.server.mcp.ToolResult
+import games.qore.foreman.server.tools.LibraryTools
 import games.qore.foreman.server.tools.TestTools
 import games.qore.foreman.server.world.Box
 import org.bukkit.Bukkit
@@ -30,7 +32,7 @@ import java.util.logging.Level
  * The `foreman:bridge` plugin channel to the foreman client mod, whose AI runs on the builder's computer.
  *
  * S2C: `hello` (MCP URL and the player's token with the MCP server, `relay` with the relay, `test`: whether they have
- * `foreman.test` and testing is on, `features`: the server's), `world`, `areas`, `points` (on subscribe and when they change), `issues` (after each check), `change`
+ * `foreman.test` and testing is on, `features`: the server's), `world`, `areas`, `points`, `instances`, `layout` (the declared point and area types; on subscribe and when they change), `issues` (after each check), `change`
  * (after each modifying tool call). C2S: `selection`, `subscribe` and `unsubscribe` {layers}. Messages are JSON objects
  * with a `type`; the README has the fields. Without the world tools only `hello` is sent: the token, for the server
  * tools. It runs with the MCP server or the relay: how to reach the tools is what it gives.
@@ -39,7 +41,7 @@ class Bridge(private val plugin: Foreman) : Listener {
     companion object {
         const val CHANNEL = "foreman:bridge"
         const val PERMISSION = "foreman.client"
-        val LAYERS = setOf("areas", "points", "issues", "changes")
+        val LAYERS = setOf("areas", "points", "instances", "layout", "issues", "changes")
     }
 
     data class Selection(val world: String, val box: Box)
@@ -150,15 +152,16 @@ class Bridge(private val plugin: Foreman) : Listener {
         }
     }
 
-    /** Called after every MCP tool call (HTTP thread): pushes check issues and AI changes. */
-    fun onToolCall(tool: Tool, args: Args, result: ToolResult, ms: Long, caller: String?) {
+    /** Called after every MCP tool call (HTTP thread): pushes check issues and AI changes, with whose they are. */
+    fun onToolCall(tool: Tool, args: Args, result: ToolResult, ms: Long, caller: Caller?) {
         if (result.isError || clients.isEmpty() || !plugin.worldTools) return
         val world = runCatching { plugin.world(args.string("world", null)) }.getOrNull() ?: return
         if (tool.modifies) {
             val box = ToolEvents.changedBox(plugin, args, result)
+            val author = caller ?: Caller.CONSOLE
             val message = message("change") {
-                addProperty("label", ToolEvents.label(result, ms).ifEmpty { tool.name })
-                caller?.let { addProperty("by", it) }
+                addProperty("label", ToolEvents.label(result, ms, author).ifEmpty { tool.name })
+                addProperty("by", author.name)
                 addWorld(world)
                 box?.let { add("box", box(it)) }
             }
@@ -188,8 +191,13 @@ class Bridge(private val plugin: Foreman) : Listener {
 
     private fun pushChangedLayers() {
         if (clients.isEmpty()) return
-        for (layer in listOf("areas", "points")) {
-            val snapshot: Any = if (layer == "areas") plugin.worlds.areas else plugin.worlds.allPoints
+        for (layer in listOf("areas", "points", "instances", "layout")) {
+            val snapshot: Any = when (layer) {
+                "areas" -> plugin.worlds.areas
+                "points" -> plugin.worlds.allPoints
+                "layout" -> plugin.worlds.layout.version
+                else -> plugin.worlds.allInstances
+            }
             if (lastSent[layer] == snapshot) continue
             lastSent[layer] = snapshot
             layerMessage(layer)?.let { broadcast(layer, it) }
@@ -207,6 +215,9 @@ class Bridge(private val plugin: Foreman) : Listener {
                         a.kind?.let { addProperty("kind", it) }
                         addProperty("note", a.note)
                         if (a.theme.isNotEmpty()) addProperty("theme", a.theme)
+                        if (a.tags.isNotEmpty()) add("tags", JsonArray().apply { a.tags.forEach { add(it) } })
+                        a.lock?.let { add("locked_by", it.json()) }
+                        add("data", a.data)
                         add("boxes", JsonArray().apply {
                             a.boxes.forEach { b -> add(JsonArray().apply { listOf(b.min.x(), b.min.y(), b.min.z(), b.max.x(), b.max.y(), b.max.z()).forEach { add(it) } }) }
                         })
@@ -219,14 +230,23 @@ class Bridge(private val plugin: Foreman) : Listener {
                 plugin.worlds.allPoints.forEach { p ->
                     add(JsonObject().apply {
                         addWorld(p.world)
-                        add("pos", JsonArray().apply { add(p.x); add(p.y); add(p.z) })
+                        add("position", JsonArray().apply { add(p.x); add(p.y); add(p.z) })
+                        p.yaw?.let { addProperty("yaw", it) }
+                        p.pitch?.let { addProperty("pitch", it) }
                         addProperty("type", p.type)
                         addProperty("kind", p.kind)
                         addProperty("build", p.build)
                         addProperty("room", p.room)
+                        add("data", p.data)
                     })
                 }
             })
+        }
+        // The pastes of library assets: what the client outlines and links to their source.
+        // The point and area types plugins declare, with their fields: what the client's forms are made of.
+        "layout" -> message("layout") { add("types", plugin.worlds.layout.json()) }
+        "instances" -> message("instances") {
+            add("instances", JsonArray().apply { plugin.worlds.allInstances.forEach { add(LibraryTools.json(it, full = false)) } })
         }
         else -> null
     }

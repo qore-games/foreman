@@ -2,11 +2,16 @@
 
 ## Your selection
 
-A box in the world, for the AI or your own commands. Press ++b++ (or use the hub's Selection section), then left click
-and right click the two corners, and drag the gizmo to adjust it.
+A box in the world, for the AI or your own commands. Press ++b++ for [editor mode](editor.md) and ++1++ for the
+selection tool (or **Use** in the hub's Selection section), then left click and right click the two corners, and drag
+the gizmo to adjust it (by whole blocks). ++enter++ asks a chat about it, ++delete++ clears it.
+
+It is also the editor's one way of selecting things: the other tools make their new things from it (WorldEdit's
+selection when you have no Foreman one). Select a box here, switch tool, and press its key: ++c++ in the
+[asset tool](library.md#a-new-asset) makes an asset of it, ++m++ in [areas and points](regions.md#the-tool) an area.
 
 The AI chats are told about it and about the WorldEdit selection: "here", "this" and "the selection" mean them. The
-hub's *Ask a chat* button, or the *Ask the AI about the selection* key (unbound by default), starts a chat about the
+hub's *Ask a chat* button, ++enter++ with the selection tool, or the *Ask the AI about the selection* key (unbound by default), starts a chat about the
 selected area. `/ai selection clear` clears it.
 
 ## The WorldEdit selection
@@ -18,7 +23,7 @@ world*).
 
 ![WorldEdit selections in four shapes](../assets/screenshots/worldedit-shapes.jpg)
 
-The **WorldEdit tool** (hub's Selection section, or its key, unbound by default) edits it:
+The **WorldEdit tool** (editor mode's tool 9, or **Use** in the hub's Selection section) edits it:
 
 - **Left / right click a block** for `//pos1` / `//pos2`, however far the block is. What they mean depends on the
   selector, as with the wand: two corners, a center and a radius, the points of a polygon.

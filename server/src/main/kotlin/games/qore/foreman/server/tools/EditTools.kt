@@ -1,5 +1,7 @@
 package games.qore.foreman.server.tools
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.sk89q.worldedit.EditSession
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard
@@ -14,7 +16,9 @@ import com.sk89q.worldedit.session.ClipboardHolder
 import com.sk89q.worldedit.world.block.BlockTypes
 import games.qore.foreman.api.ForemanTool
 import games.qore.foreman.server.Foreman
+import games.qore.foreman.server.api.RegionCopyEvent
 import games.qore.foreman.server.mcp.Args
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.SchemaBuilder
 import games.qore.foreman.server.mcp.Tool
 import games.qore.foreman.server.mcp.ToolError
@@ -22,10 +26,13 @@ import games.qore.foreman.server.mcp.ToolResult
 import games.qore.foreman.server.mcp.schema
 import games.qore.foreman.server.world.Blocks
 import games.qore.foreman.server.world.Box
+import games.qore.foreman.server.world.ChunkBlockData
 import games.qore.foreman.server.world.EditScope
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.Furniture
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.Nature
+import games.qore.foreman.server.world.Placement
 import games.qore.foreman.server.world.Shapes
 import games.qore.foreman.server.world.Sync
 import games.qore.foreman.server.world.TallTrees
@@ -110,14 +117,106 @@ object EditTools {
 
         Tool(
             ForemanTool.UNDO,
-            "Undoes the last AI changes (blocks and furniture), newest first. get_context lists them.",
-            schema { int("count", "How many changes to undo (default 1)", required = false) },
+            "Undoes your last changes (blocks, furniture and displays), newest first: each player has their own history, " +
+                "the console and the server's token share one. Refuses a change that someone else changed over since (a " +
+                "later change of theirs overlaps its box), naming who and what, as undoing it would wipe their work: " +
+                "force undoes it anyway. history lists the changes.",
+            schema {
+                int("count", "How many changes to undo (default 1)", required = false)
+                bool("force", "Undo even what someone else changed over since (default false)", required = false)
+                string("player", "Undo this player's changes instead of yours (`console`: the console's): needs foreman.admin", required = false)
+            },
             modifies = true,
+        ) { args -> undo(args) },
+
+        Tool(
+            ForemanTool.HISTORY,
+            "Lists recent changes, newest first: when, who, label, world, box and blocks. Yours, the order undo takes " +
+                "them back in; everyone's with foreman.admin or the server's token. Read it before undo, or to see who " +
+                "built what around.",
+            schema {
+                string("player", "Only this player's changes (`console`: the console's); others' need foreman.admin", required = false)
+                enum("format", listOf("text", "json"), "json, for programs: {everyone (whether you may read everyone's), total, changes: [{order, time, by, mine, label, world, dim, blocks, box?: [x1, y1, z1, x2, y2, z2], undo?: the undo count that takes it back, on yours}]}", required = false)
+            },
         ) { args ->
-            val undone = Edits.undo(args.int("count", 1))
-            ToolResult.text(if (undone.isEmpty()) "Nothing to undo" else "Undid: " + undone.joinToString(", "))
+            val viewer = args.caller ?: Caller.CONSOLE
+            val admin = ServerTools.isAdmin(args.caller)
+            if (args.string("format", "text") == "json") ToolResult.text(historyJson(viewer, admin, args.string("player", null)).toString())
+            else ToolResult.text(history(viewer, admin, args.string("player", null)))
         },
     )
+
+    private fun undo(args: Args): ToolResult {
+        val own = args.caller ?: Caller.CONSOLE
+        val name = args.string("player", null)
+        val author = if (name == null || name.equals(own.name, true)) own else {
+            ServerTools.admin(args)
+            Edits.author(name) ?: throw ToolError("$name has no changes to undo")
+        }
+        val undone = Edits.undo(author, args.int("count", 1), args.bool("force", false))
+        val text = listOfNotNull(
+            undone.labels.takeIf { it.isNotEmpty() }?.let { "Undid: " + it.joinToString(", ") },
+            undone.refusal("call undo with force: true"),
+        ).joinToString("\n")
+        return when {
+            text.isEmpty() -> ToolResult.text("Nothing to undo" + if (author != own) " for ${author.name}" else "")
+            undone.labels.isEmpty() -> ToolResult.error(text)
+            else -> ToolResult.text(text)
+        }
+    }
+
+    private const val HISTORY_SHOWN = 30
+
+    /** The changes [viewer] may read, newest first: [name]'s (their own without one), everyone's for an [admin] without one. */
+    fun history(viewer: Caller, admin: Boolean, name: String?): String {
+        val author = when {
+            name != null && !name.equals(viewer.name, true) ->
+                if (!admin) throw ToolError("Others' changes need ${ServerTools.PERMISSION}")
+                else Edits.author(name) ?: return "No changes by $name"
+            name == null && admin -> null
+            else -> viewer
+        }
+        val changes = author?.let(Edits::of) ?: Edits.recent
+        if (changes.isEmpty()) return "No changes" + (author?.let { " by ${it.name}" } ?: "")
+        val shown = changes.take(HISTORY_SHOWN).also(Edits::await)
+        return "${changes.size} change${if (changes.size == 1) "" else "s"} " + (author?.let { "by ${it.name}" } ?: "by everyone") + ", newest first" + (if (author != null) " (undo takes them back in this order)" else "") + ":\n" +
+            shown.joinToString("\n") { "  " + Edits.describe(it) } + if (changes.size > shown.size) "\n  … ${changes.size - shown.size} older" else ""
+    }
+
+    /** [history] for programs (the mod's History page): the changes [viewer] may read, newest first, as JSON. */
+    fun historyJson(viewer: Caller, admin: Boolean, name: String?): JsonObject {
+        val changes = when {
+            name != null && !name.equals(viewer.name, true) ->
+                if (!admin) throw ToolError("Others' changes need ${ServerTools.PERMISSION}") else Edits.author(name)?.let(Edits::of).orEmpty()
+            name == null && admin -> Edits.recent
+            else -> Edits.of(viewer)
+        }
+        val shown = changes.take(HISTORY_JSON).also(Edits::await)
+        // What undo takes back first: the viewer's own changes, newest first.
+        val mine = Edits.of(viewer)
+        return JsonObject().apply {
+            addProperty("everyone", admin)
+            addProperty("total", changes.size)
+            add("changes", JsonArray().apply {
+                shown.forEach { c ->
+                    add(JsonObject().apply {
+                        addProperty("order", c.order)
+                        addProperty("time", c.time)
+                        addProperty("by", c.author.name)
+                        addProperty("mine", c.author.id == viewer.id)
+                        addProperty("label", c.label)
+                        addProperty("world", c.world.name)
+                        addProperty("dim", c.world.key.toString())
+                        addProperty("blocks", c.blocks)
+                        c.box?.let { b -> add("box", JsonArray().apply { listOf(b.min.x(), b.min.y(), b.min.z(), b.max.x(), b.max.y(), b.max.z()).forEach { add(it) } }) }
+                        mine.indexOf(c).takeIf { it >= 0 }?.let { addProperty("undo", it + 1) }
+                    })
+                }
+            })
+        }
+    }
+
+    private const val HISTORY_JSON = 100
 
     /** What an op did: blocks changed, the box it touched and anything the model should know. */
     class OpResult(val blocks: Int, val box: Box?, val note: String? = null)
@@ -414,14 +513,20 @@ object EditTools {
 
         val label = "${if (move) "move" else "copy"} ${box.describe()}" + (if (rotate != 0) " rotated $rotate°" else "") +
             (if (offset != BlockVector3.ZERO) " by ${Box.fmt(offset)}" else "")
+        if (move) Locks.guard(world.name, box)
+        Locks.guard(world.name, result)
         // Furniture is taken out and placed again at its new spot: copying its entities through WorldEdit breaks on
         // the hitboxes the provider does not save, and its collision blocks are rebuilt by the new placement anyway.
         Furniture.ensureLoaded(world, box)
         val furniture = Sync.main { Furniture.inBox(world, box) }
         var moved = 0
         var skipped = 0
+        val placement = Placement(center, rotate, destination)
+        var blockData = 0
         val (_, change) = Edits.edit(world, label) { session, change ->
             if (move) Furniture.lift(world, furniture, change)
+            // Read once the furniture gave up its cells: the rest of the block data goes with the blocks.
+            val data = ChunkBlockData.read(world, box)
             val region: Region = CuboidRegion(session.world, box.min, box.max)
             val clipboard = BlockArrayClipboard(region)
             clipboard.origin = center
@@ -437,6 +542,8 @@ object EditTools {
                 holder.createPaste(session).to(destination).ignoreAirBlocks(ignoreAir).copyEntities(false).copyBiomes(false).build()
             )
             session.flushQueue()
+            blockData = ChunkBlockData.copy(data, placement, world, change, from = if (move) world else null)
+            Bukkit.getPluginManager().callEvent(placement.event(if (move) RegionCopyEvent.Kind.MOVE else RegionCopyEvent.Kind.PASTE, world, box, world, emptyMap()))
             furniture.forEach { f ->
                 val p = transform.apply(BlockVector3.at(f.x, f.y, f.z).subtract(center).toVector3()).toBlockPoint().add(destination)
                 if (Furniture.respawn(world, f, p, f.yaw + rotate, change)) moved++ else skipped++
@@ -446,6 +553,7 @@ object EditTools {
         return ToolResult.text(
             "Done: $label. The build now occupies ${result.describe()}. ${change.blocks} blocks changed" +
                 (if (furniture.isNotEmpty()) ", $moved furniture ${if (move) "moved" else "copied"}" + (if (skipped > 0) " ($skipped could not be placed again: wall or obstructed)" else "") else "") +
+                (if (blockData > 0) ", $blockData block data entries" else "") +
                 ". Other entities are not copied. Check the result with render, then fix the ground around it."
         )
     }

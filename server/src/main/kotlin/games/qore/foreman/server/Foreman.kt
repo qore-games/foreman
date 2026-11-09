@@ -146,7 +146,7 @@ class Foreman : JavaPlugin() {
         ) { tool, args, result, ms, caller, via ->
             audit.call(via, caller, tool.name, args.json, !result.isError, ms)
             if (via == "relay") logger.info("Relay: ${caller?.name} called ${tool.name} (${if (result.isError) "error" else "ok"}, $ms ms)")
-            bridge.onToolCall(tool, args, result, ms, caller?.name)
+            bridge.onToolCall(tool, args, result, ms, caller)
             if (!tool.modifies) return@McpDispatcher
             val text = result.content.firstOrNull()?.get("text")?.asString?.lineSequence()?.firstOrNull().orEmpty()
             Bukkit.getScheduler().runTask(this, Runnable {

@@ -34,7 +34,7 @@ data class BlockBox(val minX: Int, val minY: Int, val minZ: Int, val maxX: Int, 
 
 /**
  * Moves and resizes a [BlockBox]: a knob on each face drags that face along its normal, three arrows from the center
- * move the whole box, both in whole blocks.
+ * move the whole box, both in whole blocks whatever the editor's [Snapping] (a box is made of blocks).
  */
 class BoxGizmo(
     private val box: () -> BlockBox?,

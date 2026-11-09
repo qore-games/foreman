@@ -4,6 +4,8 @@ import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.mc.mixin.GameRendererAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelTargetBundle
+import net.minecraft.client.renderer.item.ItemStackRenderState
+import net.minecraft.client.resources.model.geometry.BakedQuad
 import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket
 import net.minecraft.resources.FileToIdConverter
 import net.minecraft.resources.Identifier
@@ -46,4 +48,7 @@ object Mc {
         val files = FileToIdConverter.json("post_effect")
         return files.listMatchingResources(Minecraft.getInstance().resourceManager).keys.map(files::fileToId)
     }
+
+    /** The quads a layer of an item draws, in its own space (before the layer's transform). */
+    fun itemQuads(layer: ItemStackRenderState.LayerRenderState): List<BakedQuad> = layer.prepareQuadList()
 }

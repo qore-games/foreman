@@ -18,6 +18,7 @@ import games.qore.foreman.server.world.Displays
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.Furniture
 import games.qore.foreman.server.world.Grid
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.Plans
 import games.qore.foreman.server.world.Renderer
 import games.qore.foreman.server.world.Resources
@@ -337,8 +338,12 @@ object QualityTools {
         }
     }
 
-    /** Fails when [box] overlaps a claim other than [own], unless allowed. Used by the tools that change blocks. */
+    /**
+     * Fails when [box] reaches into an area someone else locked ([Locks]), or overlaps a claim other than [own] unless
+     * allowed. Used by the tools that change blocks.
+     */
     fun guard(plugin: Foreman, world: World, box: Box, own: String?, allow: Boolean) {
+        Locks.guard(world.name, box)
         if (allow) return
         val conflicts = plugin.worlds.conflicts(world.name, box, own)
         if (conflicts.isNotEmpty()) throw ToolError(

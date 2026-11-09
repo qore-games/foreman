@@ -89,6 +89,31 @@ object ModelTools {
         return turntable(Camera.studio(solid + cells), lo, hi)
     }
 
+    /**
+     * [count] square views of [stage] around the box [lo]..[hi], [size] pixels each, without captions: evenly spaced
+     * around it at one elevation, the first from the front-left (north-west, the front being north), then clockwise
+     * seen from above. Each frames the box as closely as it can.
+     */
+    fun around(stage: Camera.Stage, lo: Vector3d, hi: Vector3d, count: Int, size: Int): List<BufferedImage> {
+        val center = Vector3d(lo).add(hi).mul(0.5)
+        val corners = (0 until 8).map { i -> Vector3d(if (i and 1 == 0) lo.x else hi.x, if (i and 2 == 0) lo.y else hi.y, if (i and 4 == 0) lo.z else hi.z).sub(center) }
+        val fov = 40.0
+        val tan = kotlin.math.tan(Math.toRadians(fov / 2))
+        val start = kotlin.math.atan2(-1.0, -0.7)
+        val elevation = Math.toRadians(24.0)
+        return (0 until count).map { i ->
+            val angle = start + 2 * Math.PI * i / count
+            val dir = Vector3d(kotlin.math.cos(angle) * kotlin.math.cos(elevation), kotlin.math.sin(elevation), kotlin.math.sin(angle) * kotlin.math.cos(elevation))
+            val right = Vector3d(dir).negate().cross(Vector3d(0.0, 1.0, 0.0)).normalize()
+            val up = Vector3d(right).cross(Vector3d(dir).negate())
+            // Far enough for every corner to be in the frame: |x| <= tan * (distance - z) on both axes.
+            val distance = corners.maxOf { c -> max(kotlin.math.abs(c.dot(right)), kotlin.math.abs(c.dot(up))) / tan + c.dot(dir) } * 1.06 + 0.3
+            val eye = Vector3d(dir).mul(distance).add(center)
+            val (yaw, pitch) = Camera.lookAt(eye, center)
+            stage.render(Camera.View(eye, yaw, pitch, fov), size, size, max(64.0, distance * 3), null)
+        }
+    }
+
     /** Four views of [stage] around the box [lo]..[hi]. */
     fun turntable(stage: Camera.Stage, lo: Vector3d, hi: Vector3d): BufferedImage {
         val center = Vector3d(lo).add(hi).mul(0.5)

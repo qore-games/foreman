@@ -1,5 +1,8 @@
 package games.qore.foreman.server.tools
 
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard
@@ -22,16 +25,24 @@ import games.qore.foreman.server.world.Camera
 import games.qore.foreman.server.world.Renderer
 import games.qore.foreman.server.world.TallTrees
 import games.qore.foreman.server.world.Box
+import games.qore.foreman.server.world.AreaAssets
 import games.qore.foreman.server.world.Arrange
+import games.qore.foreman.server.world.Assets
 import games.qore.foreman.server.world.Checks
 import games.qore.foreman.server.world.Displays
 import games.qore.foreman.server.world.Grid
 import games.qore.foreman.server.world.Walk
 import games.qore.foreman.server.world.Change
 import games.qore.foreman.server.world.Chunks
+import games.qore.foreman.server.world.EditScope
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.Furniture
+import games.qore.foreman.server.world.Instance
+import games.qore.foreman.server.world.Library
+import games.qore.foreman.server.world.Locks
+import games.qore.foreman.server.world.Placement
 import games.qore.foreman.server.world.Sync
+import games.qore.foreman.server.mcp.Caller
 import org.bukkit.Bukkit
 import org.bukkit.block.BlockFace
 import org.bukkit.configuration.file.YamlConfiguration
@@ -44,31 +55,16 @@ object AssetTools {
     fun all(plugin: Foreman) = listOf(
         Tool(
             ForemanTool.LIST_ASSETS,
-            "Lists the schematic library (houses, stalls, trees, rocks, ruins…) and WorldEdit's schematics (fawe/…): " +
-                "name, category, size [x, y, z], main blocks, tags, description. Run index_assets after adding schematics.",
+            "Lists the asset library: schematics (houses, stalls, trees, rocks, ruins…), WorldEdit's schematics (fawe/…) " +
+                "and areas tagged `asset` in the loaded worlds (area:<world>/<area>, with their furniture and display " +
+                "entities): name, category, size [x, y, z], main blocks, tags, description. Run index_assets after adding schematics.",
             schema {
                 string("filter", "Only names, tags, blocks or descriptions containing this text", required = false)
                 enum("category", listOf("tree", "plant", "rock", "ruin", "structure"), "Only this category", required = false)
+                enum("format", listOf("text", "json"), "text (default), or json for programs: an array of {id, source: area|file, " +
+                    "world?, size?, tags, description, category?, blocks, furniture?, displays?}", required = false)
             },
-        ) { args ->
-            val filter = args.string("filter", null)?.lowercase()
-            val category = args.string("category", null)
-            val assets = plugin.assets.list().filter {
-                (category == null || it.category == category) &&
-                    (filter == null || it.name.contains(filter) || it.description.lowercase().contains(filter) || it.tags.any { t -> t.contains(filter) } || it.blocks.any { b -> b.contains(filter) })
-            }
-            val unindexed = assets.count { it.category == null }
-            ToolResult.text(
-                if (assets.isEmpty()) "No assets" + (if (filter != null || category != null) " matching" else "") + ". Players add some with /foreman asset save, or put .schem files in WorldEdit's schematics folder."
-                else assets.take(400).joinToString("\n") { a ->
-                    a.name + (a.category?.let { " ($it)" } ?: "") + (a.size?.let { " ${it[0]}x${it[1]}x${it[2]}" } ?: "") +
-                        (if (a.blocks.isNotEmpty()) " {${a.blocks.take(4).joinToString(", ")}}" else "") +
-                        (if (a.tags.isNotEmpty()) " [${a.tags.joinToString(", ")}]" else "") +
-                        (if (a.description.isNotEmpty()) " — ${a.description}" else "")
-                } + (if (assets.size > 400) "\n… ${assets.size - 400} more: use a filter" else "") +
-                    (if (unindexed > 0) "\n$unindexed not indexed yet: run index_assets" else "")
-            )
-        },
+        ) { args -> listAssets(plugin, args) },
 
         Tool(
             ForemanTool.INDEX_ASSETS,
@@ -84,29 +80,16 @@ object AssetTools {
 
         Tool(
             ForemanTool.PREVIEW_ASSET,
-            "Renders a schematic of the library alone, textured, from four sides (front-left, front-right, back, above; " +
-                "its north is the front): look before pasting or scattering it.",
-            schema { string("name", "Asset name from list_assets") },
-        ) { args ->
-            val asset = plugin.assets.get(args.string("name"))
-            val clipboard = plugin.assets.read(asset)
-            val region = clipboard.region
-            if (region.volume > 400_000) throw ToolError("${asset.name} is too big to preview (${region.volume} blocks)")
-            val min = region.minimumPoint
-            val cells = HashMap<Triple<Int, Int, Int>, org.bukkit.block.data.BlockData>()
-            for (p in region) {
-                val data = BukkitAdapter.adapt(clipboard.getBlock(p))
-                if (!data.material.isAir) cells[Triple(p.x() - min.x(), p.y() - min.y(), p.z() - min.z())] = data
-            }
-            if (cells.isEmpty()) throw ToolError("${asset.name} is empty")
-            val d = clipboard.dimensions
-            val image = ModelTools.turntable(Camera.blocks(cells), Vector3d(0.0), Vector3d(d.x().toDouble(), d.y().toDouble(), d.z().toDouble()))
-            ToolResult.image(
-                Renderer.png(image),
-                "${asset.name}: ${d.x()}x${d.y()}x${d.z()}, ${cells.size} blocks" + (asset.category?.let { ", $it" } ?: "") +
-                    (if (asset.description.isNotEmpty()) " — ${asset.description}" else ""),
-            )
-        },
+            "Renders an asset alone, textured: a schematic, or an asset area (its blocks, nothing around them, with its " +
+                "furniture and display entities). One image from four sides (front-left, front-right, back, above; its " +
+                "north is the front), or with `views` that many square images around it, the first from the front-left " +
+                "(views 1: a thumbnail). Look before pasting or scattering it.",
+            schema {
+                string("name", "Asset name or area id from list_assets")
+                int("views", "Separate images evenly spaced around it at one elevation, clockwise seen from above (1 to 16)", required = false)
+                int("size", "With views: each image's side in pixels (default 256, at most 512)", required = false)
+            },
+        ) { args -> preview(plugin, args) },
 
         Tool(
             ForemanTool.SCATTER_ASSETS,
@@ -135,16 +118,19 @@ object AssetTools {
 
         Tool(
             ForemanTool.PASTE_ASSET,
-            "Pastes a schematic from the library. `position` is where the bottom-center of the asset goes (put y on the " +
-                "ground surface + 1 for a build standing on it). Returns the box it occupies: then run foundation / " +
+            "Pastes an asset of the library, a schematic or an asset area (its blocks with their block data, furniture, " +
+                "display entities, and the points and areas inside it, into any loaded world). `position` is where the " +
+                "bottom-center of the asset goes (put y on the ground surface + 1 for a build standing on it). Records an " +
+                "instance (list_instances). One undo step. Returns the box it occupies: then run foundation / " +
                 "blend_terrain on it and render to check.",
             schema {
-                string("name", "Asset name from list_assets")
+                string("name", "Asset name or area id from list_assets")
                 vec("position", "Bottom-center target [x, y, z]")
                 int("rotate", "Clockwise degrees seen from above: 0, 90, 180, 270 (default 0)", required = false)
                 bool("ignore_air", "Keep existing blocks where the asset has air (default true)", required = false)
                 string("claim", "Claim the pasted box under this name; fails if it overlaps another claim", required = false)
                 bool("allow_overlap", "Allow pasting into other claims (default false)", required = false)
+                enum("format", listOf("text", "json"), "text (default), or json: the instance (as list_instances gives it) with blocks, displays, furniture and block_data counts", required = false)
                 resultOptions()
                 string("world", "World name", required = false)
             },
@@ -232,31 +218,226 @@ object AssetTools {
         plugin.assets.save(name, clipboard, description, tags)
     }
 
+    private fun listAssets(plugin: Foreman, args: Args): ToolResult {
+        val filter = args.string("filter", null)?.lowercase()
+        val category = args.string("category", null)
+        val json = when (args.string("format", "text")) {
+            "text" -> false
+            "json" -> true
+            else -> throw ToolError("format is text or json")
+        }
+        fun matches(name: String, cat: String?, description: String, tags: List<String>, blocks: List<String>) = (category == null || cat == category) &&
+            (filter == null || name.lowercase().contains(filter) || description.lowercase().contains(filter) || tags.any { it.contains(filter) } || blocks.any { it.contains(filter) })
+        val files = plugin.assets.list().filter { matches(it.name, it.category, it.description, it.tags, it.blocks) }
+        val areas = AreaAssets.info(plugin, AreaAssets.all(plugin.worlds)).filter { matches(it.id, it.category, it.area.note, it.tags, it.blocks) }
+        if (json) return ToolResult.text(GsonBuilder().disableHtmlEscaping().create().toJson(JsonArray().apply {
+            files.forEach { add(json(it)) }
+            areas.forEach { add(json(it)) }
+        }))
+        val unindexed = files.count { it.category == null }
+        val lines = files.map { a ->
+            a.name + (a.category?.let { " ($it)" } ?: "") + (a.size?.let { " ${it[0]}x${it[1]}x${it[2]}" } ?: "") +
+                (if (a.blocks.isNotEmpty()) " {${a.blocks.take(4).joinToString(", ")}}" else "") +
+                (if (a.tags.isNotEmpty()) " [${a.tags.joinToString(", ")}]" else "") +
+                (if (a.description.isNotEmpty()) " — ${a.description}" else "")
+        } + areas.map { a ->
+            a.id + (a.category?.let { " ($it)" } ?: "") + " ${a.size[0]}x${a.size[1]}x${a.size[2]}" +
+                (if (a.blocks.isNotEmpty()) " {${a.blocks.take(4).joinToString(", ")}}" else "") +
+                (if (a.tags.isNotEmpty()) " [${a.tags.joinToString(", ")}]" else "") +
+                listOfNotNull(a.furniture.takeIf { it > 0 }?.let { "$it furniture" }, a.displays.takeIf { it > 0 }?.let { "$it displays" }).let { if (it.isEmpty()) "" else " " + it.joinToString(", ") } +
+                (if (a.area.note.isNotEmpty()) " — ${a.area.note}" else "")
+        }
+        return ToolResult.text(
+            if (lines.isEmpty()) "No assets" + (if (filter != null || category != null) " matching" else "") + ". Players add some with /foreman asset save, " +
+                "by tagging an area `asset` (set_mark tags, /foreman tag), or put .schem files in WorldEdit's schematics folder."
+            else lines.take(400).joinToString("\n") + (if (lines.size > 400) "\n… ${lines.size - 400} more: use a filter" else "") +
+                (if (unindexed > 0) "\n$unindexed not indexed yet: run index_assets" else "")
+        )
+    }
+
+    private fun json(a: Assets.Asset) = JsonObject().apply {
+        addProperty("id", a.name)
+        addProperty("source", "file")
+        a.size?.let { s -> add("size", JsonArray().apply { s.forEach { add(it) } }) }
+        add("tags", JsonArray().apply { a.tags.forEach { add(it) } })
+        addProperty("description", a.description)
+        a.category?.let { addProperty("category", it) }
+        add("blocks", JsonArray().apply { a.blocks.forEach { add(it) } })
+    }
+
+    private fun json(a: AreaAssets.Info) = JsonObject().apply {
+        addProperty("id", a.id)
+        addProperty("source", "area")
+        addProperty("world", a.area.world)
+        add("size", JsonArray().apply { a.size.forEach { add(it) } })
+        add("tags", JsonArray().apply { a.tags.forEach { add(it) } })
+        addProperty("description", a.area.note)
+        a.category?.let { addProperty("category", it) }
+        add("blocks", JsonArray().apply { a.blocks.forEach { add(it) } })
+        addProperty("furniture", a.furniture)
+        addProperty("displays", a.displays)
+    }
+
+    /** What preview_asset renders: a stage, the box to frame, the caption. */
+    private data class Shot(val stage: Camera.Stage, val lo: Vector3d, val hi: Vector3d, val caption: String)
+
+    /** Renders of the last minute by asset, views and size: clients ask for the thumbnails of many assets at once. */
+    private val previews = LinkedHashMap<String, Pair<Long, ToolResult>>()
+
+    private fun preview(plugin: Foreman, args: Args): ToolResult {
+        val name = args.string("name")
+        val views = if (args.has("views")) args.int("views").also { if (it !in 1..16) throw ToolError("views is 1 to 16") } else null
+        val size = if (views != null) args.int("size", 256).coerceIn(32, 512) else 0
+        val key = "$name|$views|$size"
+        val now = System.currentTimeMillis()
+        synchronized(previews) {
+            previews.values.removeIf { now - it.first > 60_000 }
+            previews[key]?.let { return it.second }
+        }
+        val shot = if (AreaAssets.isId(name)) {
+            val area = AreaAssets.get(plugin.worlds, name)
+            val scene = AreaAssets.scene(area)
+            val b = area.bounds
+            Shot(scene.stage, scene.lo, scene.hi, "${AreaAssets.id(area)}: ${b.sizeX}x${b.sizeY}x${b.sizeZ}, ${scene.blocks} blocks, ${scene.models} display models" +
+                (if (area.note.isNotEmpty()) " — ${area.note}" else ""))
+        } else {
+            val asset = plugin.assets.get(name)
+            val clipboard = plugin.assets.read(asset)
+            val region = clipboard.region
+            if (region.volume > 400_000) throw ToolError("${asset.name} is too big to preview (${region.volume} blocks)")
+            val min = region.minimumPoint
+            val cells = HashMap<Triple<Int, Int, Int>, org.bukkit.block.data.BlockData>()
+            for (p in region) {
+                val data = BukkitAdapter.adapt(clipboard.getBlock(p))
+                if (!data.material.isAir) cells[Triple(p.x() - min.x(), p.y() - min.y(), p.z() - min.z())] = data
+            }
+            if (cells.isEmpty()) throw ToolError("${asset.name} is empty")
+            val d = clipboard.dimensions
+            Shot(Camera.blocks(cells), Vector3d(0.0), Vector3d(d.x().toDouble(), d.y().toDouble(), d.z().toDouble()),
+                "${asset.name}: ${d.x()}x${d.y()}x${d.z()}, ${cells.size} blocks" + (asset.category?.let { ", $it" } ?: "") +
+                    (if (asset.description.isNotEmpty()) " — ${asset.description}" else ""))
+        }
+        val (stage, lo, hi, caption) = shot
+        val result = if (views == null) ToolResult.image(Renderer.png(ModelTools.turntable(stage, lo, hi)), caption)
+        else ToolResult.images(
+            "$caption. $views view${if (views > 1) "s" else ""}, the first from the front-left (north-west; its north is the front)" +
+                (if (views > 1) ", then every ${360 / views}° clockwise seen from above" else ""),
+            ModelTools.around(stage, lo, hi, views, size).map { Renderer.png(it) },
+        )
+        synchronized(previews) {
+            previews[key] = now to result
+            while (previews.size > 256) previews.remove(previews.keys.first())
+        }
+        return result
+    }
+
+    private fun rotation(args: Args): Int {
+        val rotate = Math.floorMod(args.int("rotate", 0), 360)
+        if (rotate % 90 != 0) throw ToolError("rotate must be 0, 90, 180 or 270")
+        return rotate
+    }
+
+    private fun pasteArea(plugin: Foreman, args: Args): ToolResult {
+        val world = plugin.world(args.string("world", null))
+        val area = AreaAssets.get(plugin.worlds, args.string("name"))
+        val id = AreaAssets.id(area)
+        val position = args.vec("position")
+        val rotate = rotation(args)
+        val box = area.bounds.requireVolume(plugin.limits.maxEditBlocks.toLong(), "paste_asset")
+        val result = AreaAssets.footprint(box, rotate, position)
+
+        QualityTools.guard(plugin, world, result, args.string("claim", null), args.bool("allow_overlap", false))
+        AreaAssets.prepare(area, world, result)
+        val label = "paste $id at ${Box.fmt(position)}" + if (rotate != 0) " rotated $rotate°" else ""
+        val copy = Sync.main { AreaAssets.copy(area) }
+        val instance = plugin.worlds.instanceId(world.name, area.name)
+        val (pasted, change) = Edits.scoped(world, label) { scope -> AreaAssets.paste(scope, copy, position, rotate, args.bool("ignore_air", true), instance) }
+        args.string("claim", null)?.let { plugin.worlds.reserve(it, world.name, result) }
+        if (json(args)) return ToolResult.text(LibraryTools.json(pasted.instance).apply {
+            addProperty("blocks", change.blocks)
+            addProperty("displays", pasted.displays)
+            addProperty("furniture", pasted.furniture + pasted.replaced)
+            addProperty("furniture_lost", pasted.lost)
+            addProperty("block_data", pasted.blockData)
+        }.toString())
+        val copied = listOfNotNull(
+            pasted.displays.takeIf { it > 0 }?.let { "$it display entities" },
+            (pasted.furniture + pasted.replaced).takeIf { it > 0 }?.let { "$it furniture" + if (pasted.replaced > 0) " (${pasted.replaced} placed again: the provider didn't take the copies in)" else "" },
+            pasted.lost.takeIf { it > 0 }?.let { "$it furniture that could not be placed (obstructed)" },
+            pasted.blockData.takeIf { it > 0 }?.let { "$it block data entries" },
+            pasted.instance.points.size.takeIf { it > 0 }?.let { "$it points" },
+            pasted.instance.areas.size.takeIf { it > 0 }?.let { "$it areas (${pasted.instance.areas.joinToString(", ")})" },
+        )
+        return InspectTools.result(
+            plugin, world, "Pasted $id as instance ${pasted.instance.id}: it occupies ${result.describe()}, ${change.blocks} blocks" + copied.joinToString("") { ", $it" } + ".",
+            result, args, id,
+        )
+    }
+
+    private fun json(args: Args) = when (args.string("format", "text")) {
+        "text" -> false
+        "json" -> true
+        else -> throw ToolError("format is text or json")
+    }
+
     private fun paste(plugin: Foreman, args: Args): ToolResult {
+        if (AreaAssets.isId(args.string("name"))) return pasteArea(plugin, args)
         val world = plugin.world(args.string("world", null))
         val asset = plugin.assets.get(args.string("name"))
         val position = args.vec("position")
-        val rotate = Math.floorMod(args.int("rotate", 0), 360)
-        if (rotate % 90 != 0) throw ToolError("rotate must be 0, 90, 180 or 270")
+        val rotate = rotation(args)
 
         val clipboard = plugin.assets.read(asset)
-        // Bottom-center origin, so position and rotation are about the footprint's center.
-        clipboard.origin = origin(clipboard)
-        val transform = AffineTransform().rotateY(-rotate.toDouble())
         val result = footprint(clipboard, rotate, position)
 
         QualityTools.guard(plugin, world, result, args.string("claim", null), args.bool("allow_overlap", false))
         val label = "paste ${asset.name} at ${Box.fmt(position)}" + if (rotate != 0) " rotated $rotate°" else ""
-        val (_, change) = Edits.edit(world, label) { session, _ ->
-            val holder = ClipboardHolder(clipboard)
-            holder.transform = transform
-            Operations.complete(
-                holder.createPaste(session).to(position).ignoreAirBlocks(args.bool("ignore_air", true)).copyEntities(true).copyBiomes(false).build()
-            )
+        Chunks.loadEntities(world, listOf(result))
+        val id = plugin.worlds.instanceId(world.name, asset.name)
+        val (instance, change) = Edits.scoped(world, label) { scope ->
+            pasteSchematic(plugin, scope, asset.name, clipboard, position, rotate, args.bool("ignore_air", true), id)
         }
-        Sync.main { Furniture.inBox(world, result) }
         args.string("claim", null)?.let { plugin.worlds.reserve(it, world.name, result) }
-        return InspectTools.result(plugin, world, "Pasted ${asset.name}: it occupies ${result.describe()}, ${change.blocks} blocks.", result, args, asset.name)
+        if (json(args)) return ToolResult.text(LibraryTools.json(instance).apply { addProperty("blocks", change.blocks) }.toString())
+        return InspectTools.result(plugin, world, "Pasted ${asset.name} as instance ${instance.id}: it occupies ${result.describe()}, ${change.blocks} blocks.", result, args, asset.name)
+    }
+
+    /**
+     * Pastes schematic [name] ([clipboard]) into the scope's world, its bottom centre at [position] turned [rotate]°, as
+     * instance [id]: the entities it adds are tagged with it, the blocks it writes recorded. Recorded in the scope's
+     * change. Main thread, the chunks of where it goes loaded with their entities.
+     */
+    fun pasteSchematic(
+        plugin: Foreman, scope: EditScope, name: String, clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard,
+        position: BlockVector3, rotate: Int, ignoreAir: Boolean, id: String,
+    ): Instance {
+        val world = scope.world
+        // Bottom-center origin, so position and rotation are about the footprint's center.
+        clipboard.origin = origin(clipboard)
+        val placement = Placement(clipboard.origin, rotate, position)
+        val result = footprint(clipboard, rotate, position)
+        // The entities the paste adds are those that weren't there before: they get the instance's tag.
+        val before = Library.entities(world, result).map { it.uniqueId }.toSet()
+        val holder = ClipboardHolder(clipboard)
+        holder.transform = placement.transform
+        Operations.complete(holder.createPaste(scope.session).to(position).ignoreAirBlocks(ignoreAir).copyEntities(true).copyBiomes(false).build())
+        scope.flush()
+        val roots = Furniture.inBox(world, result).filter { it.handle != null }.associateBy { it.entity }
+        // Parts plugins spawn again on load (hitboxes, seats) aren't the paste's.
+        val added = Library.entities(world, result).filter { it.uniqueId !in before && it.isPersistent }
+        // Undo removes them by what they are now (put back by an undo, they are other entities than WorldEdit made).
+        added.forEach { e ->
+            AreaAssets.tag(e, id)
+            val handle = roots[e.uniqueId]?.handle
+            if (handle != null) scope.change.spawnedFurniture += handle else scope.change.spawnedEntities += e.uniqueId to e.location
+        }
+        val instance = Instance(
+            id, world.name, name, null, null, position, rotate, result, emptyList(), emptyList(), added.associate { it.uniqueId to it.uniqueId },
+            System.currentTimeMillis(), Caller.current()?.name ?: Caller.CONSOLE.name, AreaAssets.written(clipboard, placement, result),
+        )
+        plugin.worlds.putInstance(instance)
+        scope.change.restores += Runnable { AreaAssets.forget(instance) }
+        return instance
     }
 
     private class Item(val name: String, val weight: Double, val clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard?, val tree: String?) {
@@ -375,11 +556,9 @@ object AssetTools {
     }
 
     /** Bottom-center of a clipboard: what paste_asset and scatter_assets position. */
-    private fun origin(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard): BlockVector3 {
-        val min = clipboard.region.minimumPoint
-        val max = clipboard.region.maximumPoint
-        return BlockVector3.at(Math.floorDiv(min.x() + max.x(), 2), min.y(), Math.floorDiv(min.z() + max.z(), 2))
-    }
+    private fun origin(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard): BlockVector3 = AreaAssets.origin(region(clipboard))
+
+    private fun region(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard) = Box(clipboard.region.minimumPoint, clipboard.region.maximumPoint)
 
     /**
      * The columns (relative to the origin, turned by [rotate]) where the clipboard's lowest layer above its [base]
@@ -396,15 +575,8 @@ object AssetTools {
         return cells.ifEmpty { listOf(0 to 0) }
     }
 
-    private fun footprint(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard, rotate: Int, position: BlockVector3): Box {
-        val min = clipboard.region.minimumPoint
-        val max = clipboard.region.maximumPoint
-        val origin = origin(clipboard)
-        val transform = AffineTransform().rotateY(-rotate.toDouble())
-        val corners = listOf(min, max, BlockVector3.at(min.x(), min.y(), max.z()), BlockVector3.at(max.x(), max.y(), min.z()))
-            .map { transform.apply(it.subtract(origin).toVector3()).toBlockPoint().add(position) }
-        return Box(corners.reduce { a, b -> a.getMinimum(b) }, corners.reduce { a, b -> a.getMaximum(b) })
-    }
+    private fun footprint(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard, rotate: Int, position: BlockVector3): Box =
+        AreaAssets.footprint(region(clipboard), rotate, position)
 
     private fun notes(plugin: Foreman): Map<String, String> {
         val file = File(plugin.dataFolder, "catalog/furniture.yml")
@@ -460,7 +632,7 @@ object AssetTools {
                     val face = runCatching { BlockFace.valueOf(item.string("face").uppercase()) }.getOrNull()
                         ?: throw ToolError("face must be north, south, east, west, up or down")
                     provider.place(type, player, world.getBlockAt(against.x(), against.y(), against.z()), face)
-                        ?.also { change.spawnedFurniture += it.handle }?.let(Furniture::of)
+                        ?.also { change.spawnedFurniture += it.handle }?.let(Furniture::of)?.also { change.touch(BlockVector3.at(it.x, it.y, it.z).let { p -> Box(p, p) }) }
                 } else {
                     pos ?: throw ToolError("Floor furniture needs pos")
                     QualityTools.guard(plugin, world, Box(pos, pos), args.string("claim", null), args.bool("allow_overlap", false))
@@ -562,6 +734,7 @@ object AssetTools {
         val world = plugin.world(args.string("world", null))
         val box = Box.of(args.vec("from"), args.vec("to"))
         val only = args.string("id", null)
+        Locks.guard(world.name, box)
 
         val change = Change("remove furniture in ${box.describe()}", world)
         Furniture.ensureLoaded(world, box)

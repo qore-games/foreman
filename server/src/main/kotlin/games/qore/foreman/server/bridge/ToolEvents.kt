@@ -3,6 +3,7 @@ package games.qore.foreman.server.bridge
 import com.sk89q.worldedit.math.BlockVector3
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Args
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.ToolResult
 import games.qore.foreman.server.world.Box
 import games.qore.foreman.server.world.Edits
@@ -23,9 +24,9 @@ object ToolEvents {
         return box(text(result))
     }
 
-    /** The label of the change the call recorded (the newest undo step, when it is that recent), else the result's first line. */
-    fun label(result: ToolResult, ms: Long): String {
-        val recent = Edits.recent.firstOrNull()?.takeIf { System.currentTimeMillis() - it.time <= ms + 1000 }
+    /** The label of the change the call recorded ([author]'s newest undo step, when it is that recent), else the result's first line. */
+    fun label(result: ToolResult, ms: Long, author: Caller): String {
+        val recent = Edits.of(author).firstOrNull()?.takeIf { System.currentTimeMillis() - it.time <= ms + 1000 }
         return recent?.label ?: text(result).lineSequence().firstOrNull().orEmpty().take(120)
     }
 

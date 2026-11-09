@@ -18,7 +18,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 
-/** The AI side of the client: bridge, client tools, overlays, selection tool, chats, the hub, their keys and `/ai`. */
+/** The AI side of the client: bridge, client tools, overlays, selection, chats, the hub, their keys and `/ai`. */
 object AIClient {
     private var tipShown = false
 
@@ -33,16 +33,7 @@ object AIClient {
 
         Keys.bind("hub", Keys.Category.GENERAL, InputConstants.KEY_H, "Foreman hub") { Screens.open(HubScreen()) }
         Keys.bind("ai-chat", Keys.Category.AI, InputConstants.KEY_Y, "AI chats") { Screens.open(ChatScreen()) }
-        Keys.bind("ai-selection-tool", Keys.Category.WORLD, InputConstants.KEY_B, "Selection tool (left/right click the corners)") {
-            Chat.info(if (Tools.toggle(SelectionTool)) "Selection tool on: left / right click the corners" else "Selection tool off")
-        }
-        Keys.bind("worldedit-tool", Keys.Category.WORLD, Keys.UNBOUND, "WorldEdit selection tool (click positions, drag to move and resize)") {
-            Chat.info(if (Tools.toggle(WorldEditTool)) "WorldEdit tool on: left / right click for //pos1 / //pos2, drag the gizmo" else "WorldEdit tool off")
-        }
-        Keys.bind("ai-selection-to-prompt", Keys.Category.AI, Keys.UNBOUND, "Ask the AI about the selection") {
-            val selection = SelectionTool.describe() ?: return@bind Chat.warn("No selection: B, then click two corners")
-            Screens.open(ChatScreen("the selected area $selection"))
-        }
+        Keys.bind("ai-selection-to-prompt", Keys.Category.AI, Keys.UNBOUND, "Ask the AI about the selection") { SelectionTool.ask() }
         Keys.bind("ai-overlays", Keys.Category.WORLD, Keys.UNBOUND, "All overlays on / off") { toggleAll() }
         Keys.bind("ai-overlay-areas", Keys.Category.WORLD, Keys.UNBOUND, "Areas: off / nearby / always") { cycle("Areas") { overlays.areas = next(overlays.areas); overlays.areas } }
         Keys.bind("ai-overlay-points", Keys.Category.WORLD, Keys.UNBOUND, "Points: off / nearby / always") { cycle("Points") { overlays.points = next(overlays.points); overlays.points } }
@@ -54,7 +45,7 @@ object AIClient {
             client.execute {
                 if (tipShown) return@execute
                 tipShown = true
-                Chat.info("H: Foreman hub · Y: AI chats")
+                Chat.info("H: Foreman hub · B: editor mode · Y: AI chats")
             }
         }
 

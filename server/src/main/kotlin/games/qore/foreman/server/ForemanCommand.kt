@@ -1,9 +1,16 @@
 package games.qore.foreman.server
 
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.ToolError
 import games.qore.foreman.server.tools.AssetTools
+import games.qore.foreman.server.tools.DisplayTools
+import games.qore.foreman.server.tools.LibraryTools
+import games.qore.foreman.server.tools.LockTools
+import games.qore.foreman.server.tools.EditTools
 import games.qore.foreman.server.tools.ServerTools
 import games.qore.foreman.server.tools.TestPlayerTools
+import games.qore.foreman.server.world.Area
+import games.qore.foreman.server.world.AreaAssets
 import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.WorldEditSelections
 import net.kyori.adventure.text.Component
@@ -18,12 +25,13 @@ import org.bukkit.entity.Player
 
 /**
  * `/foreman mark <name> [note…]` (WorldEdit selection, or where you stand), `unmark <name>`, `marks`,
- * `undo [count]`, `asset save <name> [tags…]` (WorldEdit selection), `token revoke <player>`, `tools [filter]`, `skills`,
+ * `tag|untag <name> <tag…>`, `lock|unlock <area> [force]`, `undo [count] [player] [force]`, `history [player]`, `asset save|new <name> [tags…]` (WorldEdit selection), `asset fit <name>`, `model spawn <model> [scale]`,
+ * `model list [filter] [page]` (the resources' item models), `token revoke <player>`, `tools [filter]`, `skills`,
  * `world show|export|import [world]` (the world's profile and areas as YAML in plugins/Foreman/worlds), `status`.
  * All but `token`, `tools`, `skills` and `status` are about the world: they need FastAsyncWorldEdit and the world feature.
  */
 class ForemanCommand(private val plugin: Foreman) : TabExecutor {
-    private val worldCommands = setOf("mark", "unmark", "marks", "undo", "asset", "world")
+    private val worldCommands = setOf("mark", "unmark", "marks", "tag", "untag", "lock", "unlock", "undo", "history", "asset", "model", "world")
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (args.getOrNull(0) in worldCommands && !plugin.worldTools) {
@@ -39,14 +47,41 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
                     val player = sender as? Player ?: return usage(sender)
                     val name = args.getOrNull(1) ?: return usage(sender)
                     val box = WorldEditSelections.of(player) ?: WorldEditSelections.here(player)
-                    val mark = plugin.worlds.mark(name, player.world.name, box, args.drop(2).joinToString(" "))
+                    val mark = Caller.acting(Caller.of(player)) { plugin.worlds.mark(name, player.world.name, box, args.drop(2).joinToString(" ")) }
                     Msg.success(sender, Component.text("Marked ${mark.describe()}"))
                 }
 
                 "unmark" -> {
                     val name = args.getOrNull(1) ?: return usage(sender)
-                    if (plugin.worlds.remove(name)) Msg.success(sender, Component.text("Removed mark $name"))
+                    if (Caller.acting(Caller.of(sender)) { plugin.worlds.remove(name) }) Msg.success(sender, Component.text("Removed mark $name"))
                     else Msg.error(sender, Component.text("No mark $name"))
+                }
+
+                "tag", "untag" -> {
+                    val name = args.getOrNull(1) ?: return usage(sender)
+                    if (args.size < 3) return usage(sender)
+                    val area = area(sender, name) ?: run {
+                        Msg.error(sender, Component.text("No area $name"))
+                        return true
+                    }
+                    val tags = Area.tags(args.drop(2))
+                    val updated = Caller.acting(Caller.of(sender)) { plugin.worlds.tag(area.name, area.world, if (args[0] == "tag") area.tags + tags else area.tags - tags.toSet()) }!!
+                    Msg.success(sender, Component.text("${updated.name}: " + updated.tags.joinToString(" ") { "#$it" }.ifEmpty { "no tags" }))
+                }
+
+                "lock", "unlock" -> {
+                    val name = args.getOrNull(1) ?: return usage(sender)
+                    val area = area(sender, name) ?: run {
+                        Msg.error(sender, Component.text("No area $name"))
+                        return true
+                    }
+                    val force = args.getOrNull(2).equals("force", true)
+                    if (force && !sender.hasPermission(ServerTools.PERMISSION)) {
+                        Msg.error(sender, Component.text("Unlocking someone else's area needs ${ServerTools.PERMISSION}"))
+                        return true
+                    }
+                    val by = Caller.of(sender)
+                    Msg.success(sender, Component.text(if (args[0] == "lock") LockTools.lock(plugin, area, by) else LockTools.unlock(plugin, area, by, force)))
                 }
 
                 "marks" -> {
@@ -55,18 +90,26 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
                     marks.forEach { Msg.info(sender, Component.text(it.describe())) }
                 }
 
-                "undo" -> {
-                    val count = args.getOrNull(1)?.toIntOrNull() ?: 1
+                "undo" -> undo(sender, args.drop(1))
+
+                "history" -> {
+                    val name = args.getOrNull(1)
+                    val admin = sender.hasPermission(ServerTools.PERMISSION)
                     Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
-                        val undone = Edits.undo(count)
+                        // Off the main thread: the boxes are read from the edits' histories.
+                        val text = runCatching { EditTools.history(Caller.of(sender), admin, name) }
                         Bukkit.getScheduler().runTask(plugin, Runnable {
-                            if (undone.isEmpty()) Msg.warning(sender, Component.text("Nothing to undo"))
-                            else Msg.success(sender, Component.text("Undid: ${undone.joinToString(", ")}"))
+                            text.onSuccess { t ->
+                                val lines = t.lines()
+                                Msg.info(sender, Component.text(lines.first()))
+                                lines.drop(1).forEach { sender.sendMessage(Component.text(it, NamedTextColor.GRAY)) }
+                            }.onFailure { Msg.error(sender, Component.text(it.message ?: "Error")) }
                         })
                     })
                 }
 
                 "asset" -> {
+                    if (LibraryTools.command(plugin, sender, args.drop(1))) return true
                     val player = sender as? Player ?: return usage(sender)
                     if (args.getOrNull(1) != "save") return usage(sender)
                     val name = args.getOrNull(2) ?: return usage(sender)
@@ -77,6 +120,8 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
                     AssetTools.saveBox(plugin, player.world, box, name, "", args.drop(3))
                     Msg.success(sender, Component.text("Saved asset $name (${box.sizeX}x${box.sizeY}x${box.sizeZ}). Describe it in assets/$name.yml"))
                 }
+
+                "model" -> if (!DisplayTools.command(plugin, sender, args.drop(1))) return usage(sender)
 
                 "token" -> {
                     if (args.getOrNull(1) != "revoke") return usage(sender)
@@ -137,6 +182,34 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
         return true
     }
 
+    /** `/foreman undo [count] [player] [force]`: the sender's own last changes, another's with foreman.admin. */
+    private fun undo(sender: CommandSender, args: List<String>) {
+        val count = args.firstNotNullOfOrNull { it.toIntOrNull() } ?: 1
+        val force = args.any { it.equals("force", true) }
+        val name = args.firstOrNull { it.toIntOrNull() == null && !it.equals("force", true) }
+        val own = Caller.of(sender)
+        val author = if (name == null || name.equals(own.name, true)) own else {
+            if (!sender.hasPermission(ServerTools.PERMISSION)) return Msg.error(sender, Component.text("Undoing someone else's changes needs ${ServerTools.PERMISSION}"))
+            Edits.author(name) ?: return Msg.error(sender, Component.text("$name has no changes to undo"))
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, Runnable {
+            val undone = Caller.acting(own) { Edits.undo(author, count, force) }
+            Bukkit.getScheduler().runTask(plugin, Runnable {
+                if (undone.labels.isNotEmpty()) Msg.success(sender, Component.text("Undid: ${undone.labels.joinToString(", ")}"))
+                undone.refusal("/foreman undo${if (author != own) " ${author.name}" else ""} force")?.let { Msg.error(sender, Component.text(it)) }
+                if (undone.labels.isEmpty() && undone.stopped == null) Msg.warning(sender, Component.text("Nothing to undo" + if (author != own) " for ${author.name}" else ""))
+            })
+        })
+    }
+
+    /** `undo` and `history` take a count (undo), a player whose changes it is (admins) and `force` (undo). */
+    private fun changeCompletions(sender: CommandSender, args: Array<out String>): List<String> {
+        if (!plugin.worldTools) return emptyList()
+        val players = if (sender.hasPermission(ServerTools.PERMISSION)) (Edits.authors() + Caller.CONSOLE.name).distinct() else emptyList()
+        val options = if (args[0] == "undo") players + "force" else if (args.size == 2) players else emptyList()
+        return options.filter { it.startsWith(args.last(), ignoreCase = true) && it !in args.drop(1).dropLast(1) }
+    }
+
     /** What the server exposes: its features (hover: what each is), the MCP server, the tools published, the world's state. */
     private fun status(sender: CommandSender) {
         val features = plugin.features
@@ -180,17 +253,19 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
 
     private fun usage(sender: CommandSender): Boolean {
         Msg.info(sender, Component.text(
-            "/foreman mark <name> [note] | unmark <name> | marks | undo [count] | asset save <name> [tags…] | token revoke <player> | tools [filter] | skills | world show|export|import [world] | testplayer … | status"
+            "/foreman mark <name> [note] | unmark <name> | marks | tag|untag <name> <tag…> | lock|unlock <area> [force] | undo [count] [player] [force] | history [player] | asset save|new <name> [tags…] | asset fit <name> | model spawn <model> [scale] | model list [filter] [page] | token revoke <player> | tools [filter] | skills | world show|export|import [world] | testplayer … | status"
         ))
         return true
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, label: String, args: Array<out String>): List<String> =
-        when (args.size) {
-            1 -> listOf("mark", "unmark", "marks", "undo", "asset", "token", "tools", "skills", "world", "testplayer", "status").filter { it.startsWith(args[0]) }
+        if (args.size >= 2 && (args[0] == "undo" || args[0] == "history")) changeCompletions(sender, args)
+        else when (args.size) {
+            1 -> listOf("mark", "unmark", "marks", "tag", "untag", "lock", "unlock", "undo", "history", "asset", "model", "token", "tools", "skills", "world", "testplayer", "status").filter { it.startsWith(args[0]) }
             2 -> when (args[0]) {
-                "unmark" -> if (plugin.worldTools) plugin.worlds.areas.map { it.name }.filter { it.startsWith(args[1]) } else emptyList()
-                "asset" -> listOf("save")
+                "unmark", "tag", "untag", "lock", "unlock" -> if (plugin.worldTools) plugin.worlds.areas.map { it.name }.distinct().filter { it.startsWith(args[1]) } else emptyList()
+                "asset" -> listOf("save", "new", "fit").filter { it.startsWith(args[1]) }
+                "model" -> listOf("spawn", "list").filter { it.startsWith(args[1]) }
                 "token" -> listOf("revoke")
                 "world" -> listOf("show", "export", "import").filter { it.startsWith(args[1]) }
                 "testplayer" -> listOf("list", "add", "remove", "elevate", "demote").filter { it.startsWith(args[1]) }
@@ -201,8 +276,23 @@ class ForemanCommand(private val plugin: Foreman) : TabExecutor {
                     .filter { it.startsWith(args[2], ignoreCase = true) }
                 "token" -> plugin.bridge?.tokens?.names().orEmpty().filter { it.startsWith(args[2], ignoreCase = true) }
                 "world" -> org.bukkit.Bukkit.getWorlds().map { it.name }.filter { it.startsWith(args[2]) }
-                else -> emptyList()
+                "model" -> if (args[1] == "spawn" && plugin.worldTools) DisplayTools.complete(args[2]) else emptyList()
+                "unlock" -> listOf("force").filter { it.startsWith(args[2]) }
+                else -> tags(sender, args)
             }
-            else -> emptyList()
+            4 -> if (args[0] == "model" && args[1] == "spawn") listOf("0.5", "1", "2").filter { it.startsWith(args[3]) } else tags(sender, args)
+            else -> tags(sender, args)
         }
+
+    /** The area [name] in the sender's world, else in any loaded world. */
+    private fun area(sender: CommandSender, name: String): Area? =
+        (sender as? Player)?.let { plugin.worlds.area(name, it.world.name) } ?: plugin.worlds.area(name)
+
+    /** Completes the tags of `tag` (`asset` and the tags areas have) and `untag` (the area's own). */
+    private fun tags(sender: CommandSender, args: Array<out String>): List<String> {
+        if (args[0] != "tag" && args[0] != "untag" || !plugin.worldTools) return emptyList()
+        val area = area(sender, args[1]) ?: return emptyList()
+        val candidates = if (args[0] == "untag") area.tags else (listOf(AreaAssets.TAG) + plugin.worlds.areas.flatMap { it.tags }).distinct() - area.tags.toSet()
+        return candidates.filter { it.startsWith(args.last()) && it !in args.drop(2).dropLast(1) }
+    }
 }

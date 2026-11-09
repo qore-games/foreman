@@ -8,7 +8,9 @@ import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.client.render.OverlayLayer
 import net.minecraft.world.phys.Vec3
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -57,29 +59,39 @@ object AIOverlay : OverlayLayer {
             }
         }
 
-        fun area(box: BlockBox, color: Int, name: String, mode: Visibility) {
+        /** [tags] go on the label only: the HUD and the notices name the area. Not [drawn]: counted for the HUD only. */
+        fun area(box: BlockBox, color: Int, name: String, tags: String, mode: Visibility, drawn: Boolean = true, lock: AreaLock? = null) {
             val inside = box.distanceTo(draw.camera) <= 0.0
             if (inside) here += name
+            if (!drawn) return
             val p = presence(box, mode)
             if (p <= 0f) return
             box(draw, box, Colors.withAlpha(color, 0.2f + 0.65f * p), if (inside) 1.5f else 2f, Colors.withAlpha(color, if (inside) 0f else 0.05f * p), onTop)
             if (draw.distance(box.center) <= o.labelDistance + max(box.sizeX, box.sizeZ) / 2.0) {
-                draw.label(if (inside) nearestTop(box, draw.camera) else topCenter(box), name, Colors.withAlpha(color, 0.4f + 0.6f * p), onTop)
+                val alpha = 0.4f + 0.6f * p
+                draw.label(if (inside) nearestTop(box, draw.camera) else topCenter(box), listOfNotNull(name + tags to Colors.withAlpha(color, alpha),
+                    lockLine(lock)?.let { (text, c) -> text to Colors.withAlpha(c, alpha) }), onTop)
             }
         }
 
+        // The asset tool draws the asset areas itself while it is on.
+        val assetTool = games.qore.foreman.client.library.AssetTool.enabled
+        // The regions tool draws every area and point itself while it is on.
+        val regions = games.qore.foreman.client.regions.RegionsTool.enabled
         if (o.areas != Visibility.OFF) for (a in Bridge.areas) {
             if (a.dim != dim) continue
             val color = a.kind?.let { CLAIM_COLORS[it] ?: hashColor(it) } ?: MARK
+            val tags = a.tags.joinToString("") { " #$it" }
             if (a.isPoint) {
+                if (regions) continue
                 val b = a.blockBoxes[0]
                 if (presence(b, o.areas) <= 0f) continue
                 box(draw, b, color, 3f, 0, onTop)
-                if (draw.distance(b.center) <= o.labelDistance) draw.label(topCenter(b), a.name, color, onTop)
+                if (draw.distance(b.center) <= o.labelDistance) draw.label(topCenter(b), a.name + tags, color, onTop)
                 continue
             }
             val label = a.name + (a.kind?.let { " ($it)" } ?: "") + if (a.theme.isNotEmpty()) " · zone" else ""
-            a.blockBoxes.forEach { area(it, color, label, o.areas) }
+            a.blockBoxes.forEach { area(it, color, label, tags, o.areas, drawn = !regions && !(assetTool && games.qore.foreman.client.library.Library.TAG in a.tags), a.lock) }
         }
         if (o.zoneNotices) {
             val now = System.currentTimeMillis()
@@ -89,16 +101,15 @@ object AIOverlay : OverlayLayer {
         }
         areasHere = here
 
-        if (o.points != Visibility.OFF) {
+        if (o.points != Visibility.OFF && !regions) {
             val range = if (o.points == Visibility.NEARBY) o.nearDistance * 2.0 else o.maxDistance.toDouble()
             for (p in Bridge.points) {
                 if (p.dim != dim) continue
-                val center = Vec3(p.pos[0] + 0.5, p.pos[1] + 0.5, p.pos[2] + 0.5)
-                val distance = draw.distance(center)
+                val distance = draw.distance(p.at)
                 if (distance > range) continue
                 val color = hashColor(p.type)
-                draw.box(center.subtract(0.2, 0.2, 0.2), center.add(0.2, 0.2, 0.2), color, 2f, Colors.withAlpha(color, 0.4f), onTop)
-                if (distance <= 12) draw.label(center.add(0.0, 0.45, 0.0), "● ${p.type}${if (p.kind.isNotEmpty()) ":${p.kind}" else ""}", color, onTop, 0.7f)
+                point(draw, p, color, onTop = onTop)
+                if (distance <= 12) draw.label(p.at.add(0.0, 0.45, 0.0), "● ${p.type}${if (p.kind.isNotEmpty()) ":${p.kind}" else ""}", color, onTop, 0.7f)
             }
         }
 
@@ -158,7 +169,28 @@ object AIOverlay : OverlayLayer {
 
     fun topCenter(b: BlockBox) = Vec3(b.center.x, b.maxY + 1.4, b.center.z)
 
-    private fun hashColor(key: String): Int {
+    /** A gameplay point's marker: a small box of half size [r] where it is exactly, and an arrow the way it faces. */
+    fun point(draw: OverlayDraw, p: GamePoint, color: Int, r: Double = 0.2, width: Float = 2f, onTop: Boolean) {
+        val at = p.at
+        draw.box(at.subtract(r, r, r), at.add(r, r, r), color, width, Colors.withAlpha(color, 0.4f), onTop)
+        val yaw = p.yaw ?: return
+        draw.arrow(at, at.add(facing(yaw, p.pitch ?: 0f).scale(r + 0.6)), color, width + 1f, onTop)
+    }
+
+    /** The unit vector a yaw and pitch (degrees, Minecraft's: yaw 0 faces south, pitch 90 down) look along. */
+    fun facing(yaw: Float, pitch: Float): Vec3 {
+        val y = Math.toRadians(yaw.toDouble())
+        val x = Math.toRadians(pitch.toDouble())
+        return Vec3(-sin(y) * cos(x), -sin(x), cos(y) * cos(x))
+    }
+
+    /** A locked area's line under its name: a key and who holds it, the player's own in green, another's in red. */
+    fun lockLine(lock: AreaLock?): Pair<String, Int>? = lock?.let { if (it.mine) "⚿ locked by you" to LOCK_MINE else "⚿ locked by ${it.name}" to LOCK_OTHERS }
+
+    private const val LOCK_MINE = 0xFF6BE07A.toInt()
+    private const val LOCK_OTHERS = 0xFFFF6B6B.toInt()
+
+    fun hashColor(key: String): Int {
         val hue = (key.hashCode() and 0xFFFF) / 65535f
         return 0xFF000000.toInt() or (java.awt.Color.HSBtoRGB(hue, 0.6f, 1f) and 0xFFFFFF)
     }

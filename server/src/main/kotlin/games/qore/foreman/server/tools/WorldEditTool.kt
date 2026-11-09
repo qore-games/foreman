@@ -12,6 +12,7 @@ import games.qore.foreman.server.mcp.schema
 import games.qore.foreman.server.world.Box
 import games.qore.foreman.server.world.Change
 import games.qore.foreman.server.world.Edits
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.Sync
 import org.bukkit.Bukkit
 import org.bukkit.command.PluginIdentifiableCommand
@@ -75,6 +76,7 @@ object WorldEditTool {
             val name = command.substringBefore(' ').trimStart('/').substringAfter(':').lowercase()
             if (name !in editing) ServerTools.admin(args)
             val changes = name !in keepsBlocks
+            if (changes) Locks.guard(world.name, box)
             synchronized(lock) {
                 val change = Sync.main {
                     val weWorld = BukkitAdapter.adapt(world)

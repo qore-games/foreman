@@ -19,6 +19,7 @@ import games.qore.foreman.server.world.Edits
 import games.qore.foreman.server.world.Furniture
 import games.qore.foreman.server.world.Point
 import games.qore.foreman.server.world.Grid
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.Shapes
 import games.qore.foreman.server.world.Sync
 import games.qore.foreman.server.world.Walk
@@ -36,6 +37,8 @@ import org.bukkit.util.Vector
 import java.io.File
 import java.io.InputStreamReader
 import java.util.Random
+import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Whole buildings from a spec, and the gameplay points they record. */
@@ -116,15 +119,30 @@ object BuildTools {
             ForemanTool.POINTS,
             "Gameplay points of a world, kept in it: spots builds recorded from the catalog's `point` entries " +
                 "(type:kind, e.g. container:chest), or added here, for gameplay plugins to read (they get them through " +
-                "Foreman's API). list (by build, type or box), export as JSON, add [{pos, type, kind?, room?}] to a build, " +
-                "remove a build's (or those in a box).",
+                "Foreman's API). A point is an exact position (decimals; one at a block stands on its bottom centre, " +
+                "x.5 y z.5) and may face somewhere (yaw, pitch: a spawn). A point of a type a plugin declares (`ns:name`, " +
+                "layout_types) carries its fields in `data`, refused when it doesn't fit (check_layout finds the rest). " +
+                "list (by build, type or box), export as JSON, add [{pos | position, yaw?, pitch?, type, kind?, room?, data?}] " +
+                "to a build, move one (`at` where it is now, `position` and/or yaw/pitch) or change its `data`, remove a " +
+                "build's (or those in a box).",
             schema {
-                enum("action", listOf("list", "export", "add", "remove"), "What to do (default list)", required = false)
+                enum("action", listOf("list", "export", "add", "move", "remove"), "What to do (default list)", required = false)
                 string("build", "Only this build (add: the build they belong to)", required = false)
                 string("type", "Only this type (container, spawn…)", required = false)
-                vec("from", "A corner of a box to filter by", required = false)
+                vec("from", "A corner of a box to filter by (the blocks points are in)", required = false)
                 vec("to", "The opposite corner", required = false)
-                array("items", SchemaBuilder.type("object"), "add: [{pos: [x, y, z], type, kind?, room?}]", required = false)
+                array(
+                    "items", SchemaBuilder.type("object"),
+                    "add: [{pos: [x, y, z] (a block: the point stands on its bottom centre) or position: [x, y, z] (exact, decimals), " +
+                        "yaw?, pitch?, type, kind?, room?, data?: {field: value}}]",
+                    required = false,
+                )
+                prop("at", SchemaBuilder.pointSchema(), "move: where the point is now, [x, y, z]: its exact position, or a spot in its block (build and type narrow it down)", required = false)
+                prop("position", SchemaBuilder.pointSchema(), "move: its new exact position [x, y, z] (decimals)", required = false)
+                number("yaw", "move: the way it faces, -180 to 180 (0 = south, 90 = west)", required = false)
+                number("pitch", "move: looking up (-90) or down (90)", required = false)
+                prop("data", SchemaBuilder.type("object"), "move: field values merged into the point's data (null removes one)", required = false)
+                bool("replace_data", "move: `data` replaces the point's data instead of merging into it", required = false)
                 string("world", "World name", required = false)
             },
         ) { args -> points(plugin, args) },
@@ -326,6 +344,7 @@ object BuildTools {
     private fun demolish(plugin: Foreman, args: Args): ToolResult {
         val world = plugin.world(args.string("world", null))
         val box = Box.of(args.vec("from"), args.vec("to")).requireVolume(plugin.limits.maxEditBlocks.toLong(), "demolish")
+        Locks.guard(world.name, box)
         val keepRoads = args.bool("keep_roads", false)
         val road = Blocks.matcher("dirt_path,gravel,coarse_dirt,*_slab")
         // The ground around the box: its edges' natural ground, interpolated across by inverse distance to each side.
@@ -399,7 +418,7 @@ object BuildTools {
             val scale = (room.width * room.depth / 50.0).coerceIn(1.0, 4.0)
             for (e in entries) repeat(((e.min + rng.nextInt(e.max - e.min + 1)) * scale).roundToInt()) {
                 if (rng.nextDouble() >= e.chance) return@repeat
-                fun record(at: BlockVector3) = e.point?.let { p -> points += Point(world.name, at.x(), at.y(), at.z(), p.substringBefore(':'), p.substringAfter(':', ""), spec.name, room.name) }
+                fun record(at: BlockVector3) = e.point?.let { p -> plugin.worlds.layout.split(p).let { (type, kind) -> points += Point.at(world.name, at, type, kind, spec.name, room.name) } }
                 // A point alone (a spawn, an item on the floor): a free floor cell, nothing placed.
                 if (e.item.isEmpty()) {
                     val spot = center(cells, taken, openings, rng) ?: return@repeat
@@ -524,16 +543,45 @@ object BuildTools {
         val build = args.string("build", null)
         val type = args.string("type", null)
         val box = if (args.has("from") && args.has("to")) Box.of(args.vec("from"), args.vec("to")) else null
-        fun matches(p: Point) = (build == null || p.build == build) && (type == null || p.type == type) && (box == null || box.contains(p.x, p.y, p.z))
+        fun matches(p: Point) = (build == null || p.build == build) && (type == null || p.type == type) && (box == null || p.inside(box))
         val list = plugin.worlds.points(world).filter(::matches)
+        val layout = plugin.worlds.layout
         return when (args.string("action", "list")) {
             "add" -> {
                 val added = args.array("items").map { Args(it.asJsonObject) }.map { i ->
-                    val pos = i.vec("pos")
-                    Point(world, pos.x(), pos.y(), pos.z(), i.string("type"), i.string("kind", "")!!, build ?: "", i.string("room", "")!!)
+                    val point = when {
+                        i.has("position") -> i.point("position").let { p -> Point(world, p[0], p[1], p[2], "", "", "", "") }
+                        else -> Point.at(world, i.vec("pos"), "", "", "", "")
+                    }
+                    point.copy(
+                        type = i.string("type"), kind = i.string("kind", "")!!, build = build ?: "", room = i.string("room", "")!!,
+                        yaw = i.float("yaw"), pitch = i.float("pitch"), data = if (i.has("data")) layout.merge(JsonObject(), i.obj("data"), true) else JsonObject(),
+                    )
                 }
+                added.forEach { layout.require(it.describe(), layout.of(it), it.data) }
                 plugin.worlds.addPoints(world, added)
-                ToolResult.text("Added ${added.size} points" + (build?.let { " to $it" } ?: ""))
+                ToolResult.text("Added ${added.size} points" + (build?.let { " to $it" } ?: "") + ":\n" + added.joinToString("\n") { "  " + it.describe() } +
+                    (layout.unknown(games.qore.foreman.server.api.LayoutType.Target.POINT, added.map { it.type }.distinct())?.let { "\n$it" } ?: ""))
+            }
+            "move" -> {
+                if (!args.has("position") && !args.has("yaw") && !args.has("pitch") && !args.has("data")) throw ToolError("Give position, yaw, pitch or data")
+                val at = args.point("at")
+                val near = list.filter { abs(it.x - at[0]) < 0.01 && abs(it.y - at[1]) < 0.01 && abs(it.z - at[2]) < 0.01 }
+                    .ifEmpty { list.filter { it.block == BlockVector3.at(floor(at[0]), floor(at[1]), floor(at[2])) } }
+                val point = near.singleOrNull() ?: throw ToolError(
+                    if (near.isEmpty()) "No point at ${at.toList()}" + (if (build != null || type != null) " (build/type filters)" else "") + ": list them first"
+                    else "${near.size} points there: give build or type, or their exact position\n" + near.joinToString("\n") { "  " + it.describe() },
+                )
+                val moved = point.copy(
+                    x = if (args.has("position")) args.point("position")[0] else point.x,
+                    y = if (args.has("position")) args.point("position")[1] else point.y,
+                    z = if (args.has("position")) args.point("position")[2] else point.z,
+                    yaw = args.float("yaw") ?: point.yaw, pitch = args.float("pitch") ?: point.pitch,
+                    data = if (args.has("data")) layout.merge(point.data, args.obj("data"), args.bool("replace_data", false)) else point.data,
+                )
+                if (args.has("data")) layout.require(moved.describe(), layout.of(moved), moved.data)
+                plugin.worlds.replacePoint(world, point, moved)
+                ToolResult.text("Moved ${point.describe()}\n  to ${moved.describe()}")
             }
             "remove" -> {
                 if (build == null && box == null && type == null) throw ToolError("Give build, type or from/to")
@@ -541,8 +589,9 @@ object BuildTools {
             }
             "export" -> ToolResult.text(JsonArray().apply {
                 list.forEach { p -> add(JsonObject().apply {
-                    addProperty("world", p.world); add("pos", Compiler.array(p.x, p.y, p.z)); addProperty("type", p.type)
-                    addProperty("kind", p.kind); addProperty("build", p.build); addProperty("room", p.room)
+                    addProperty("world", p.world); add("position", JsonArray().apply { add(p.x); add(p.y); add(p.z) })
+                    p.yaw?.let { addProperty("yaw", it) }; p.pitch?.let { addProperty("pitch", it) }; addProperty("type", p.type)
+                    addProperty("kind", p.kind); addProperty("build", p.build); addProperty("room", p.room); add("data", p.data)
                 }) }
             }.toString())
             else -> ToolResult.text(if (list.isEmpty()) "No points" else "${list.size} points:\n" + list.take(200).joinToString("\n") { it.describe() } +

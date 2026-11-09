@@ -1,17 +1,15 @@
 package games.qore.foreman.client.gizmo
 
-import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.input.Ray
-import games.qore.foreman.client.mc.Mc
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import net.minecraft.world.phys.Vec3
-import kotlin.math.round
 
 /**
  * Handles around a target that are grabbed with the crosshair and dragged along their axis. The drag follows the point
  * of the axis closest to the crosshair ray, so the handle stays under the crosshair as the view turns or the player
- * moves. Subclasses say where the handles are and what a drag of `delta` blocks along a handle does.
+ * moves. Subclasses say where the handles are and what a drag of `delta` blocks along a handle does: [BoxGizmo] for
+ * boxes of blocks; what has a pivot (points, displays, locations) is the [TransformGizmo]'s.
  */
 abstract class Gizmo<H : Gizmo.Handle> {
     /**
@@ -96,9 +94,5 @@ abstract class Gizmo<H : Gizmo.Handle> {
 
         /** Handle length for a gizmo at [distance] blocks from the camera. */
         fun size(distance: Double) = (distance * 0.15).coerceIn(0.8, 12.0)
-
-        /** Rounds to [step]; Ctrl held means no snapping. */
-        fun snap(value: Double, step: Double): Double =
-            if (step <= 0 || Mc.isKeyDown(InputConstants.KEY_LCONTROL)) value else round(value / step) * step
     }
 }

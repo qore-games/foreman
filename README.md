@@ -74,6 +74,22 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   ("replace the stone with 50% cobblestone"), renders, terrain, roads, schematics, whole buildings from editable
   templates, and checks that walk a build the way a player would. Every change can be undone.
 
+### Building, with the server plugin
+
+- **Editor mode.** One key (B) opens the building tools in game: a panel lists them and the keys of the one in use,
+  which win over the game's while it's on, and a card says what's selected and what a click will do.
+- **Asset library.** Mark a build as an asset (an area tagged `asset`), browse the library in 3D, and paste an asset
+  anywhere, turned, with a ghost of it in place first. Everything inside travels: blocks and their block data, entities
+  with their data, furniture, points and areas. Each paste remembers its asset: turn it, sync it, delete it, or open the
+  asset where it's built.
+- **Display editor and models.** Select any display entity (item, block, text, furniture) by clicking its model, then
+  move, turn, scale and stretch it with gizmos, freely or snapped. Browse every item model of the loaded resource packs
+  in 3D and place them.
+- **Areas and points.** Mark areas (claims, zones, tags) and precise points with a facing, for gameplay to read.
+  Plugins declare the point and area types they use with typed fields, filled in with forms in game and checked by the
+  layout check. Locks, a per-player undo and a history for builders working together; overlays for hidden blocks
+  and display entities per chunk, and a measure tool.
+
 ### AI, with your own account
 
 - **Chats in game.** Ask in plain words. The AI runs on your computer with your own Claude Code, opencode or OpenRouter
@@ -95,6 +111,8 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   with or without the Foreman plugin.
 - **`ForemanWorlds` and `FurnitureProvider`:** read the areas and points Foreman keeps in each world, and offer your
   furniture to the world tools.
+- **`ForemanLayout`, `RegionCopyEvent`, `ForemanWorldLoader`:** declare the point and area types your plugin reads,
+  follow what copies and moves of regions do to your data, and load worlds on demand for the asset library.
 
 ### For AIs
 

@@ -3,8 +3,13 @@
 ## Open the hub
 
 Press ++h++. The hub has everything on one screen: a rail of sections on the left, grouped by what they're for
-(AI, World, Debug), with Keys and Settings at the bottom. ++l++ opens it on Locations.
+(AI, World, Debug), with Keys and Settings at the bottom. It opens again where you closed it.
 See [The hub](../client/hub.md).
+
+## Build
+
+Press ++b++ for editor mode: a panel lists the building tools (selection, displays, models, assets, areas and points,
+locations), ++1++ to ++9++ pick one, and shows the keys of the one in use. See [Editor mode](../client/editor.md).
 
 ## Record the traffic
 

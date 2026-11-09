@@ -50,9 +50,15 @@ limits:
   max-read-blocks: 20000
   max-render-blocks: 800000
 
-# Assets for the textured renders (look, model previews). The client jar is downloaded from Mojang into cache/ unless
-# client-jar is set; packs are the server's resource packs (zips or unzipped folders, absolute or relative to the
-# server folder), later ones winning.
+# Areas a player locked (lock_area, /foreman lock): other players' Foreman edits inside them are refused.
+locks:
+  # Their own block placing and breaking there too, and their changes to displays, furniture hitboxes, item frames and
+  # armor stands (foreman.lock.bypass passes). Listened to only while an area is locked.
+  protect-blocks: true
+
+# Assets for the textured renders (look, model previews) and the models to spawn (list_models, /foreman model). The
+# client jar is downloaded from Mojang into cache/ unless client-jar is set; packs are the server's resource packs (zips
+# or unzipped folders, absolute or relative to the server folder), later ones winning.
 resources:
   client-jar: ""
   packs: []

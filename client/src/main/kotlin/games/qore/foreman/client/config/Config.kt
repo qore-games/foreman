@@ -31,8 +31,6 @@ data class PacketSettings(
 data class LocationSettings(
     var throughBlocks: Boolean = false,
     var showSourceCategoryLabels: Boolean = false,
-    /** Gizmo moves snap to this step (blocks); hold Ctrl to move freely. */
-    var snap: Double = 0.25,
 )
 
 /** How much of a layer is drawn: nothing, what is around the player, or everything in range. */
@@ -49,6 +47,8 @@ data class OverlaySettings(
     var issues: Visibility = Visibility.ALWAYS,
     var changes: Visibility = Visibility.ALWAYS,
     var locations: Visibility = Visibility.NEARBY,
+    /** Where the library's assets were pasted: each copy's box, asset and points. */
+    var instances: Visibility = Visibility.NEARBY,
     /** The WorldEdit selection, in every shape (when the server's WorldEdit sends it). */
     var worldEdit: Boolean = true,
     var throughBlocks: Boolean = false,
@@ -64,6 +64,15 @@ data class OverlaySettings(
     var maxDistance: Int = 192,
     /** The HUD lists the areas the player is in. */
     var hudAreas: Boolean = true,
+    /** Blocks drawn as nothing (barriers, lights, structure voids, what the packs leave empty), outlined around the player. */
+    var hiddenBlocks: Boolean = false,
+    /** Hidden blocks: how far from the player, in blocks. */
+    var hiddenRadius: Int = 32,
+    /** Display and interaction entities per chunk, coloured by how many. */
+    var displayBudget: Boolean = false,
+    /** Display budget: a chunk with this many is yellow, with [budgetHigh] red. */
+    var budgetWarn: Int = 50,
+    var budgetHigh: Int = 150,
 )
 
 /**
@@ -177,6 +186,18 @@ data class LeanSettings(
     var packs: LeanPacks = LeanPacks.LOAD,
 )
 
+/**
+ * Editor mode's last tool (its id): the editor key opens it again. The snapping of every gizmo
+ * ([games.qore.foreman.client.gizmo.Snapping]): the move step in blocks (0 free, 1 onto the block grid), the turn step
+ * in degrees and the scale step (0 free).
+ */
+@Serializable
+data class EditorSettings(var tool: String = "", var moveStep: Double = 1.0 / 16, var turnStep: Double = 15.0, var scaleStep: Double = 1.0 / 16)
+
+/** The hub's section when it was last closed: it opens there again. */
+@Serializable
+data class HubSettings(var section: String = "")
+
 @Serializable
 data class Settings(
     var workspaces: MutableList<Workspace> = mutableListOf(),
@@ -188,6 +209,8 @@ data class Settings(
     var external: ExternalAccessSettings = ExternalAccessSettings(),
     var reload: ReloadSettings = ReloadSettings(),
     var lean: LeanSettings = LeanSettings(),
+    var editor: EditorSettings = EditorSettings(),
+    var hub: HubSettings = HubSettings(),
 )
 
 /** `config/foreman/settings.json`, read once at start and written on every change (this user only: it holds a token). */

@@ -1,12 +1,23 @@
 package games.qore.foreman.client.link
 
+import com.mojang.blaze3d.platform.InputConstants
+import games.qore.foreman.client.editor.EditorKey
+import games.qore.foreman.client.editor.EditorTool
+import games.qore.foreman.client.editor.Hint
+import games.qore.foreman.client.editor.Note
+import games.qore.foreman.client.editor.Shown
+import games.qore.foreman.client.editor.ToolStatus
 import games.qore.foreman.client.gizmo.BlockBox
 import games.qore.foreman.client.gizmo.BoxGizmo
 import games.qore.foreman.client.input.MouseButton
 import games.qore.foreman.client.input.Ray
-import games.qore.foreman.client.input.Tool
+import games.qore.foreman.client.input.playerDimension
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
+import games.qore.foreman.client.ui.ChatScreen
+import games.qore.foreman.client.ui.HubScreen
+import games.qore.foreman.client.ui.Screens
+import games.qore.foreman.client.util.Chat
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
@@ -15,10 +26,12 @@ import net.minecraft.world.phys.HitResult
 
 /**
  * A box selection made on the client: left click a block for the first corner, right click for the second, then drag
- * the face knobs to resize or the center arrows to move it. Sent to foreman (`get_context` shows it to the AI).
+ * the face knobs to resize or the center arrows to move it. Sent to foreman (`get_context` shows it to the AI). The
+ * editor's other tools make their new things from it ([current]): assets, areas.
  */
-object SelectionTool : Tool {
+object SelectionTool : EditorTool {
     override val title = "Selection"
+    override val id = "selection"
     private const val COLOR = 0xFFFFFFFF.toInt()
 
     var box: BlockBox? = null
@@ -29,6 +42,18 @@ object SelectionTool : Tool {
     private var second: BlockPos? = null
 
     private val gizmo = BoxGizmo({ box }, { box = it }, { send() })
+
+    override fun keys() = listOf(
+        EditorKey(InputConstants.KEY_RETURN, "Ask a chat about it") { ask() },
+        EditorKey(InputConstants.KEY_DELETE, "Clear it") { clear() },
+        EditorKey(InputConstants.KEY_N, "The hub's Selection page") { Screens.open(HubScreen(HubScreen.Section.SELECTION)) },
+    )
+
+    /** Opens the chats with the selection as the place to work in. */
+    fun ask() {
+        val selection = describe() ?: return Chat.warn("No selection: click two corners with the selection tool (B, then 1)")
+        Screens.open(ChatScreen("the selected area $selection"))
+    }
 
     fun init() {
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> clear(send = false) }
@@ -42,7 +67,29 @@ object SelectionTool : Tool {
         if (send) send()
     }
 
+    /** Makes [box] in [dimension] the selection (a pasted copy's box, from its panel). */
+    fun select(dimension: String, box: BlockBox) {
+        gizmo.cancel()
+        this.dimension = dimension
+        this.box = box
+        first = BlockPos(box.minX, box.minY, box.minZ)
+        second = BlockPos(box.maxX, box.maxY, box.maxZ)
+        send()
+    }
+
     fun describe(): String? = box?.let { "${it.describe()} in ${Bridge.world.ifEmpty { dimension ?: "?" }}" }
+
+    /** The box new things are made from: this selection when it is in the player's dimension, else WorldEdit's. */
+    fun current(): BlockBox? = box?.takeIf { dimension != null && dimension == playerDimension() } ?: WorldEditSelection.shape()?.bounds
+
+    /** What [current] is, for a panel: `Selection 4×3×5 at 10 64 -3`, or null without one. */
+    fun currentLabel(): String? {
+        val b = current() ?: return null
+        val whose = if (b == box) "Selection" else "WorldEdit selection"
+        return "$whose ${b.sizeX}×${b.sizeY}×${b.sizeZ} at ${b.minX} ${b.minY} ${b.minZ}"
+    }
+
+    override fun snapNote() = "The box: whole blocks"
 
     private fun send() = Bridge.sendSelection(dimension, box)
 
@@ -85,9 +132,18 @@ object SelectionTool : Tool {
         draw.label(AIOverlay.topCenter(b), "${b.sizeX}×${b.sizeY}×${b.sizeZ}", COLOR)
     }
 
-    override fun hud(): List<String> = listOfNotNull(
-        box?.let { "§f${it.describe()}" } ?: "§7Left / right click: corners",
-        if (box != null) "§7Drag a knob to resize, an arrow to move" else null,
-        if (!Bridge.connected) "§7No Foreman plugin here: chats get it from you" else null,
+    override fun status() = ToolStatus(
+        selected = box?.let { Shown("Selection box", "${it.sizeX}×${it.sizeY}×${it.sizeZ}", "${it.minX} ${it.minY} ${it.minZ} to ${it.maxX} ${it.maxY} ${it.maxZ}") },
+        empty = "Click two blocks: its corners",
+        hints = when {
+            gizmo.dragging -> emptyList()
+            gizmo.hovered != null -> listOf(Hint(ToolStatus.DRAG, if (gizmo.hovered!!.face < 0) "move the box" else "move this face"))
+            else -> listOfNotNull(
+                Hint(ToolStatus.LEFT, "a block: the first corner"),
+                Hint(ToolStatus.RIGHT, "a block: the second corner"),
+                if (box != null) Hint(ToolStatus.DRAG, "a knob resizes it, an arrow moves it") else null,
+            )
+        },
+        notes = if (Bridge.connected) emptyList() else listOf(Note("No Foreman plugin here: chats get it from you")),
     )
 }

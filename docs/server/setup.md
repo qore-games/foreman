@@ -66,8 +66,9 @@ limits:
   max-read-blocks: 20000
   max-render-blocks: 800000
 
-# Assets for the textured renders (look, model previews). The client jar is downloaded from Mojang into cache/
-# unless client-jar is set; packs are the server's resource packs (zips or folders), later ones winning.
+# Assets for the textured renders (look, model previews) and the models to spawn (list_models, /foreman model). The
+# client jar is downloaded from Mojang into cache/ unless client-jar is set; packs are the server's resource packs
+# (zips or folders), later ones winning.
 resources:
   client-jar: ""
   packs: []
@@ -213,7 +214,12 @@ same names.
 | `/foreman tools [filter]` | Every MCP tool by provider (Foreman's and other plugins'), those that edit in gold |
 | `/foreman mark <name> [note]` | Name your WorldEdit selection (or where you stand) as an area |
 | `/foreman unmark <name>`, `/foreman marks` | Remove an area, list them |
-| `/foreman undo [count]` | Revert the last AI changes |
+| `/foreman tag <name> <tag…>`, `/foreman untag <name> <tag…>` | Add tags to an area, remove some (`asset` makes it an [asset](assets.md#assets-from-areas)) |
+| `/foreman lock <area>`, `/foreman unlock <area> [force]` | Lock an area to you: others' Foreman edits inside it are refused until you unlock it; `force` unlocks someone else's (`foreman.admin`). [Locks](world-context.md#locks) |
+| `/foreman undo [count] [player] [force]` | Revert your last changes; another player's with `foreman.admin`; `force` even when someone else changed the place since ([undo](world-tools.md#undo)) |
+| `/foreman history [player]` | The recent changes: your own, everyone's or a player's with `foreman.admin` |
 | `/foreman asset save <name> [tags…]` | Save your WorldEdit selection to the schematic library |
+| `/foreman model spawn <model> [scale]` | Spawn a resource pack model on the block face you look at, facing you ([displays and models](displays.md#spawning-models)) |
+| `/foreman model list [filter] [page]` | The models of the server's resources, click one to spawn it |
 | `/foreman token revoke <player>` | Revoke a player's token (a new one comes on their next join) |
 | `/foreman world show \| export \| import [world]` | A world's profile and areas, as YAML in `worlds/` |

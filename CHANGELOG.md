@@ -3,6 +3,80 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
+## [Unreleased]
+
+### Building (mod and plugin)
+
+- **Editor mode.** One key (B, `key.foreman.editor`) turns the building tools on: a panel at the side of the screen
+  lists them (the number keys pick one: selection, displays, models, library, assets, areas and points, measure,
+  locations, WorldEdit) and the keys of the one in use, which the mod takes before the game's own bindings while it is
+  on (F doesn't swap hands, the numbers don't change the hotbar; movement, chat and F3 go through). A card at the top
+  left says what is selected (an asset area or a pasted copy of it, a display, a furniture, an area, a point…), what a
+  click does and what is waiting for a confirmation. Esc steps back in the tool, then leaves. A crosshair in spectator.
+  The tools' own global key bindings are gone: their keys live in editor mode.
+- **Snapping, one key for every gizmo:** G cycles the step of what the gizmo does now (move: free, 1/16, 1/8, 1/4,
+  1/2 or a whole block, the block grid itself; turn: free, 5°, 15°, 22.5°, 45°, 90°; scale: free, 1/16, 1/4, 1/2), Ctrl
+  drags freely. One transform gizmo (arrows, planes, rings, scale handles) serves every tool.
+- **Asset library from the world.** An area tagged `asset` is a library asset (`area:<world>/<name>`): `list_assets`
+  lists it (`format: json` for programs), `preview_asset` renders it alone with its furniture and displays (`views`
+  images around it, `size`), `paste_asset` pastes it into any loaded world, turned, as one undo step. Everything inside
+  travels: blocks, their block data (the per-block entries plugins keep in the chunk with the CustomBlockData layout),
+  display and furniture entities with their data, the points and areas inside. A display belongs to the asset where its
+  model shows, not only where the entity stands. The mod's Library page browses them (thumbnails, 8 views to turn,
+  tags, search) and places them with a ghost of the asset at the paste spot (`asset_content`).
+- **Making and editing assets:** `define_asset` (`fit` to the content, `plot` on the next free plot of the library
+  world), `fit_asset`, `resize_asset`, `move_asset` (everything inside moves, entities keep their UUIDs, players
+  standing on it go along; `rotate`), `/foreman asset new|fit`. In the mod's asset tool, an asset is made from the
+  selection.
+- **Pasted copies (instances):** each paste is recorded in the target world (asset, origin, turn, the blocks it wrote,
+  its entities, points and areas) and tagged on its entities; `list_instances` (also where an asset is used),
+  `instance_info`, `rotate_instance`, `sync_instance` (pasted again from the asset as it is now), `delete_instance`
+  (only what the paste wrote), `detach_instance`, `open_asset_source` (to the asset where it's built, loading its world
+  through a `ForemanWorldLoader` when one is registered; on the ground in front of it, or flying). The mod outlines the
+  copies and opens a panel for each.
+- **`diff_regions`:** compares a box with its copy or its move, turned: blocks, block data, entities (pose, data),
+  furniture as its plugin sees it, points and areas; how pastes and moves are checked.
+- **Display entities:** `list_displays`, `edit_displays` (position, yaw, pitch, any part of the transformation,
+  billboard; a furniture's root display keeps its root block, whole-block moves place it again through its plugin; the
+  answer gives each display as it ended), `spawn_display` (a model, a block or a text; `copy_of` copies a display with
+  its item and data), `remove_displays`, `list_models` (the item models of the server's resources and the furniture
+  showing each), `/foreman model spawn|list`. The mod's display editor selects a display by clicking its model (its real
+  shape), several with Shift or the selection box, shows each entity's position (and moves it while the model stays),
+  and moves, turns, scales and stretches them, previewed at once and saved on release; a panel for exact values,
+  duplicate, delete, drop onto the surface. The Models page shows every item model of the loaded packs in 3D, with
+  search, and places them (as furniture when they are one).
+- **Areas and points in game:** the areas-and-points tool outlines areas (claims, zones, tags) and points, makes areas
+  from the selection, resizes and moves their boxes, edits their name, note, tags, zone rules and claim kind, and places
+  points. Points are precise now: decimal positions with an optional yaw and pitch (`points` `move`).
+- **Layout types:** plugins declare the point types and area types they read, with typed fields (`ForemanLayout`);
+  points and areas carry `data` for them, checked when written; `layout_types`, `check_layout` (unknown types, missing
+  or invalid fields, the plugins' own checks). The mod fills them in with forms and lists the check's findings.
+- **Working together:** the undo history is per player (`undo` takes back your own changes and refuses one that someone
+  changed over since, unless `force`; `player` for admins; `history`, `/foreman history`; the mod's History page).
+  Areas can be locked (`lock_area`, `unlock_area`, `/foreman lock|unlock`): others' edits inside are refused, and with
+  `locks.protect-blocks` their block placing and breaking too; `foreman.lock.bypass`.
+- Overlays: hidden blocks (barriers, light blocks, structure voids, blocks the resource packs draw as nothing), display
+  entities per chunk; a measure tool.
+
+### Server (Paper plugin)
+
+- `look` and the model previews drew no block textures on Java 25 (every block was invisible).
+- Area tags (`/foreman tag|untag`, `set_mark` `tags`), shown in listings and to the mod.
+- Yaws stay between -180 and 180 through turns and moves; an undo takes back the furniture a change placed before
+  restoring what it removed.
+
+### Client (Fabric mod, any server)
+
+- The hub opens on the page it was closed on.
+- `client_key` presses a physical key (`key.keyboard.f`, with `shift` / `ctrl`) through the game's keyboard handler.
+
+### API
+
+- `ForemanLayout` (point and area types with fields, a Bukkit service), `RegionCopyEvent` (what a paste or a move did
+  to a region: its transform and the entity UUIDs it replaced), `ForemanWorldLoader` (load a world on demand).
+- **Breaking:** `WorldPoint`'s position is decimal (`x`, `y`, `z` doubles, `yaw`, `pitch`, `location()`, `block()`) and it has
+  `data`; `WorldArea` has `tags`, `data` and its lock.
+
 ## [1.2.0] - 2026-11-05
 
 ### Server (Paper plugin)

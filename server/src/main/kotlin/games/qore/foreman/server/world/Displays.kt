@@ -3,6 +3,7 @@ package games.qore.foreman.server.world
 import org.bukkit.World
 import org.bukkit.block.data.BlockData
 import org.bukkit.entity.BlockDisplay
+import org.bukkit.entity.Display
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.util.BoundingBox
 import org.joml.Matrix4d
@@ -24,29 +25,32 @@ object Displays {
     /** Main thread. */
     fun read(world: World, box: Box): List<Entry> {
         val bounds = BoundingBox(box.min.x() - 4.0, box.min.y() - 4.0, box.min.z() - 4.0, box.max.x() + 5.0, box.max.y() + 5.0, box.max.z() + 5.0)
-        return world.getNearbyEntities(bounds) { it is ItemDisplay || it is BlockDisplay }.mapNotNull { e ->
-            val l = e.location
-            val t = (e as org.bukkit.entity.Display).transformation
-            // Display: position, orientation (fixed billboard), then its transformation.
-            val pose = Matrix4d().translate(l.x, l.y, l.z)
-                .rotate(Quaterniond().rotationYXZ(-Math.toRadians(l.yaw.toDouble()), Math.toRadians(l.pitch.toDouble()), 0.0))
-                .translate(t.translation.x.toDouble(), t.translation.y.toDouble(), t.translation.z.toDouble())
-                .rotate(Quaterniond(t.leftRotation.x.toDouble(), t.leftRotation.y.toDouble(), t.leftRotation.z.toDouble(), t.leftRotation.w.toDouble()))
-                .scale(t.scale.x.toDouble(), t.scale.y.toDouble(), t.scale.z.toDouble())
-                .rotate(Quaterniond(t.rightRotation.x.toDouble(), t.rightRotation.y.toDouble(), t.rightRotation.z.toDouble(), t.rightRotation.w.toDouble()))
-            when (e) {
-                is ItemDisplay -> {
-                    val stack = e.itemStack
-                    if (stack.type.isAir) return@mapNotNull null
-                    val meta = stack.itemMeta
-                    val model = if (meta != null && meta.hasItemModel()) meta.itemModel.toString() else stack.type.key.toString()
-                    // ItemDisplayRenderer turns the item half a turn before rendering it with its display context.
-                    Entry(e.uniqueId, pose.rotateY(Math.PI), model, null)
-                }
+        return world.getNearbyEntities(bounds) { it is ItemDisplay || it is BlockDisplay }.mapNotNull { entry(it as Display) }
+    }
 
-                is BlockDisplay -> Entry(e.uniqueId, pose, null, e.block)
-                else -> null
+    /** What the client needs to draw [e]; null for what has no model (text, no item). Main thread. */
+    fun entry(e: Display): Entry? {
+        val l = e.location
+        val t = e.transformation
+        // Display: position, orientation (fixed billboard), then its transformation.
+        val pose = Matrix4d().translate(l.x, l.y, l.z)
+            .rotate(Quaterniond().rotationYXZ(-Math.toRadians(l.yaw.toDouble()), Math.toRadians(l.pitch.toDouble()), 0.0))
+            .translate(t.translation.x.toDouble(), t.translation.y.toDouble(), t.translation.z.toDouble())
+            .rotate(Quaterniond(t.leftRotation.x.toDouble(), t.leftRotation.y.toDouble(), t.leftRotation.z.toDouble(), t.leftRotation.w.toDouble()))
+            .scale(t.scale.x.toDouble(), t.scale.y.toDouble(), t.scale.z.toDouble())
+            .rotate(Quaterniond(t.rightRotation.x.toDouble(), t.rightRotation.y.toDouble(), t.rightRotation.z.toDouble(), t.rightRotation.w.toDouble()))
+        return when (e) {
+            is ItemDisplay -> {
+                val stack = e.itemStack
+                if (stack.type.isAir) return null
+                val meta = stack.itemMeta
+                val model = if (meta != null && meta.hasItemModel()) meta.itemModel.toString() else stack.type.key.toString()
+                // ItemDisplayRenderer turns the item half a turn before rendering it with its display context.
+                Entry(e.uniqueId, pose.rotateY(Math.PI), model, null)
             }
+
+            is BlockDisplay -> Entry(e.uniqueId, pose, null, e.block)
+            else -> null
         }
     }
 

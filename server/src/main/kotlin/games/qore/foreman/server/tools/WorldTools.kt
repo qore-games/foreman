@@ -4,6 +4,7 @@ import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Tool
 import games.qore.foreman.server.world.Assets
 import games.qore.foreman.server.world.Chunks
+import games.qore.foreman.server.world.Locks
 import games.qore.foreman.server.world.WorldData
 import java.io.File
 
@@ -25,8 +26,9 @@ object WorldTools {
         plugin.assets = Assets(File(plugin.dataFolder, "assets").apply { mkdirs() }, File(plugin.dataFolder.parentFile, "FastAsyncWorldEdit/schematics"))
         plugin.worlds = WorldData(plugin).also { it.start() }
         Chunks.start(plugin)
-        return InspectTools.all(plugin) + QualityTools.all(plugin) + EditTools.all(plugin) + TerrainTools.all(plugin) + AssetTools.all(plugin) +
-            ModelTools.all(plugin) + BuildTools.all(plugin) + RepairTools.all(plugin) + LandTools.all(plugin) + WorldEditTool.all(plugin)
+        Locks.start(plugin)
+        return InspectTools.all(plugin) + QualityTools.all(plugin) + LockTools.all(plugin) + EditTools.all(plugin) + TerrainTools.all(plugin) + AssetTools.all(plugin) + AssetContentTools.all(plugin) + LibraryTools.all(plugin) + DiffTools.all(plugin) +
+            ModelTools.all(plugin) + DisplayTools.all(plugin) + BuildTools.all(plugin) + LayoutTools.all(plugin) + RepairTools.all(plugin) + LandTools.all(plugin) + WorldEditTool.all(plugin)
     }
 
     fun stop() {

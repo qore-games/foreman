@@ -4,6 +4,8 @@ import com.google.gson.JsonParser
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.serialization.JsonOps
 import games.qore.foreman.client.lean.Lean
+import games.qore.foreman.client.mc.Mc
+import games.qore.foreman.client.mixin.KeyboardHandlerInvoker
 import games.qore.foreman.client.ui.kit.KitScreen
 import games.qore.foreman.client.util.Chat
 import games.qore.foreman.client.util.bool
@@ -231,9 +233,12 @@ object ScreenTools {
             "Presses a key binding like the player, by its id (`key.quickActions` opens the server's quick actions dialog, " +
                 "`key.inventory`, `key.chat`, `key.jump`…), or `escape` (what Esc does on the open screen). `hold_ms` holds it " +
                 "down that long (walking, sneaking, using an item…), then releases and says how the player moved (at once with " +
-                "`wait` false); client_input holds several in sequence. Unknown ids list the known ones.",
-            ClientTools.schema("key" to "string: a key binding id or escape", "hold_ms" to "integer: hold it down this long (default a tap: one tick)",
-                "wait" to "boolean: with hold_ms, return after the release (default true)", "wait_ms" to "integer: then wait this long (default 400)"),
+                "`wait` false); client_input holds several in sequence. Unknown ids list the known ones. A physical key " +
+                "(`key.keyboard.f`, `key.keyboard.1`, `key.keyboard.enter`, with `shift` / `ctrl`) goes through the game's " +
+                "keyboard handler like a real keyboard: what mods do with keys first, then every binding on it.",
+            ClientTools.schema("key" to "string: a key binding id, a physical key (key.keyboard.<name>) or escape", "hold_ms" to "integer: hold it down this long (default a tap: one tick)",
+                "wait" to "boolean: with hold_ms, return after the release (default true)", "wait_ms" to "integer: then wait this long (default 400)",
+                "shift" to "boolean: a physical key with Shift (default false)", "ctrl" to "boolean: a physical key with Ctrl (default false)"),
             enabled = { it.allowCommands },
             group = "Screens",
         ) { _, args ->
@@ -243,6 +248,8 @@ object ScreenTools {
                 if (holdMs != null) throw ToolFailure("escape can't be held")
                 ClientTools.onClient { screen().keyPressed(KeyEvent(InputConstants.KEY_ESCAPE, 0, 0)) }
                 "Pressed Esc"
+            } else if (key.startsWith("key.keyboard.")) {
+                physicalKey(key, args["shift"].bool() == true, args["ctrl"].bool() == true, holdMs)
             } else {
                 val (mapping, label) = ClientTools.onClient { InputTools.mapping(key).let { it to "$key (${it.translatedKeyMessage.string})" } }
                 val ticks = holdMs?.let { InputTools.ticks(it) } ?: 1
@@ -256,6 +263,21 @@ object ScreenTools {
             if (holdMs == null || args["wait"].bool() != false) Thread.sleep((args["wait_ms"].int() ?: 400).coerceIn(0, 5000).toLong())
             listOf(ClientMcp.text(done + "\n\n" + describeNow()))
         })
+    }
+
+    /** Presses [name] (`key.keyboard.f`) as the keyboard would, through the game's keyboard handler, for [holdMs]. */
+    private fun physicalKey(name: String, shift: Boolean, ctrl: Boolean, holdMs: Int?): String {
+        val code = runCatching { InputConstants.getKey(name) }.getOrNull()?.takeIf { it.type == Mc.keyboard && it != InputConstants.UNKNOWN }?.value
+            ?: throw ToolFailure("Unknown key $name: key.keyboard.f, key.keyboard.1, key.keyboard.enter, key.keyboard.left.shift…")
+        val modifiers = (if (shift) InputConstants.MOD_SHIFT else 0) or (if (ctrl) InputConstants.MOD_CONTROL else 0)
+        fun send(action: Int) = ClientTools.onClient {
+            val minecraft = Minecraft.getInstance()
+            (minecraft.keyboardHandler as KeyboardHandlerInvoker).`foreman$keyPress`(minecraft.window.handle(), action, KeyEvent(code, 0, modifiers))
+        }
+        send(InputConstants.PRESS)
+        Thread.sleep((holdMs ?: 60).coerceIn(0, 60_000).toLong())
+        send(InputConstants.RELEASE)
+        return "Pressed " + (if (ctrl) "Ctrl+" else "") + (if (shift) "Shift+" else "") + name
     }
 
     /** What a previewed dialog would ask of the server: reported in chat instead, its screens opened locally. */

@@ -9,21 +9,25 @@ move them; the plugin receives the move and saves it. To send locations from you
 
 ## Viewing
 
-The hub's Locations section (++l++) lists the sources and their categories: show or hide each, show only one source,
+The hub's Locations section lists the sources and their categories: show or hide each, show only one source,
 teleport to the nearest location of a category. The Locations layer of the [overlays](hub.md#overlays) sets how far
 they're drawn.
 
 ## Editing
 
-Turn on the location editor (`/locations editor`, or its key, unbound by default): left click a location to select
-it, drag the gizmo's arrows, right click a block to place it there. Moves snap to a step (the gizmo snap setting in
-the Locations section; hold ++ctrl++ to move freely).
+Turn on the location editor ([editor mode](editor.md)'s tool 8, `/locations editor`, or **Use** in the Locations
+section): left click a location to select it, drag the gizmo's arrows to move it and its ring to turn its yaw, right
+click a block to place it there. Drags snap as the editor's [snapping](editor.md#gizmos-and-snapping) says (++g++, or
+the gizmo snap in the Locations section; **block grid** puts it on the middle of a block's floor; hold ++ctrl++ to move
+freely); a block location moves by whole blocks.
 
-| Key | Moves the selected location |
+| Key | Does |
 |---|---|
-| ++k++ | to your feet |
+| ++k++ | Moves the selected location to your feet |
 | ++u++ | to your eyes |
 | ++j++ | to your block |
+| ++h++ | Shows or hides the gizmo |
+| ++n++ | The hub's Locations section |
 
 | Command | Does |
 |---|---|
@@ -33,7 +37,7 @@ the Locations section; hold ++ctrl++ to move freely).
 | `/locations relocate [x y z]` | Move the selection (default: your block) |
 | `/locations rename <name>` | Rename it; `rename source <s>`, `rename category <c>` move it to another source or category |
 | `/locations delete` | Delete it (for plugin locations: on this client only, the plugin keeps it) |
-| `/locations gizmo` | Show or hide the arrows |
+| `/locations gizmo` | Show or hide the gizmo |
 | `/locations clear`, `status` | Forget every received location (they come back with the next update), count them |
 
 ## Local sets

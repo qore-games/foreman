@@ -42,23 +42,8 @@ object Furniture {
      */
     fun ensureLoaded(world: World, box: Box) {
         if (Bukkit.isPrimaryThread() || !Sync.main { available }) return
-        repeat(50) { attempt ->
-            val ready = Sync.main {
-                Chunks.keepLoaded(world, box)
-                var all = true
-                for (cx in (box.min.x() shr 4)..(box.max.x() shr 4)) for (cz in (box.min.z() shr 4)..(box.max.z() shr 4)) {
-                    val chunk = world.getChunkAt(cx, cz)
-                    if (!chunk.isEntitiesLoaded) { chunk.entities; all = false }
-                }
-                all
-            }
-            if (ready) {
-                // Providers usually take in the furniture of freshly loaded entities a few ticks later.
-                if (attempt > 0) Thread.sleep(750)
-                return
-            }
-            Thread.sleep(100)
-        }
+        // Providers usually take in the furniture of freshly loaded entities a few ticks later.
+        if (Chunks.loadEntities(world, listOf(box))) Thread.sleep(750)
     }
 
     fun inBox(world: World, box: Box): List<Placed> {
@@ -77,20 +62,37 @@ object Furniture {
     fun spawn(world: World, type: FurnitureType, root: BlockVector3, yaw: Float, state: String?, change: Change): Placed? {
         val placed = require().spawn(type, Location(world, root.x().toDouble(), root.y().toDouble(), root.z().toDouble()), yaw, state) ?: return null
         change.spawnedFurniture += placed.handle
+        change.touch(Box(root, root))
         return of(placed)
     }
 
     /** Furniture put back by an undo gets a new handle: older changes still name the old one. */
     private val respawned = HashMap<UUID, UUID>()
 
-    private fun current(handle: UUID): UUID {
+    /** What the furniture [handle] is now. */
+    fun current(handle: UUID): UUID {
         var h = handle
         while (true) h = respawned[h] ?: return h
     }
 
-    fun undo(change: Change) {
+    /** The furniture [old] was placed again as [new] (moved, put back): older changes naming [old] reach [new]. */
+    fun replaced(old: UUID, new: UUID) {
+        if (old != new) respawned[old] = new
+    }
+
+    /**
+     * Removes the furniture [change] placed: first in an undo, before its blocks and the things it removed come back (a
+     * change that removed furniture and placed some at the same spot, a synced instance, gets its old furniture back
+     * where the new one no longer stands).
+     */
+    fun removeSpawned(change: Change) {
         val provider = provider ?: return
         change.spawnedFurniture.forEach { provider.remove(current(it)) }
+    }
+
+    /** Places the furniture [change] lifted again: last in an undo. */
+    fun undo(change: Change) {
+        val provider = provider ?: return
         change.removedFurniture.forEach { r ->
             val placed = provider.type(r.id)?.let { provider.spawn(it, r.location, r.yaw, r.state) } ?: return@forEach
             r.handle?.let { respawned[it] = placed.handle }

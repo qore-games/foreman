@@ -5,6 +5,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.sk89q.worldedit.math.BlockVector3
 import games.qore.foreman.api.ForemanTool
+import org.bukkit.command.CommandSender
+import org.bukkit.entity.Player
 import java.util.Base64
 import java.util.UUID
 
@@ -75,8 +77,33 @@ class ToolResult(val content: List<JsonObject>, val isError: Boolean = false) {
     }
 }
 
-/** The player whose personal token made a call. */
-data class Caller(val id: UUID, val name: String)
+/** The player whose personal token made a call, or who ran a command; [CONSOLE] for the console and the server's token. */
+data class Caller(val id: UUID, val name: String) {
+    val isConsole get() = id == CONSOLE.id
+
+    companion object {
+        val CONSOLE = Caller(UUID(0L, 0L), "console")
+
+        /** The player who ran a command, else [CONSOLE]. */
+        fun of(sender: CommandSender): Caller = (sender as? Player)?.let { Caller(it.uniqueId, it.name) } ?: CONSOLE
+
+        private val current = ThreadLocal<Caller?>()
+
+        /** Whom the code on this thread acts for: set around each tool call, carried to the main thread by `Sync.main`. Null for the console. */
+        fun current(): Caller? = current.get()
+
+        /** Runs [block] acting for [caller] (null: the console). */
+        fun <T> acting(caller: Caller?, block: () -> T): T {
+            val before = current.get()
+            current.set(caller)
+            try {
+                return block()
+            } finally {
+                current.set(before)
+            }
+        }
+    }
+}
 
 /** Typed access to `tools/call` arguments. Missing or malformed values throw a [ToolError] naming the argument. */
 class Args(val json: JsonObject) {
@@ -117,6 +144,9 @@ class Args(val json: JsonObject) {
     }
 
     fun strings(name: String): List<String> = if (has(name)) parse(name) { e -> e.asJsonArray.map { it.asString } } else emptyList()
+
+    /** A number with decimals, or null when it isn't given. */
+    fun float(name: String): Float? = if (has(name)) parse(name) { it.asFloat } else null
 
     companion object {
         fun vecOf(element: JsonElement): BlockVector3 {
@@ -170,6 +200,13 @@ class SchemaBuilder {
 
         fun vecSchema() = type("array").apply {
             add("items", type("integer"))
+            addProperty("minItems", 3)
+            addProperty("maxItems", 3)
+        }
+
+        /** [x, y, z] with decimals. */
+        fun pointSchema() = type("array").apply {
+            add("items", type("number"))
             addProperty("minItems", 3)
             addProperty("maxItems", 3)
         }

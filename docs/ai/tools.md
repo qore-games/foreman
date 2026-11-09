@@ -50,7 +50,7 @@ answers a line a step, and the lines around a failure. A test is saved by `name`
 | `client_screen` | The open screen: its class and title, the GUI size, each widget with its text and bounds |
 | `client_click`, `client_hover`, `client_scroll` | Use the open screen like the mouse |
 | `client_drag` | Hold a mouse button and move: across a screen (scrollbars, sliders), or turning the camera in the world (gizmos, mining) |
-| `client_type`, `client_key` | Type into the focused field; press a key binding, or hold it (`hold_ms`) |
+| `client_type`, `client_key` | Type into the focused field; press a key binding, or hold it (`hold_ms`); a physical key (`key.keyboard.f`, with `shift` / `ctrl`) goes through the game's keyboard handler like a real keyboard |
 | `client_dialog_preview` | Opens a dialog on the client alone from its JSON, as the server would send it |
 | `inventory_snapshot`, `inventory_actions` | Read the open container, and click it like a player (bursts in one tick, optionally under a network profile or inbound packet drop, which need `foreman.test`) — [dupe testing](../server/dupe-testing.md) |
 
@@ -122,14 +122,15 @@ runs with `server_command` (or `worldedit`).
 
 | Group | Tools |
 |---|---|
-| Inspect | `get_context`, `read_style_guide`, `scan_area`, `read_blocks`, `find_blocks`, `render`, `world_profile`, `set_mark` |
-| Quality | `check`, `look`, `measure_site`, `claim` |
-| Edit | `edit`, `worldedit` (any WorldEdit command on a box, undoable), `transform_region`, `undo` |
+| Inspect | `get_context`, `read_style_guide`, `scan_area`, `read_blocks`, `find_blocks`, `render`, `world_profile`, `set_mark`, `diff_regions` (a box against its copy: [checking a copy](../server/assets.md#checking-a-copy)) |
+| Quality | `check`, `look`, `measure_site`, `claim`, `check_layout` (points and areas against the types plugins declare: [layout types](../server/world-context.md#layout-types)), `lock_area` and `unlock_area` (others' edits refused inside an area while you build in it: [locks](../server/world-context.md#locks)) |
+| Edit | `edit`, `worldedit` (any WorldEdit command on a box, undoable), `transform_region`, `undo` (your own changes), `history` (`format: json` for programs) |
 | Terrain | `foundation`, `blend_terrain`, `smooth_terrain`, `make_ground`, `grade`, `build_path`, `make_fields` |
-| Buildings | `build_structure`, `demolish`, `list_styles`, `points` |
+| Buildings | `build_structure`, `demolish`, `list_styles`, `points` (with their `data`), `layout_types` (the point and area types plugins declare, with their fields) |
 | Repair | `connect_doors`, `repair_terrain` |
-| Assets | `list_assets`, `index_assets`, `preview_asset`, `scatter_assets`, `paste_asset`, `save_asset` |
-| Models | `preview_model` |
+| Assets | `list_assets`, `index_assets`, `preview_asset`, `asset_content` (what one holds, as data), `scatter_assets`, `paste_asset`, `save_asset`; asset areas: `define_asset`, `fit_asset`, `resize_asset`, `move_asset` (with everything in it), `open_asset_source` (takes the player to an asset's source); pastes: `list_instances`, `instance_info`, `detach_instance`, `delete_instance`, `rotate_instance`, `sync_instance`: [assets](../server/assets.md) |
+| Models | `preview_model`, `list_models` (the item models of the server's resources) |
+| Displays | `list_displays`, `edit_displays` (move, turn, scale, stretch item, block and text displays, furniture included), `spawn_display` (a model, block or text, or a copy of a display), `remove_displays`: [displays and models](../server/displays.md) |
 | Furniture | `list_furniture`, `place_furniture`, `remove_furniture` (with a [furniture provider](../developers/furniture.md)) |
 | Lessons | `learn`, `lessons` |
 

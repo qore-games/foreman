@@ -73,6 +73,17 @@ class OverlayDraw(val camera: Vec3, val dimension: String) {
         Gizmos.point(pos, argb, size).top(onTop)
     }
 
+    /** The quad [a] [b] [c] [d] (in order around it), outlined in [argb] and filled with [fill] seen from both sides. */
+    fun quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, argb: Int, width: Float = 2f, fill: Int = 0, onTop: Boolean = false) {
+        Gizmos.rect(a, b, c, d, GizmoStyle(argb, width, fill)).top(onTop)
+        if (fill != 0) Gizmos.rect(d, c, b, a, GizmoStyle.fill(fill)).top(onTop)
+    }
+
+    /** A closed line through [points]. */
+    fun loop(points: List<Vec3>, argb: Int, width: Float = 2f, onTop: Boolean = false) {
+        for (i in points.indices) line(points[i], points[(i + 1) % points.size], argb, width, onTop)
+    }
+
     /**
      * Text lines facing the camera, the first one at [pos]. One size in the world, like a sign: labels that grew with
      * distance shifted and wobbled as the player moved; callers hide the far ones instead.

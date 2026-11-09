@@ -2,31 +2,43 @@ package games.qore.foreman.client.ui
 
 import games.qore.foreman.client.agent.Chats
 import games.qore.foreman.client.config.Config
+import games.qore.foreman.client.editor.EditorPanel
+import games.qore.foreman.client.editor.EditorTool
+import games.qore.foreman.client.editor.StatusCard
 import games.qore.foreman.client.input.Tools
 import games.qore.foreman.client.link.AIOverlay
+import games.qore.foreman.client.overlays.DisplayBudget
 import games.qore.foreman.client.packets.PacketViewer
+import games.qore.foreman.client.ui.kit.Ui
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.Identifier
 
-/** Top-left HUD: the active tool and what it has, the areas the player is in, a packet recording, and the chats at work. */
+/**
+ * Top-left HUD: the active tool's [StatusCard], the areas the player is in, the display budget, a packet recording, and
+ * the chats at work; hidden with the HUD (F1).
+ */
 object Hud {
     fun init() {
         HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, Identifier.fromNamespaceAndPath("foreman", "hud"), HudElement { g, _ ->
             val minecraft = Minecraft.getInstance()
             if (minecraft.gui.screen() != null) return@HudElement
             val font = minecraft.font
-            val lines = mutableListOf<String>()
-            Tools.active?.let { tool ->
-                lines += "§a§l[${tool.title}]"
-                lines += tool.hud()
+            var top = 5
+            if (!minecraft.gui.hud.isHidden) {
+                (Tools.active as? EditorTool)?.let { tool ->
+                    val ui = Ui(g, font, -1, -1, mutableListOf(), HashMap())
+                    top += StatusCard.draw(g, ui, 4, 4, g.guiWidth() - EditorPanel.drawnWidth - 12, g.guiHeight() / 2, tool) + 3
+                }
+                val lines = mutableListOf<String>()
+                if (Config.settings.overlays.hudAreas && AIOverlay.areasHere.isNotEmpty()) lines += "§bIn: §7" + AIOverlay.areasHere.joinToString(", ")
+                lines += DisplayBudget.hud()
+                PacketViewer.hud()?.let { lines += it }
+                Chats.status().forEach { lines += "§d$it" }
+                lines.forEachIndexed { i, line -> g.text(font, line, 5, top + i * 11, -1) }
             }
-            if (Config.settings.overlays.hudAreas && AIOverlay.areasHere.isNotEmpty()) lines += "§bIn: §7" + AIOverlay.areasHere.joinToString(", ")
-            PacketViewer.hud()?.let { lines += it }
-            Chats.status().forEach { lines += "§d$it" }
-            lines.forEachIndexed { i, line -> g.text(font, line, 5, 5 + i * 11, -1) }
             // Entering and leaving areas, under the boss bars, fading out.
             val now = System.currentTimeMillis()
             AIOverlay.notices.forEachIndexed { i, (text, at) ->

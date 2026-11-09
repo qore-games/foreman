@@ -130,7 +130,7 @@ class McpDispatcher(
 
         val start = System.currentTimeMillis()
         val result = try {
-            tool.handler(args)
+            Caller.acting(caller) { tool.handler(args) }
         } catch (e: ToolError) {
             ToolResult.error(e.message ?: "Error")
         } catch (e: Exception) {

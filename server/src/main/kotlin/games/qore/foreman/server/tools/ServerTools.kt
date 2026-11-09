@@ -8,6 +8,7 @@ import games.qore.foreman.server.admin.ReloadCheck
 import games.qore.foreman.server.admin.Sampler
 import games.qore.foreman.server.admin.ServerLog
 import games.qore.foreman.server.mcp.Args
+import games.qore.foreman.server.mcp.Caller
 import games.qore.foreman.server.mcp.Tool
 import games.qore.foreman.server.mcp.ToolError
 import games.qore.foreman.server.mcp.ToolResult
@@ -202,9 +203,12 @@ object ServerTools {
     /** With a per-player token: the player needs [PERMISSION]. */
     fun admin(args: Args) {
         val caller = args.caller ?: return
-        val allowed = Bukkit.getPlayer(caller.id)?.hasPermission(PERMISSION) ?: Bukkit.getOfflinePlayer(caller.id).isOp
-        if (!allowed) throw ToolError("This needs $PERMISSION, which ${caller.name} doesn't have")
+        if (!isAdmin(caller)) throw ToolError("This needs $PERMISSION, which ${caller.name} doesn't have")
     }
+
+    /** Whether [caller] has [PERMISSION]: the server's token (null) has it. */
+    fun isAdmin(caller: Caller?): Boolean =
+        caller == null || caller.isConsole || (Bukkit.getPlayer(caller.id)?.hasPermission(PERMISSION) ?: Bukkit.getOfflinePlayer(caller.id).isOp)
 
     private fun find(name: String): Plugin? = Bukkit.getPluginManager().plugins.firstOrNull { it.name.equals(name, true) }
 

@@ -32,6 +32,12 @@ the plugin and tries the command again. More in [Examples](ai/examples.md).*
     Plugins send their NPCs, spawns and regions, and the mod draws them. Move them with a gizmo.
     [→ Locations](client/locations.md)
 
+-   **Editor mode**
+
+    Save builds as assets and place them again, edit display entities, mark the areas and points gameplay uses.
+    One key, B.
+    [→ Editor mode](client/editor.md)
+
 -   **Dev-server tools**
 
     Commands with everything they printed, the log since the last reload, stale jars, a profiler, event listeners.

@@ -17,17 +17,22 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     RENDER("render", "Inspect", WORLD_EDIT),
     WORLD_PROFILE("world_profile", "Inspect", WORLD_EDIT),
     SET_MARK("set_mark", "Inspect", WORLD_EDIT),
+    DIFF_REGIONS("diff_regions", "Inspect", WORLD_EDIT),
 
-    // Quality: check builds, measure sites, reserve space.
+    // Quality: check builds, measure sites, reserve space, lock areas to a builder.
     CHECK("check", "Quality", WORLD_EDIT),
     LOOK("look", "Quality", WORLD_EDIT),
     MEASURE_SITE("measure_site", "Quality", WORLD_EDIT),
     CLAIM("claim", "Quality", WORLD_EDIT),
+    CHECK_LAYOUT("check_layout", "Quality", WORLD_EDIT),
+    LOCK_AREA("lock_area", "Quality", WORLD_EDIT),
+    UNLOCK_AREA("unlock_area", "Quality", WORLD_EDIT),
 
     // Edit: change blocks, move regions, undo.
     EDIT("edit", "Edit", WORLD_EDIT),
     TRANSFORM_REGION("transform_region", "Edit", WORLD_EDIT),
     UNDO("undo", "Edit", WORLD_EDIT),
+    HISTORY("history", "Edit", WORLD_EDIT),
     WORLDEDIT("worldedit", "Edit", WORLD_EDIT),
 
     // Terrain: ground, grading, roads.
@@ -46,21 +51,41 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     DEMOLISH("demolish", "Build", WORLD_EDIT),
     LIST_STYLES("list_styles", "Build", WORLD_EDIT),
     POINTS("points", "Build", WORLD_EDIT),
+    LAYOUT_TYPES("layout_types", "Build", WORLD_EDIT),
 
     // Repair: unreachable rooms, broken terrain.
     CONNECT_DOORS("connect_doors", "Repair", WORLD_EDIT),
     REPAIR_TERRAIN("repair_terrain", "Repair", WORLD_EDIT),
 
-    // Assets: schematics.
+    // Assets: schematics and asset areas, the instances pastes record.
     LIST_ASSETS("list_assets", "Assets", WORLD_EDIT),
     INDEX_ASSETS("index_assets", "Assets", WORLD_EDIT),
     PREVIEW_ASSET("preview_asset", "Assets", WORLD_EDIT),
+    ASSET_CONTENT("asset_content", "Assets", WORLD_EDIT),
     SCATTER_ASSETS("scatter_assets", "Assets", WORLD_EDIT),
     PASTE_ASSET("paste_asset", "Assets", WORLD_EDIT),
     SAVE_ASSET("save_asset", "Assets", WORLD_EDIT),
+    DEFINE_ASSET("define_asset", "Assets", WORLD_EDIT),
+    FIT_ASSET("fit_asset", "Assets", WORLD_EDIT),
+    RESIZE_ASSET("resize_asset", "Assets", WORLD_EDIT),
+    MOVE_ASSET("move_asset", "Assets", WORLD_EDIT),
+    LIST_INSTANCES("list_instances", "Assets", WORLD_EDIT),
+    INSTANCE_INFO("instance_info", "Assets", WORLD_EDIT),
+    DETACH_INSTANCE("detach_instance", "Assets", WORLD_EDIT),
+    DELETE_INSTANCE("delete_instance", "Assets", WORLD_EDIT),
+    ROTATE_INSTANCE("rotate_instance", "Assets", WORLD_EDIT),
+    SYNC_INSTANCE("sync_instance", "Assets", WORLD_EDIT),
+    OPEN_ASSET_SOURCE("open_asset_source", "Assets", WORLD_EDIT),
 
-    // Models.
+    // Models: the resources' item models.
     PREVIEW_MODEL("preview_model", "Models", WORLD_EDIT),
+    LIST_MODELS("list_models", "Models", WORLD_EDIT),
+
+    // Displays: item, block and text display entities one by one (furniture and decor).
+    LIST_DISPLAYS("list_displays", "Displays", WORLD_EDIT),
+    EDIT_DISPLAYS("edit_displays", "Displays", WORLD_EDIT),
+    SPAWN_DISPLAY("spawn_display", "Displays", WORLD_EDIT),
+    REMOVE_DISPLAYS("remove_displays", "Displays", WORLD_EDIT),
 
     // Skills: how to do a kind of task here, read when needed.
     READ_SKILL("read_skill", "Skills"),

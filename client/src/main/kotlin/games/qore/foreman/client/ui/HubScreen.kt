@@ -9,9 +9,18 @@ import games.qore.foreman.client.config.Settings
 import games.qore.foreman.client.config.Visibility
 import games.qore.foreman.client.config.Workspace
 import games.qore.foreman.client.debug.PluginMessageDebug
+import games.qore.foreman.client.editor.EditorMode
+import games.qore.foreman.client.editor.EditorTool
+import games.qore.foreman.client.editor.EditorTools
+import games.qore.foreman.client.gizmo.Snapping
 import games.qore.foreman.client.hud.HudGuides
 import games.qore.foreman.client.input.Keys
 import games.qore.foreman.client.input.Tools
+import games.qore.foreman.client.library.PlacementTool
+import games.qore.foreman.client.models.ModelPlacementTool
+import games.qore.foreman.client.models.ModelsPanel
+import games.qore.foreman.client.display.DisplayEditor
+import games.qore.foreman.client.display.DisplaysPage
 import games.qore.foreman.client.link.Bridge
 import games.qore.foreman.client.link.SelectionTool
 import games.qore.foreman.client.link.WorldEditSelection
@@ -22,6 +31,8 @@ import games.qore.foreman.client.locations.LocationStore
 import games.qore.foreman.client.mcp.ClientLog
 import games.qore.foreman.client.mcp.ClientMcp
 import games.qore.foreman.client.mcp.ClientTools
+import games.qore.foreman.client.overlays.DisplayBudget
+import games.qore.foreman.client.overlays.HiddenBlocks
 import games.qore.foreman.client.packets.PacketRecorder
 import games.qore.foreman.client.packets.PacketReports
 import games.qore.foreman.client.reload.PackIssues
@@ -50,10 +61,10 @@ import java.util.Locale
 
 /**
  * Foreman's home (H): a rail of sections grouped under parent labels on the left, the section on the right. Each
- * feature's settings are on its own page; Settings only has what belongs to none. Mod Menu opens it on Settings, with
- * its screen as [parent].
+ * feature's settings are on its own page; Settings only has what belongs to none. It opens on the section it was
+ * closed on (its search too), after a restart as well; Mod Menu opens it on Settings, with its screen as [parent].
  */
-class HubScreen(private var section: Section = Section.HOME, private val parent: Screen? = null) : KitScreen("Foreman") {
+class HubScreen(private var section: Section = lastSection(), private val parent: Screen? = null) : KitScreen("Foreman") {
     /** The rail's parent labels; null: no heading (Home on top, Keys and Settings at the bottom). */
     enum class Group(val label: String?) { TOP(null), AI("AI"), WORLD("World"), DEBUG("Debug"), BOTTOM(null) }
 
@@ -66,6 +77,10 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         OVERLAYS(Group.WORLD, "◐", "Overlays", "What is drawn in the world: each layer off, nearby or always"),
         LOCATIONS(Group.WORLD, "⌖", "Locations", "What plugins send: show or hide sources and categories, go to them, move them"),
         SELECTION(Group.WORLD, "⬚", "Selection", "A box to work in: two corners and a gizmo, for the AI or your own commands"),
+        LIBRARY(Group.WORLD, "▤", "Library", "The server's assets: builds tagged as assets and saved schematics, to look at and place"),
+        MODELS(Group.WORLD, "◆", "Models", "Every item model of the loaded resource packs in 3D, to look at and place as a display or furniture"),
+        DISPLAYS(Group.WORLD, "◇", "Displays", "Select item, block and text displays (furniture too) and move, turn and scale them with a gizmo"),
+        HISTORY(Group.WORLD, "↶", "History", "The server's changes with Foreman, newest first: go to one, undo yours"),
         PACKETS(Group.DEBUG, "⇅", "Packets", "What the server and your client send each other: record, then find what floods the connection"),
         HUD(Group.DEBUG, "▦", "HUD", "Your HUD's texts as the client lays them out: parts, glyphs, offsets, and what moves when they change"),
         MESSAGES(Group.DEBUG, "✎", "Plugin messages", "What plugins send on their channels, both ways"),
@@ -97,6 +112,8 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         search = null; nameField = null; folderField = null; instructionsBox = null; instructionsOf = null
         when (section) {
             Section.LOCATIONS, Section.TOOLS -> search = field(width - pad - 180, 16, 180, "Search…")
+            Section.LIBRARY -> search = field(width - pad - 180, 16, 180, "Search: name, tag, block…")
+            Section.MODELS -> search = field(width - pad - 180, 16, 180, "Search: id, folder, furniture…")
             Section.PACKETS -> search = field(width - pad - 180, 16, 180, "Filter: type, entity, field…")
             Section.MESSAGES -> search = field(width - pad - 180, 16, 180, "Filter: channel, text…")
             Section.WORKSPACES -> {
@@ -115,6 +132,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             }
             else -> {}
         }
+        search?.value = searches[section].orEmpty()
         if (section == Section.TOOLS && !ToolCatalog.loading) ToolCatalog.refresh()
     }
 
@@ -130,6 +148,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
     }
 
     private fun go(s: Section) {
+        keepSearch()
         section = s
         confirm = null
         binding = null
@@ -143,6 +162,12 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
 
     override fun removed() {
         if (Bridge.connected) Bridge.subscribe()
+        keepSearch()
+        if (Config.settings.hub.section != section.name) Config.update { hub.section = section.name }
+    }
+
+    private fun keepSearch() {
+        search?.let { searches[section] = it.value }
     }
 
     override fun keyPressed(event: KeyEvent): Boolean {
@@ -156,6 +181,8 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             binding = null
             return true
         }
+        if (section == Section.LIBRARY && LibraryPanel.keyPressed(event)) return true
+        if (section == Section.MODELS && ModelsPanel.keyPressed(event)) return true
         if (event.isConfirmation) {
             if (focused === nameField) { addWorkspace(); return true }
             if (focused === folderField) { addFolder(); return true }
@@ -168,6 +195,16 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         rebind(mapping, InputConstants.Type.MOUSE.getOrCreate(event.button()))
         binding = null
         return true
+    }
+
+    override fun mouseDragged(real: MouseButtonEvent, dx: Double, dy: Double): Boolean =
+        section == Section.LIBRARY && LibraryPanel.drag(real.x() / zoom) ||
+            section == Section.MODELS && ModelsPanel.drag(real.x() / zoom, real.y() / zoom) || super.mouseDragged(real, dx, dy)
+
+    override fun mouseReleased(real: MouseButtonEvent): Boolean {
+        LibraryPanel.release()
+        ModelsPanel.release()
+        return super.mouseReleased(real)
     }
 
     private fun rebind(mapping: KeyMapping, key: InputConstants.Key) {
@@ -191,6 +228,16 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             Section.OVERLAYS -> overlays(ui)
             Section.LOCATIONS -> locations(ui)
             Section.SELECTION -> selection(ui)
+            Section.LIBRARY -> {
+                search?.let { it.visible = !LibraryPanel.detailOpen; if (!it.visible && focused === it) focused = null }
+                LibraryPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty()) { onClose() }
+            }
+            Section.MODELS -> {
+                search?.let { it.visible = !ModelsPanel.detailOpen; if (!it.visible && focused === it) focused = null }
+                ModelsPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty()) { onClose() }
+            }
+            Section.DISPLAYS -> DisplaysPage.draw(ui, x0, y0, contentWidth, height - y0 - pad) { onClose() }
+            Section.HISTORY -> HistoryPage.draw(ui, x0, y0, contentWidth, height - y0 - pad) { onClose() }
             Section.PACKETS -> PacketsPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty())
             Section.HUD -> HudPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad)
             Section.MESSAGES -> messages(ui)
@@ -235,6 +282,9 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
                 Section.AGENTS -> if (ClientMcp.externalEnabled) "●" to Theme.OK else null
                 Section.LOCATIONS -> if (Tools.active === LocationEditor) "●" to Theme.ACCENT else null
                 Section.SELECTION -> if (Tools.active === SelectionTool || Tools.active === WorldEditTool) "●" to Theme.ACCENT else null
+                Section.LIBRARY -> if (Tools.active === PlacementTool) "●" to Theme.ACCENT else null
+                Section.MODELS -> if (Tools.active === ModelPlacementTool) "●" to Theme.ACCENT else null
+                Section.DISPLAYS -> if (DisplayEditor.enabled) "●" to Theme.ACCENT else null
                 Section.PACKETS -> if (PacketRecorder.recording) "●" to Theme.ERROR else null
                 Section.HUD -> if (HudGuides.element != null) "●" to Theme.ACCENT else null
                 Section.MESSAGES -> if (Config.settings.pluginMessages.enabled) "●" to Theme.OK else null
@@ -258,13 +308,19 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         ui.text(title, x + 10, y + 9, Theme.TEXT)
     }
 
-    /** A tool you turn on in the world: its name, key and what it does, and a button to use it (closes the hub). */
-    private fun toolCard(ui: Ui, x: Int, y: Int, w: Int, name: String, key: String, what: String, on: Boolean, toggle: () -> Unit) {
+    /**
+     * An editor mode tool: its name, the keys that open it (the editor's, then its number) and what it does, and a
+     * button that opens editor mode on it (and closes the hub) or leaves it.
+     */
+    private fun toolCard(ui: Ui, x: Int, y: Int, w: Int, name: String, tool: EditorTool, what: String) {
+        val on = Tools.active === tool
         ui.card(x, y, w, 46, if (on) Theme.PANEL_HOVER else Theme.PANEL, if (on) Theme.ACCENT else Theme.BORDER)
         ui.text(name, x + 10, y + 8, Theme.TEXT)
-        if (key.isNotBlank()) ui.chip(x + 14 + ui.font.width(name), y + 6, key, Theme.ACCENT)
+        EditorMode.caption(tool).takeIf { it.isNotBlank() }?.let { ui.chip(x + 14 + ui.font.width(name), y + 6, it, Theme.ACCENT) }
         ui.paragraph(what, x + 10, y + 22, w - 100)
-        ui.button(x + w - 80, y + 14, 70, 18, if (on) "Turn off" else "Use", if (on) Style.NORMAL else Style.PRIMARY) { toggle(); if (!on) onClose() }
+        ui.button(x + w - 80, y + 14, 70, 18, if (on) "Turn off" else "Use", if (on) Style.NORMAL else Style.PRIMARY) {
+            if (on) EditorMode.leave() else { EditorMode.open(tool); onClose() }
+        }
     }
 
     private fun visibilityControl(ui: Ui, x: Int, y: Int, value: Visibility, set: (Visibility) -> Unit) =
@@ -320,7 +376,10 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         ui.switch(r + 10, y + 22, colW - 20, "Show overlays", o.enabled) { Config.update { overlays.enabled = !overlays.enabled }; Bridge.subscribe() }
         val selection = SelectionTool.describe() ?: WorldEditSelection.describe()?.let { "WorldEdit $it" }
         ui.text(ui.fit("${LocationStore.totalLocations()} locations · " + (selection?.let { "selection $it" } ?: "no selection"), colW - 20), r + 10, y + 42, Theme.MUTED)
-        buttons(ui, r, y + 56, Action("Locations") { go(Section.LOCATIONS) }, Action("Selection") { go(Section.SELECTION) })
+        buttons(ui, r, y + 56,
+            Action("Editor", Style.PRIMARY, "Editor mode: the building tools and their keys (${EditorMode.binding.translatedKeyMessage.string})") { EditorMode.open(); onClose() },
+            Action("Locations") { go(Section.LOCATIONS) }, Action("Selection") { go(Section.SELECTION) }, Action("Library") { go(Section.LIBRARY) },
+        )
 
         y += 90
         // Keys
@@ -645,6 +704,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             Triple("Points", "Spots builds recorded for gameplay plugins: containers, spawns…", o.points to { v -> Config.update { overlays.points = v } }),
             Triple("Check issues", "What the last check found, numbered", o.issues to { v -> Config.update { overlays.issues = v } }),
             Triple("Last AI change", "The box the AI just changed, fading out", o.changes to { v -> Config.update { overlays.changes = v } }),
+            Triple("Pasted copies", "Where the library's assets were pasted: their box, asset and points", o.instances to { v -> Config.update { overlays.instances = v } }),
         )
         var y = y0
         ui.switch(x0, y, 200, "Show overlays", o.enabled) { Config.update { overlays.enabled = !overlays.enabled }; Bridge.subscribe() }
@@ -658,7 +718,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             visibilityControl(ui, x0 + contentWidth - 172, y + 7, value) { set(it); Bridge.subscribe() }
             y += 34
         }
-        y += 6
+        y += worldChecks(ui, y) + 6
         val half = (contentWidth - pad) / 2
         ui.switch(x0, y, half, "Through blocks", o.throughBlocks) { Config.update { overlays.throughBlocks = !overlays.throughBlocks } }
         ui.switch(x0 + half + pad, y, half, "Notice when entering / leaving areas", o.zoneNotices) { Config.update { overlays.zoneNotices = !overlays.zoneNotices } }
@@ -673,6 +733,31 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         distances("Nearby from (blocks)", listOf(16, 24, 32, 48, 64), o.nearDistance) { v -> Config.update { overlays.nearDistance = v } }
         distances("Stay inside for (blocks)", listOf(3, 6, 10, 16), o.insideBuffer) { v -> Config.update { overlays.insideBuffer = v } }
         distances("Labels within (blocks)", listOf(24, 40, 64, 96), o.labelDistance) { v -> Config.update { overlays.labelDistance = v } }
+    }
+
+    /** The hidden blocks and display budget overlays side by side, each with its settings; returns their height. */
+    private fun worldChecks(ui: Ui, y: Int): Int {
+        val o = Config.settings.overlays
+        val half = (contentWidth - pad) / 2
+        fun card(x: Int, name: String, key: String, what: String, on: Boolean, toggle: () -> Unit) {
+            ui.card(x, y, half, 62)
+            ui.switch(x + 10, y + 5, half - 20, name + key.ifEmpty { "" }, on, onToggle = toggle)
+            ui.text(ui.fit(what, half - 20), x + 10, y + 25, Theme.MUTED)
+        }
+        card(x0, "Hidden blocks", " (editor: X)", "Barriers, lights, structure voids, what the packs draw as nothing", o.hiddenBlocks) { HiddenBlocks.toggle() }
+        ui.text("Radius", x0 + 10, y + 44, Theme.FAINT)
+        val radii = listOf(16, 32, 48, 64)
+        ui.segmented(x0 + 48, y + 40, radii.map { "$it" }, radii.indexOf(o.hiddenRadius).coerceAtLeast(0)) { HiddenBlocks.setRadius(radii[it]) }
+        val bx = x0 + half + pad
+        card(bx, "Displays per chunk", " (editor: L)", "Display and interaction entities in each chunk around you", o.displayBudget) { DisplayBudget.toggle() }
+        val warns = listOf(25, 50, 100)
+        val highs = listOf(100, 150, 300)
+        ui.text("Yellow", bx + 10, y + 44, Theme.FAINT)
+        var sx = bx + 44 + ui.segmented(bx + 44, y + 40, warns.map { "$it" }, warns.indexOf(o.budgetWarn).coerceAtLeast(0)) { i -> Config.update { overlays.budgetWarn = warns[i] } }
+        ui.text("red", sx + 6, y + 44, Theme.FAINT)
+        sx += 6 + ui.font.width("red") + 4
+        ui.segmented(sx, y + 40, highs.map { "$it" }, highs.indexOf(o.budgetHigh).coerceAtLeast(0)) { i -> Config.update { overlays.budgetHigh = highs[i] } }
+        return 66
     }
 
     // ---- World: locations -------------------------------------------------------------------------------------------
@@ -699,15 +784,17 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         ui.card(x0, ey, contentWidth, 44, if (editing) Theme.PANEL_HOVER else Theme.PANEL, if (editing) Theme.ACCENT else Theme.BORDER)
         ui.text("Editor", x0 + 10, ey + 8, Theme.TEXT)
         var kx = x0 + 14 + ui.font.width("Editor")
-        Keys.keyOf("location-editor").takeIf { it.isNotEmpty() }?.let { kx += ui.chip(kx, ey + 6, it, Theme.ACCENT) + 4 }
+        EditorMode.caption(LocationEditor).takeIf { it.isNotEmpty() }?.let { kx += ui.chip(kx, ey + 6, it, Theme.ACCENT) + 4 }
         ui.text(ui.fit("Left click a location, drag the gizmo; K / U / J: to your feet, eyes, block", contentWidth - (kx - x0) - 90), kx + 4, ey + 8, Theme.MUTED)
         ui.button(x0 + contentWidth - 80, ey + 5, 70, 16, if (editing) "Turn off" else "Use", if (editing) Style.NORMAL else Style.PRIMARY) {
-            Tools.toggle(LocationEditor); if (!editing) onClose()
+            if (editing) EditorMode.leave() else { EditorMode.open(LocationEditor); onClose() }
         }
         ui.text("Gizmo snap", x0 + 10, ey + 28, Theme.MUTED)
-        val snaps = listOf(0.0, 0.0625, 0.25, 0.5, 1.0)
-        val sw = ui.segmented(x0 + 74, ey + 24, listOf("off", "1/16", "1/4", "1/2", "1"), snaps.indexOf(s.snap).coerceAtLeast(0)) { i -> Config.update { locations.snap = snaps[i] } }
-        ui.text(ui.fit("blocks · Ctrl: free", contentWidth - 84 - sw), x0 + 80 + sw, ey + 28, Theme.FAINT)
+        val moves = Snapping.MOVES
+        val sw = ui.segmented(x0 + 74, ey + 24, moves.map { Snapping.moveLabel(it) }, moves.indexOf(Config.settings.editor.moveStep).coerceAtLeast(0)) { i ->
+            Config.update { editor.moveStep = moves[i] }
+        }
+        ui.text(ui.fit("every editor tool (G) · Ctrl: free", contentWidth - 84 - sw), x0 + 80 + sw, ey + 28, Theme.FAINT)
 
         val top0 = ey + 52
         if (LocationStore.sources().isEmpty()) {
@@ -764,8 +851,8 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
     // ---- World: selection -------------------------------------------------------------------------------------------
 
     private fun selection(ui: Ui) {
-        toolCard(ui, x0, y0, contentWidth, "Selection tool", Keys.keyOf("ai-selection-tool"),
-            "Left / right click two corners, then drag the gizmo's arrows. Chats get it as the place to work in.", Tools.active === SelectionTool) { Tools.toggle(SelectionTool) }
+        toolCard(ui, x0, y0, contentWidth, "Selection tool", SelectionTool,
+            "Left / right click two corners, then drag the gizmo's arrows. Chats get it as the place to work in.")
         var y = y0 + 58
         val fs = SelectionTool.describe()
         val we = WorldEditSelection.describe()
@@ -786,8 +873,8 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
             ui.text(ui.fit("WorldEdit CUI (or WorldEdit) is installed: it draws the WorldEdit selection.", contentWidth), x0, y, Theme.FAINT)
             return
         }
-        toolCard(ui, x0, y, contentWidth, "WorldEdit tool", Keys.keyOf("worldedit-tool"),
-            "Any shape: click blocks for //pos1 and //pos2, drag the arrows to move it, the knobs to resize it.", Tools.active === WorldEditTool) { Tools.toggle(WorldEditTool) }
+        toolCard(ui, x0, y, contentWidth, "WorldEdit tool", WorldEditTool,
+            "Any shape: click blocks for //pos1 and //pos2, drag the arrows to move it, the knobs to resize it.")
         y += 58
         ui.switch(x0, y, contentWidth, "Show the WorldEdit selection in the world", Config.settings.overlays.worldEdit) {
             Config.update { overlays.worldEdit = !overlays.worldEdit }
@@ -902,7 +989,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
                 for (b in bindings) {
                     val mapping = b.mapping
                     val waiting = binding === mapping
-                    val conflicts = if (mapping.isUnbound) emptyList() else minecraft.options.keyMappings.filter { it !== mapping && it.same(mapping) }
+                    val conflicts = if (mapping.isUnbound) emptyList() else minecraft.options.keyMappings.filter { it !== mapping && it.same(mapping) && !withF3(it) }
                     val cap = mapping.translatedKeyMessage.string
                     ui.rect(x0, y, contentWidth - 6, 20, if (waiting) Theme.PANEL_HOVER else Theme.PANEL)
                     val label = when {
@@ -930,6 +1017,7 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
                 }
                 y += 6
             }
+            y = editorKeys(ui, y)
             ui.text("Commands", x0, y + 4, Theme.ACCENT); y += 18
             listOf("/ai" to "the chats", "/ai ask <prompt>" to "a prompt in a new chat", "/ai cancel" to "stop every running chat",
                 "/ai tools" to "every AI tool by provider", "/packets" to "the packet viewer (start, stop, export, ask)",
@@ -940,10 +1028,38 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
         }
     }
 
+    /** Vanilla's debug keys but F3 itself are pressed with F3: no clash with a key pressed alone. */
+    private fun withF3(m: KeyMapping) =
+        m.category == KeyMapping.Category.DEBUG && m !== minecraft.options.keyDebugOverlay && m !== minecraft.options.keyDebugModifier
+
+    /** Editor mode's tools, their numbers and keys (the editor's own: not rebindable), then its snapping keys; returns the next row's y. */
+    private fun editorKeys(ui: Ui, top: Int): Int {
+        var y = top
+        ui.text("Editor mode (${EditorMode.binding.translatedKeyMessage.string})", x0, y + 4, Theme.ACCENT)
+        y += 16
+        ui.paragraph("While it is on these keys are the editor's: the game doesn't get them. 1-9 pick a tool, Esc goes back, then leaves.", x0, y, contentWidth - 10)
+        y += 14
+        EditorTools.all.forEachIndexed { i, tool ->
+            val keys = tool.keys()
+            ui.rect(x0, y, contentWidth - 6, 20, Theme.PANEL)
+            ui.chip(x0 + 4, y + 4, "${i + 1}", Theme.ACCENT)
+            ui.text(ui.fit(tool.title, 110), x0 + 22, y + 6, if (tool.available()) Theme.TEXT else Theme.FAINT)
+            val line = keys.joinToString(" · ") { "${it.caption} ${it.label.lowercase()}" }.ifEmpty { "clicks and the gizmo only" }
+            ui.text(ui.fit(line, contentWidth - 150), x0 + 138, y + 6, Theme.MUTED)
+            ui.hit(x0 + 138, y, contentWidth - 150, 20, keys.joinToString("\n") { "${it.caption}: ${it.label}" }.ifEmpty { null })
+            y += 22
+        }
+        val snaps = EditorMode.keys()
+        ui.rect(x0, y, contentWidth - 6, 20, Theme.PANEL)
+        ui.text("Every tool", x0 + 22, y + 6, Theme.TEXT)
+        ui.text(ui.fit(snaps.joinToString(" · ") { "${it.caption} ${it.label.lowercase()}" } + " · Ctrl held: free", contentWidth - 150), x0 + 138, y + 6, Theme.MUTED)
+        ui.hit(x0 + 138, y, contentWidth - 150, 20, snaps.joinToString("\n") { "${it.caption}: ${it.label}" } + "\nCtrl held while dragging: free")
+        return y + 28
+    }
+
     // ---- Debug: resource packs --------------------------------------------------------------------------------------
 
 
-    private var resourcesTab = 0
     private val openIssues = mutableSetOf<String>()
 
     private fun resources(ui: Ui) {
@@ -1087,6 +1203,13 @@ class HubScreen(private var section: Section = Section.HOME, private val parent:
     }
 
     private companion object {
+        /** The section it was closed on, in Foreman's settings. */
+        fun lastSection() = Section.entries.firstOrNull { it.name == Config.settings.hub.section } ?: Section.HOME
+
+        /** Each section's search, kept while the game runs. */
+        val searches = HashMap<Section, String>()
+        var resourcesTab = 0
+
         const val DOCS = "https://qore-games.github.io/foreman/"
         const val SOURCE = "https://github.com/qore-games/foreman"
         val LOGO: Identifier = Identifier.fromNamespaceAndPath("foreman", "textures/gui/logo.png")
