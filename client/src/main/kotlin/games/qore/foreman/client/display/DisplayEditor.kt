@@ -33,6 +33,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.entity.Display
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
@@ -89,6 +90,9 @@ object DisplayEditor : EditorTool {
     private var furniture: Map<UUID, String> = emptyMap()
     /** The displays the last list had: one hovered that it hadn't (placed since) asks again. */
     private var listed: Set<UUID> = emptySet()
+    /** The displays this client had in the last list's box when it asked, and the box (a block in from its edges). */
+    private var listedHere: Set<UUID> = emptySet()
+    private var listedBox: AABB? = null
     private var furnitureAt: Vec3? = null
     private var furnitureAsked = 0L
     private var furnitureLoading = false
@@ -207,7 +211,7 @@ object DisplayEditor : EditorTool {
         val level = Minecraft.getInstance().level ?: return
         val found = HashMap<UUID, Display>()
         for (e in level.entitiesForRendering()) {
-            if (e is Display && (e.uuid in selection || e.distanceToSqr(ray.origin) <= REACH * REACH)) found[e.uuid] = e
+            if (e is Display && editable(e) && (e.uuid in selection || e.distanceToSqr(ray.origin) <= REACH * REACH)) found[e.uuid] = e
         }
         nearby = found
         gizmo.update(ray)
@@ -238,6 +242,9 @@ object DisplayEditor : EditorTool {
         if (enabled) Tools.deactivate()
         selection.clear()
         furniture = emptyMap()
+        listed = emptySet()
+        listedHere = emptySet()
+        listedBox = null
         furnitureAt = null
         furnitureFailed = false
         busy = false
@@ -447,12 +454,22 @@ object DisplayEditor : EditorTool {
         }
     }
 
+    /**
+     * Whether the editor offers [display]: not when it rides a player (a hat, a held model), which isn't part of a build,
+     * nor when it only exists on this client (a plugin's packet entity: the server didn't list it), which the server can't
+     * edit.
+     */
+    private fun editable(display: Display) = display.rootVehicle !is Player && !clientOnly(display)
+
+    private fun clientOnly(display: Display) =
+        display.uuid in listedHere && display.uuid !in listed && listedBox?.contains(display.position()) == true
+
     /** Selects every display whose anchor is in the selection tool's box. */
     fun selectInBox() {
         val box = SelectionTool.box ?: return Chat.warn("No selection box: make one with the selection tool first")
         val level = Minecraft.getInstance().level ?: return
         if (SelectionTool.dimension != level.dimension().identifier().toString()) return Chat.warn("The selection box is in another dimension")
-        val inside = level.entitiesForRendering().filterIsInstance<Display>().filter {
+        val inside = level.entitiesForRendering().filterIsInstance<Display>().filter(::editable).filter {
             val p = it.position()
             p.x >= box.minX && p.x < box.maxX + 1 && p.y >= box.minY && p.y < box.maxY + 1 && p.z >= box.minZ && p.z < box.maxZ + 1
         }
@@ -485,12 +502,20 @@ object DisplayEditor : EditorTool {
         furnitureAt = at
         furnitureAsked = now
         val center = BlockPos.containing(at)
-        DisplayServer.furniture(center.offset(-FURNITURE_RADIUS, -FURNITURE_RADIUS, -FURNITURE_RADIUS), center.offset(FURNITURE_RADIUS, FURNITURE_RADIUS, FURNITURE_RADIUS)) { result ->
+        val from = center.offset(-FURNITURE_RADIUS, -FURNITURE_RADIUS, -FURNITURE_RADIUS)
+        val to = center.offset(FURNITURE_RADIUS, FURNITURE_RADIUS, FURNITURE_RADIUS)
+        // Inside by a block: the client's positions may lag the server's at the edges.
+        val box = AABB(Vec3.atLowerCornerOf(from), Vec3.atLowerCornerOf(to.offset(1, 1, 1))).deflate(1.0)
+        val here = Minecraft.getInstance().level?.entitiesForRendering()
+            ?.filter { it is Display && box.contains(it.position()) }?.map { it.uuid }?.toSet().orEmpty()
+        DisplayServer.furniture(from, to) { result ->
             furnitureLoading = false
             // A server without the tool: labels show models only, without asking again.
             result.onSuccess {
                 furniture = it.furniture
                 listed = it.seen
+                listedHere = here
+                listedBox = box
             }.onFailure { furnitureFailed = true }
         }
     }
@@ -566,8 +591,12 @@ object DisplayEditor : EditorTool {
         )
         val hovered = hits.firstOrNull()?.display?.takeIf { it.uuid !in selection }?.let { Shown(kindLabel(it), label(it)) }
         val hints = when {
-            gizmo.dragging || OriginHandle.dragging -> listOf(Hint("Ctrl", "drag freely"), Hint(ToolStatus.SCROLL, "one step more"))
-            gizmo.hovering || OriginHandle.hovering -> listOf(Hint(ToolStatus.DRAG, if (OriginHandle.on) "move the entity, not its model" else gizmo.mode.label.lowercase() + " the selection"))
+            gizmo.dragging || OriginHandle.dragging -> listOf(Hint("Ctrl", "drag freely"), Hint(ToolStatus.SCROLL, if (gizmo.movingFreely) "farther, nearer" else "one step more"))
+            gizmo.hovering || OriginHandle.hovering -> listOf(Hint(ToolStatus.DRAG, when {
+                OriginHandle.on -> "move the entity, not its model"
+                gizmo.movingFreely -> "move the selection anywhere"
+                else -> gizmo.mode.label.lowercase() + " the selection"
+            }))
             else -> listOfNotNull(
                 Hint(ToolStatus.LEFT, when {
                     hits.isNotEmpty() -> "select it (Shift: add or remove)"

@@ -1,6 +1,7 @@
 package games.qore.foreman.client.link
 
 import com.mojang.blaze3d.platform.InputConstants
+import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.editor.EditorKey
 import games.qore.foreman.client.editor.EditorTool
 import games.qore.foreman.client.editor.Hint
@@ -28,6 +29,10 @@ object WorldEditTool : EditorTool {
     override val id = "worldedit"
 
     override fun keys() = listOf(
+        EditorKey(InputConstants.KEY_DELETE, "Clear it") { WorldEditSelection.clear() },
+        EditorKey(InputConstants.KEY_V, if (shown) "Hide the selection" else "Show the selection") {
+            Config.update { overlays.worldEdit = !overlays.worldEdit }
+        },
         EditorKey(InputConstants.KEY_N, "The hub's Selection page") { Screens.open(HubScreen(HubScreen.Section.SELECTION)) },
     )
 
@@ -41,7 +46,10 @@ object WorldEditTool : EditorTool {
     /** The shape when the drag started. */
     private var from: WeShape? = null
 
-    private val gizmo = BoxGizmo({ (preview ?: WorldEditSelection.shape())?.bounds }, ::changed, ::committed)
+    /** Whether the selection is shown (the hub's switch too): hidden, neither it nor its gizmo is drawn or grabbed. */
+    private val shown get() = Config.settings.overlays.worldEdit
+
+    private val gizmo = BoxGizmo({ (preview ?: WorldEditSelection.shape())?.bounds?.takeIf { shown } }, ::changed, ::committed)
 
     private fun changed(next: BlockBox) {
         val start = from ?: (preview ?: WorldEditSelection.shape())?.also { from = it } ?: return
@@ -98,6 +106,7 @@ object WorldEditTool : EditorTool {
     }
 
     override fun draw(draw: OverlayDraw) {
+        if (!shown) return
         val shape = preview ?: WorldEditSelection.shape() ?: return
         WorldEditSelection.draw(draw, shape)
         gizmo.draw(draw)
@@ -110,15 +119,19 @@ object WorldEditTool : EditorTool {
             selected = shape?.let { Shown("WorldEdit selection", it.label) },
             empty = "No selection from WorldEdit yet: click two blocks",
             hints = when {
-                gizmo.dragging -> emptyList()
-                gizmo.hovered != null -> listOf(Hint(ToolStatus.DRAG, if (gizmo.hovered!!.face < 0) "//shift it" else "move this face"))
+                gizmo.dragging -> listOfNotNull(if (gizmo.dragged!!.face >= 0) Hint("Ctrl", "both sides at once") else null)
+                gizmo.hovered != null -> if (gizmo.hovered!!.face < 0) listOf(Hint(ToolStatus.DRAG, "//shift it"))
+                    else listOf(Hint(ToolStatus.DRAG, "move this face"), Hint("Ctrl", "both sides at once"))
                 else -> listOfNotNull(
                     Hint(ToolStatus.LEFT, "a block: //pos1"),
                     Hint(ToolStatus.RIGHT, "a block: //pos2"),
                     if (shape != null) Hint(ToolStatus.DRAG, "a knob resizes it, an arrow moves it") else null,
                 )
             },
-            notes = if (WorldEditSelection.busy) listOf(Note("Waiting for WorldEdit…", Note.Tone.BUSY)) else emptyList(),
+            notes = listOfNotNull(
+                if (WorldEditSelection.busy) Note("Waiting for WorldEdit…", Note.Tone.BUSY) else null,
+                if (!shown) Note("Hidden: V shows it") else null,
+            ),
         )
     }
 }

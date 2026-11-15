@@ -21,6 +21,9 @@ The crosshair picks what a display draws, not a box around its anchor:
 The display under the crosshair is outlined with its label: the furniture it belongs to (from the plugin), else its
 item model, block or text. Displays that draw nothing the client can find (an empty item, a block without shape, a
 display scaled to nothing) show a small marker on their anchor within 8 blocks, while the editor is on.
+Displays riding a player (hats, held models, anything a plugin mounts on players) are never picked nor listed:
+they aren't part of a build. Neither are those that only exist on your client, a plugin's packet entities (the
+server's list of the displays around you doesn't have them): the server can't edit them.
 
 | | |
 |---|---|

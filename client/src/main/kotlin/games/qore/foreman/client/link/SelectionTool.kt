@@ -21,13 +21,12 @@ import games.qore.foreman.client.util.Chat
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
-import net.minecraft.world.phys.BlockHitResult
-import net.minecraft.world.phys.HitResult
 
 /**
  * A box selection made on the client: left click a block for the first corner, right click for the second, then drag
  * the face knobs to resize or the center arrows to move it. Sent to foreman (`get_context` shows it to the AI). The
- * editor's other tools make their new things from it ([current]): assets, areas.
+ * editor's other tools make their new things from it ([current]): assets, areas. [toWorldEdit] makes it WorldEdit's
+ * selection, for WorldEdit's own commands.
  */
 object SelectionTool : EditorTool {
     override val title = "Selection"
@@ -45,6 +44,7 @@ object SelectionTool : EditorTool {
 
     override fun keys() = listOf(
         EditorKey(InputConstants.KEY_RETURN, "Ask a chat about it") { ask() },
+        EditorKey(InputConstants.KEY_P, "Select it in WorldEdit") { toWorldEdit() },
         EditorKey(InputConstants.KEY_DELETE, "Clear it") { clear() },
         EditorKey(InputConstants.KEY_N, "The hub's Selection page") { Screens.open(HubScreen(HubScreen.Section.SELECTION)) },
     )
@@ -53,6 +53,14 @@ object SelectionTool : EditorTool {
     fun ask() {
         val selection = describe() ?: return Chat.warn("No selection: click two corners with the selection tool (B, then 1)")
         Screens.open(ChatScreen("the selected area $selection"))
+    }
+
+    /** Makes it WorldEdit's selection (`//pos1`, `//pos2` as the player), for WorldEdit's commands: `//set`, `//copy`… */
+    fun toWorldEdit() {
+        val b = box ?: return Chat.warn("No selection: click two corners with the selection tool (B, then 1)")
+        if (dimension != playerDimension()) return Chat.warn("The selection is in another dimension")
+        if (!WorldEditSelection.onServer()) return Chat.warn("This server has no WorldEdit")
+        WorldEditSelection.select(b)
     }
 
     fun init() {
@@ -95,8 +103,8 @@ object SelectionTool : EditorTool {
 
     override fun press(button: MouseButton, ray: Ray) {
         if (button == MouseButton.LEFT && gizmo.press(ray)) return
-        val hit = Minecraft.getInstance().hitResult as? BlockHitResult ?: return
-        if (hit.type != HitResult.Type.BLOCK) return
+        // the block under the crosshair however far, as WorldEdit's tool: a selection is often bigger than the reach
+        val hit = ray.block(REACH) ?: return
         val level = Minecraft.getInstance().level ?: return
         val dim = level.dimension().identifier().toString()
         if (dim != dimension) {
@@ -114,6 +122,8 @@ object SelectionTool : EditorTool {
     override fun release(button: MouseButton) {
         if (button == MouseButton.LEFT) gizmo.release()
     }
+
+    private const val REACH = 256.0
 
     override fun update(ray: Ray) = gizmo.update(ray)
 
@@ -136,8 +146,9 @@ object SelectionTool : EditorTool {
         selected = box?.let { Shown("Selection box", "${it.sizeX}×${it.sizeY}×${it.sizeZ}", "${it.minX} ${it.minY} ${it.minZ} to ${it.maxX} ${it.maxY} ${it.maxZ}") },
         empty = "Click two blocks: its corners",
         hints = when {
-            gizmo.dragging -> emptyList()
-            gizmo.hovered != null -> listOf(Hint(ToolStatus.DRAG, if (gizmo.hovered!!.face < 0) "move the box" else "move this face"))
+            gizmo.dragging -> listOfNotNull(if (gizmo.dragged!!.face >= 0) Hint("Ctrl", "both sides at once") else null)
+            gizmo.hovered != null -> if (gizmo.hovered!!.face < 0) listOf(Hint(ToolStatus.DRAG, "move the box"))
+                else listOf(Hint(ToolStatus.DRAG, "move this face"), Hint("Ctrl", "both sides at once"))
             else -> listOfNotNull(
                 Hint(ToolStatus.LEFT, "a block: the first corner"),
                 Hint(ToolStatus.RIGHT, "a block: the second corner"),

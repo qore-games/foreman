@@ -444,8 +444,10 @@ object AssetTool : EditorTool {
             asset != null -> {
                 val area = asset.area()
                 if (area != null && area.dim != playerDimension()) details += "In ${area.world}: go there from its library page"
-                hints += if (gizmo.hovered != null || gizmo.dragging) Hint(ToolStatus.DRAG, if ((gizmo.dragged ?: gizmo.hovered)!!.face < 0) "move it with its content" else "resize its box (its content stays)")
+                val face = (gizmo.dragged ?: gizmo.hovered)?.let { it.face >= 0 }
+                hints += if (face != null) Hint(ToolStatus.DRAG, if (face) "resize its box (its content stays)" else "move it with its content")
                 else Hint(ToolStatus.DRAG, "an arrow moves it with its content, a knob resizes its box")
+                if (face == true) hints += Hint("Ctrl", "both sides at once")
                 hints += Hint(keyName("asset-turn"), "turn it a quarter, with its content")
                 hints += Hint(keyName("asset-panel"), "name, tags, note, its copies")
             }

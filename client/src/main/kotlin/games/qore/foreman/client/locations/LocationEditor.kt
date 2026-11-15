@@ -162,8 +162,8 @@ object LocationEditor : EditorTool {
             gizmo.describe()?.takeIf { gizmo.dragging }?.let { "Dragged: $it" },
         )
         val hints = when {
-            gizmo.dragging -> listOf(Hint("Ctrl", "drag freely"), Hint(ToolStatus.SCROLL, "one step more"))
-            gizmo.hovering -> listOf(Hint(ToolStatus.DRAG, "an arrow moves it, the ring turns it"))
+            gizmo.dragging -> listOf(Hint("Ctrl", "drag freely"), Hint(ToolStatus.SCROLL, if (gizmo.movingFreely) "farther, nearer" else "one step more"))
+            gizmo.hovering -> listOf(Hint(ToolStatus.DRAG, if (gizmo.movingFreely) "move it anywhere" else "an arrow moves it, the ring turns it"))
             else -> listOfNotNull(
                 Hint(ToolStatus.LEFT, "on a location: select it"),
                 if (e != null) Hint(ToolStatus.RIGHT, "put it on the block face aimed at") else null,

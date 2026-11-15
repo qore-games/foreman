@@ -6,6 +6,7 @@ import games.qore.foreman.client.input.Tools
 import games.qore.foreman.client.net.Net
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.client.render.Overlays
+import games.qore.foreman.client.util.Chat
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
@@ -49,17 +50,9 @@ object WorldEditSelection {
         private set
 
     fun init() {
-        if (listOf("worldeditcui", "worldedit").any { FabricLoader.getInstance().isModLoaded(it) }) return
-        available = true
-        Net.incoming(CHANNEL, { it.decodeToString() }, ::handle)
-        val out = Net.outgoing<String>(CHANNEL) { it.encodeToByteArray() }
-        ClientPlayConnectionEvents.JOIN.register { _, _, _ -> handshake = 100 }
-        ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> reset(""); dimension = null; queue.clear() }
+        // Commands go out with or without the channel (the selection tool's to WorldEdit too)
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> queue.clear() }
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            if (handshake > 0) {
-                handshake--
-                if (handshake % 20 == 0 && out.send("v|4")) handshake = 0
-            }
             if (spam > 0) spam--
             quiet++
             val connection = client.player?.connection ?: return@register queue.clear()
@@ -67,6 +60,18 @@ object WorldEditSelection {
                 connection.sendCommand(queue.poll())
                 spam += 20
                 quiet = 0
+            }
+        }
+        if (listOf("worldeditcui", "worldedit").any { FabricLoader.getInstance().isModLoaded(it) }) return
+        available = true
+        Net.incoming(CHANNEL, { it.decodeToString() }, ::handle)
+        val out = Net.outgoing<String>(CHANNEL) { it.encodeToByteArray() }
+        ClientPlayConnectionEvents.JOIN.register { _, _, _ -> handshake = 100 }
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> reset(""); dimension = null }
+        ClientTickEvents.END_CLIENT_TICK.register { _ ->
+            if (handshake > 0) {
+                handshake--
+                if (handshake % 20 == 0 && out.send("v|4")) handshake = 0
             }
         }
         Overlays.add { if (Tools.active !== WorldEditTool && Config.settings.overlays.worldEdit) draw(it, shape()) }
@@ -140,6 +145,18 @@ object WorldEditSelection {
     fun run(commands: List<String>) {
         queue.addAll(commands)
         quiet = 0
+    }
+
+    /** Whether the server has WorldEdit's commands (`//pos1` in the command tree it sent). */
+    fun onServer(): Boolean = Minecraft.getInstance().player?.connection?.commands?.root?.getChild("/pos1") != null
+
+    /** Makes [box] WorldEdit's selection, a cuboid: `//sel cuboid`, `//pos1`, `//pos2` as the player. */
+    fun select(box: BlockBox) = run(listOf("/sel cuboid", "/pos1 ${box.minX},${box.minY},${box.minZ}", "/pos2 ${box.maxX},${box.maxY},${box.maxZ}"))
+
+    /** Clears the player's WorldEdit selection (`//sel` without a selector, which keeps the current one). */
+    fun clear() {
+        if (!onServer()) return Chat.warn("This server has no WorldEdit")
+        run(listOf("/sel"))
     }
 
     /** Commands still to send, or sent less than half a second ago: WorldEdit hasn't answered them all yet. */

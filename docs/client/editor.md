@@ -76,16 +76,19 @@ an area. Their panels say so when there is no selection, with a button to the se
 ## Gizmos and snapping
 
 Every tool that moves, turns or scales something does it with the same gizmo, grabbed with the crosshair: arrows move
-along an axis, squares in a plane, rings turn, knobs resize a box or scale. Points and locations show their arrows and
-a ring around them at once (the ring turns where they face); displays switch between moving, turning and scaling.
-Scrolling while you drag adds a step. The status card says what dragging the handle under the crosshair does.
+along an axis, squares in a plane, the knob at its center anywhere, rings turn, knobs resize a box or scale. Points and
+locations show their arrows and a ring around them at once (the ring turns where they face); displays switch between
+moving, turning and scaling. Scrolling while you drag adds a step; dragging the center knob, it moves across your view
+(snapped on every axis) and the scroll wheel pushes it farther (up) or pulls it nearer (down). Holding ++ctrl++ while you drag a box's knob moves the opposite face too, the
+other way: the box grows or shrinks around its center (selections, WorldEdit's, areas, assets). The status card says
+what dragging the handle under the crosshair does.
 
 How drags snap is one setting for the whole editor, kept after a restart. One key, ++g++, cycles the step of what the
 gizmo does now, and the panel shows only that one:
 
 | The gizmo | ++g++ cycles | Steps | The panel says |
 |---|---|---|---|
-| Moves (arrows, squares) | the move step | free, 1/16, 1/8, 1/4, 1/2 of a block, **block grid** | `Snap: 1/4 block` |
+| Moves (arrows, squares, the center knob) | the move step | free, 1/16, 1/8, 1/4, 1/2 of a block, **block grid** | `Snap: 1/4 block` |
 | Turns (rings) | the turn step | free, 5°, 15°, 22.5°, 45°, 90° | `Snap: 15°` |
 | Scales | the scale step | free, 1/16, 1/4, 1/2 | `Snap: 1/16` |
 

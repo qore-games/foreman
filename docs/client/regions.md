@@ -77,9 +77,9 @@ block, to the move step, or on the middle of the floor of the block before the f
 away from the wall you aim at, else where you look.
 
 A selected point shows the gizmo: its **arrows** and **squares** move it as the editor's
-[snapping](editor.md#gizmos-and-snapping) says (free, by a step, or onto the middle of a block's floor), the **ring**
-around it turns where it faces (its yaw, by the turn step). The marker's arrow shows the facing. The change is saved
-on release.
+[snapping](editor.md#gizmos-and-snapping) says (free, by a step, or onto the middle of a block's floor), the green
+**ring** around it turns where it faces (its yaw), the red one tilts it up or down (its pitch, to straight up or down),
+both by the turn step. The marker's arrow shows the facing. The change is saved on release.
 
 Its panel sets its **type** (one from the list, ▾, or your own name) and **kind**, the **build** and **room** it belongs
 to (both optional), where it is exactly (**At**: x, y, z) and its **facing**: a yaw in degrees (0 south, 90 west, 180

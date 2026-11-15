@@ -11,8 +11,11 @@ import kotlin.math.max
 import kotlin.math.sign
 import kotlin.math.sin
 
-/** Where a [TransformGizmo] stands: its [pivot] and its three [axes] (unit vectors in the world: its x, y and z). */
-class GizmoFrame(val pivot: Vec3, val axes: List<Vec3>) {
+/**
+ * Where a [TransformGizmo] stands: its [pivot] and its three [axes] (unit vectors in the world: its x, y and z), and the
+ * three its rings turn around, [turns] (its axes; a point's own, as it faces, while it moves along the world's).
+ */
+class GizmoFrame(val pivot: Vec3, val axes: List<Vec3>, val turns: List<Vec3> = axes) {
     companion object {
         val WORLD_AXES: List<Vec3> = Gizmo.AXES.map { it.first }
     }
@@ -32,8 +35,9 @@ sealed interface GizmoChange {
 
 /**
  * Move, rotate and scale handles around a pivot, along a frame's axes (the world's, or what is edited's own): in
- * [Mode.MOVE] three arrows and three plane squares, in [Mode.ROTATE] the [rings], in [Mode.SCALE] three stretch handles
- * and a center knob for all axes at once. With [ringsWithMove] the rings show with the arrows, outside them, and there
+ * [Mode.MOVE] three arrows, three plane squares and a center knob that moves it anywhere (in the plane facing the camera
+ * as it was grabbed, the scroll wheel pushing it farther or pulling it nearer), in [Mode.ROTATE] the [rings], in
+ * [Mode.SCALE] three stretch handles and a center knob for all axes at once. With [ringsWithMove] the rings show with the arrows, outside them, and there
  * are no modes to switch (a point: where it is and where it faces). A drag reports its whole change from its start
  * ([changed], live; [committed] on release), snapped as the editor's [Snapping] says: moves onto the block grid ([grid]
  * says where the pivot sits in a block) or by the move step, turns and scaled values (from [scaleBase]) by theirs;
@@ -54,7 +58,7 @@ class TransformGizmo(
 ) {
     enum class Mode(val label: String) { MOVE("Move"), ROTATE("Rotate"), SCALE("Scale") }
 
-    private enum class Kind { AXIS, PLANE, RING, STRETCH, UNIFORM }
+    private enum class Kind { AXIS, PLANE, FREE, RING, STRETCH, UNIFORM }
 
     /** A handle: what it does and the frame axis it works along (around, for rings; the normal, for planes). */
     private data class Part(val kind: Kind, val axis: Int)
@@ -64,6 +68,8 @@ class TransformGizmo(
         var param = 0.0
         var point: Vec3 = Vec3.ZERO
         var normal: Vec3 = Vec3.ZERO
+        /** A free move's way away from the camera, where scrolling pushes it. */
+        var depth: Vec3 = Vec3.ZERO
         /** A ring seen edge on is dragged along its tangent at the grabbed point instead of around. */
         var tangent: Vec3? = null
         var lastAngle = 0.0
@@ -79,6 +85,8 @@ class TransformGizmo(
     private var drag: Drag? = null
     val dragging get() = drag != null
     val hovering get() = hovered != null
+    /** The center knob is dragged or under the crosshair: it moves anywhere, the scroll wheel farther or nearer. */
+    val movingFreely get() = (drag?.part ?: hovered)?.kind == Kind.FREE
 
     /**
      * Whose step the editor's snap key changes for it now: its mode's; with the rings among the arrows, the part dragged
@@ -92,7 +100,8 @@ class TransformGizmo(
         }
 
     private fun parts(): List<Part> = when (mode) {
-        Mode.MOVE -> (0..2).map { Part(Kind.AXIS, it) } + (0..2).map { Part(Kind.PLANE, it) } + if (ringsWithMove) rings.map { Part(Kind.RING, it) } else emptyList()
+        Mode.MOVE -> (0..2).map { Part(Kind.AXIS, it) } + (0..2).map { Part(Kind.PLANE, it) } + Part(Kind.FREE, 0) +
+            if (ringsWithMove) rings.map { Part(Kind.RING, it) } else emptyList()
         Mode.ROTATE -> rings.map { Part(Kind.RING, it) }
         Mode.SCALE -> (0..2).map { Part(Kind.STRETCH, it) } + Part(Kind.UNIFORM, 0)
     }
@@ -111,13 +120,16 @@ class TransformGizmo(
     }
 
     private fun ring(f: GizmoFrame, axis: Int, size: Double): List<Vec3> {
-        val u = f.axes[(axis + 1) % 3].scale(size * ringRadius)
-        val v = f.axes[(axis + 2) % 3].scale(size * ringRadius)
+        val u = f.turns[(axis + 1) % 3].scale(size * ringRadius)
+        val v = f.turns[(axis + 2) % 3].scale(size * ringRadius)
         return (0 until RING_SEGMENTS).map { i ->
             val a = i * 2 * Math.PI / RING_SEGMENTS
             f.pivot.add(u.scale(cos(a))).add(v.scale(sin(a)))
         }
     }
+
+    /** The axis [part] works along (a ring: around). */
+    private fun axis(f: GizmoFrame, part: Part) = if (part.kind == Kind.RING) f.turns[part.axis] else f.axes[part.axis]
 
     /** How far along [ray] it meets [part], or null when it misses. */
     private fun hit(part: Part, f: GizmoFrame, size: Double, ray: Ray): Double? {
@@ -138,7 +150,7 @@ class TransformGizmo(
                 points.indices.map { ray.toSegment(points[it], points[(it + 1) % points.size]) }
                     .filter { it.first <= size * 0.06 + 0.04 }.minOfOrNull { it.second }
             }
-            Kind.UNIFORM -> ray.toPoint(f.pivot).takeIf { it.first <= size * KNOB + 0.05 }?.second
+            Kind.FREE, Kind.UNIFORM -> ray.toPoint(f.pivot).takeIf { it.first <= size * KNOB + 0.05 }?.second
         }
     }
 
@@ -146,7 +158,8 @@ class TransformGizmo(
         val f = frame() ?: return null
         val size = size(f, ray.origin)
         val hits = parts().mapNotNull { p -> hit(p, f, size, ray)?.let { p to it } }
-        return hits.firstOrNull { it.first.kind == Kind.UNIFORM }?.first ?: hits.minByOrNull { it.second }?.first
+        // The center knob before the arrows starting under it.
+        return hits.firstOrNull { it.first.kind == Kind.UNIFORM || it.first.kind == Kind.FREE }?.first ?: hits.minByOrNull { it.second }?.first
     }
 
     /** Starts a drag when [ray] is on a handle; true when it did. */
@@ -154,12 +167,13 @@ class TransformGizmo(
         val f = frame() ?: return false
         val part = pick(ray) ?: return false
         val d = Drag(part, f, size(f, ray.origin), scaleBase(), grid(), wholeBlocks())
-        val axis = f.axes[part.axis]
+        val axis = axis(f, part)
         when (part.kind) {
             Kind.AXIS, Kind.STRETCH -> d.param = ray.closestOnLine(f.pivot, axis) ?: return false
             Kind.PLANE -> d.point = ray.toPlane(f.pivot, axis)?.let(ray::at) ?: return false
-            Kind.UNIFORM -> {
+            Kind.FREE, Kind.UNIFORM -> {
                 d.normal = ray.dir.reverse()
+                d.depth = ray.dir
                 d.point = ray.toPlane(f.pivot, d.normal)?.let(ray::at) ?: return false
             }
             Kind.RING -> if (abs(ray.dir.dot(axis)) > EDGE_ON) {
@@ -193,7 +207,7 @@ class TransformGizmo(
     /** The drag's change for [ray], or null when the ray tells nothing (parallel to what it is dragged on). */
     private fun change(d: Drag, ray: Ray): GizmoChange? {
         val f = d.frame
-        val axis = f.axes[d.part.axis]
+        val axis = axis(f, d.part)
         return when (d.part.kind) {
             Kind.AXIS -> {
                 val s = ray.closestOnLine(f.pivot, axis) ?: return null
@@ -204,6 +218,11 @@ class TransformGizmo(
                 val u = (d.part.axis + 1) % 3
                 val v = (d.part.axis + 2) % 3
                 GizmoChange.Move(f.axes[u].scale(snapMove(d, u, offset.dot(f.axes[u]))).add(f.axes[v].scale(snapMove(d, v, offset.dot(f.axes[v])))))
+            }
+            Kind.FREE -> {
+                val offset = (ray.toPlane(f.pivot, d.normal)?.let(ray::at)?.subtract(d.point) ?: return null)
+                    .add(d.depth.scale(d.nudged * moveNudge(d)))
+                GizmoChange.Move((0..2).fold(Vec3.ZERO) { sum, i -> sum.add(f.axes[i].scale(snapMove(d, i, offset.dot(f.axes[i])))) })
             }
             Kind.RING -> {
                 val tangent = d.tangent
@@ -265,7 +284,10 @@ class TransformGizmo(
 
     private fun Vec3.get(axis: Int) = when (axis) { 0 -> x; 1 -> y; else -> z }
 
-    /** Adds [steps] steps to the drag (scroll while dragging); false when the handle has no steps (planes). */
+    /**
+     * Adds [steps] steps to the drag (scroll while dragging; the center knob's push it farther, or nearer when negative);
+     * false when the handle has no steps (planes).
+     */
     fun nudge(steps: Int): Boolean {
         val d = drag ?: return false
         if (d.part.kind == Kind.PLANE) return false
@@ -319,7 +341,7 @@ class TransformGizmo(
                     draw.line(f.pivot, end, color, if (on) 4f else 2.5f, onTop = true)
                     draw.box(end.subtract(r, r, r), end.add(r, r, r), color, 2f, Colors.withAlpha(color, 0.5f), onTop = true)
                 }
-                Kind.UNIFORM -> {
+                Kind.FREE, Kind.UNIFORM -> {
                     val r = size * KNOB
                     val c = if (on) Colors.HOVER else Colors.WHITE
                     draw.box(f.pivot.subtract(r, r, r), f.pivot.add(r, r, r), c, 2f, Colors.withAlpha(c, 0.35f), onTop = true)

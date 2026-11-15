@@ -35,9 +35,26 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ### Client (Fabric mod, any server)
 
+- The move gizmo has a knob at its center that moves what it holds anywhere: across your view as you grabbed it,
+  snapped on every axis, the scroll wheel pushing it farther or pulling it nearer while you drag (displays, locations,
+  points, world objects' anchors, placements).
 - The Library page says what its renders are doing: rendering (with the seconds it has taken) or waiting, and how many;
   a render the server hasn't answered in 2 minutes fails with a message instead of loading forever.
 - The Library page's scrollbar can be dragged again (the page took every drag to turn the opened asset's views).
+- Ctrl held while dragging a box's face knob resizes both sides at once, around its center (selections, WorldEdit's,
+  areas, assets).
+- The selection tool picks its corners however far the block under the crosshair is (up to 256 blocks), like the
+  WorldEdit tool, not only within reach.
+- A box gizmo's knob on a +x, +y or +z face stays past that axis's move arrow: on a small box it sat on the arrow and
+  was hard to grab.
+- The selection tool makes its box your WorldEdit selection (P, or *Select in WorldEdit* in the hub): `//sel cuboid`,
+  `//pos1` and `//pos2` sent as you, so WorldEdit's commands work on it.
+- Clear the WorldEdit selection: Delete in the WorldEdit tool, or *Clear* beside it in the hub's Selection section.
+- V in the WorldEdit tool hides or shows the WorldEdit selection, like the hub's switch.
+- A point's gizmo tilts it up and down too (its pitch, a second ring around its right), besides turning it.
+- The display editor leaves out displays riding a player (hats, held models) and those that only exist on the
+  client (plugins' packet entities, which the server doesn't list and can't edit): they were picked, listed and
+  selected by the box like a build's.
 - `client_key`'s physical keys type their character too (`key.keyboard.i` types `i` into the focused field, as the
   window sends it after the press), take `alt`, and carry the key code the layout gives on 26.3 (Ctrl+A and the other
   shortcuts work): an AI tests editor mode's own keys (a tool's number, I, K, Delete) and screens like a player typing.

@@ -3,8 +3,12 @@
 ## Your selection
 
 A box in the world, for the AI or your own commands. Press ++b++ for [editor mode](editor.md) and ++1++ for the
-selection tool (or **Use** in the hub's Selection section), then left click and right click the two corners, and drag
-the gizmo to adjust it (by whole blocks). ++enter++ asks a chat about it, ++delete++ clears it.
+selection tool (or **Use** in the hub's Selection section), then left click and right click the two corners (however far
+the blocks are, up to 256 blocks), and drag the gizmo to adjust it (by whole blocks). ++enter++ asks a chat about it,
+++delete++ clears it, ++p++ (or **Select in
+WorldEdit** in the hub's Selection section) makes it your WorldEdit selection (`//sel cuboid`, `//pos1`, `//pos2`
+sent as you), so WorldEdit's own commands (`//set`, `//copy`, `//replace`…) work on what you selected. On any server
+with WorldEdit or FastAsyncWorldEdit, with the WorldEdit CUI mod too.
 
 It is also the editor's one way of selecting things: the other tools make their new things from it (WorldEdit's
 selection when you have no Foreman one). Select a box here, switch tool, and press its key: ++c++ in the
@@ -27,8 +31,10 @@ The **WorldEdit tool** (editor mode's tool 9, or **Use** in the hub's Selection 
 
 - **Left / right click a block** for `//pos1` / `//pos2`, however far the block is. What they mean depends on the
   selector, as with the wand: two corners, a center and a radius, the points of a polygon.
-- **Drag an arrow** to move the selection (`//shift`), **a knob** to resize it. A sphere, an ellipsoid or a cylinder
+- **Drag an arrow** to move the selection (`//shift`), **a knob** to resize it (++ctrl++ held: both sides at once). A sphere, an ellipsoid or a cylinder
   grows on both sides of its center; a polygon or a convex shape is stretched. The mod selects it again with the
   commands that make it, paced so the server's spam check never kicks you.
+- ++delete++ clears it (`//sel`), as does **Clear** beside it in the hub's Selection section.
+- ++v++ hides it (or shows it again) everywhere, the tool included: the same as the hub's switch.
 
 Off when the WorldEdit CUI mod (or WorldEdit itself) is installed: it draws the selection then.

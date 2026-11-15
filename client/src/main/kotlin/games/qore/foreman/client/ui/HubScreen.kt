@@ -861,12 +861,16 @@ class HubScreen(private var section: Section = lastSection(), private val parent
         ui.text(ui.fit(fs ?: "none", contentWidth - 150), x0 + 80, y + 26, if (fs != null) Theme.TEXT else Theme.FAINT)
         ui.button(x0 + contentWidth - 60, y + 22, 50, 16, "Clear", Style.GHOST, enabled = fs != null) { SelectionTool.clear() }
         ui.text("WorldEdit", x0 + 10, y + 44, Theme.MUTED)
-        ui.text(ui.fit(we ?: "none (shown when the server sends it)", contentWidth - 100), x0 + 80, y + 44, if (we != null) Theme.TEXT else Theme.FAINT)
+        ui.text(ui.fit(we ?: "none (shown when the server sends it)", contentWidth - 150), x0 + 80, y + 44, if (we != null) Theme.TEXT else Theme.FAINT)
+        ui.button(x0 + contentWidth - 60, y + 40, 50, 16, "Clear", Style.GHOST, enabled = we != null || !WorldEditSelection.available,
+            tooltip = "Clears your WorldEdit selection (//sel)") { WorldEditSelection.clear() }
         y += 84
         ui.button(x0, y, 120, 18, "Ask a chat about it", Style.PRIMARY, enabled = fs != null || we != null) {
             minecraft.gui.setScreen(ChatScreen("the selected area ${fs ?: we}"))
         }
         Keys.keyOf("ai-selection-to-prompt").takeIf { it.isNotEmpty() }?.let { ui.chip(x0 + 126, y + 3, it, Theme.ACCENT) }
+        ui.button(x0 + 176, y, 120, 18, "Select in WorldEdit", Style.NORMAL, enabled = fs != null,
+            tooltip = "Makes it WorldEdit's selection (//pos1, //pos2), for //set, //copy and the rest") { SelectionTool.toWorldEdit() }
         y += 30
 
         if (!WorldEditSelection.available) {

@@ -39,6 +39,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.sign
 
 /** An area of the server by its world and name, and which of its boxes ([box]) is meant. */
@@ -97,7 +98,7 @@ object RegionsTool : EditorTool {
     private val boxGizmo = BoxGizmo(::gizmoBox, ::boxChanged, ::boxCommitted)
     private val pointGizmo = TransformGizmo(
         frame = ::pointFrame, changed = ::pointDragged, committed = ::pointDropped, cancelled = { dragged = null },
-        rings = listOf(1), ringsWithMove = true, grid = { Snapping.Grid.FLOOR },
+        rings = listOf(0, 1), ringsWithMove = true, grid = { Snapping.Grid.FLOOR },
     )
 
     val enabled get() = Tools.active === this
@@ -285,18 +286,30 @@ object RegionsTool : EditorTool {
     /** The selected point where it is shown: dragged, else as last changed. */
     private fun shownPoint(): GamePoint? = dragged ?: selectedPoint
 
-    /** The point's gizmo, on the selected point in this dimension while nothing is on its way: world axes, a yaw ring. */
+    /**
+     * The point's gizmo, on the selected point in this dimension while nothing is on its way: world axes to move it, a
+     * ring around its right (its pitch) and one around y (its yaw).
+     */
     private fun pointFrame(): GizmoFrame? {
         val point = shownPoint()?.takeIf { !busy && it.dim == playerDimension() } ?: return null
-        return GizmoFrame(point.at, GizmoFrame.WORLD_AXES)
+        val forward = AIOverlay.facing(point.yaw ?: 0f, 0f)
+        val up = Vec3(0.0, 1.0, 0.0)
+        return GizmoFrame(point.at, GizmoFrame.WORLD_AXES, listOf(forward.cross(up), up, forward))
     }
 
-    /** [change] from where the drag started: moved, or turned around y (its yaw; right-handed, so the other way). */
+    /**
+     * [change] from where the drag started: moved, turned around y (its yaw; right-handed, so the other way) or around its
+     * right (its pitch, up to straight up or down; a point facing nowhere gets the yaw it was shown with).
+     */
     private fun pointDragged(change: GizmoChange) {
         val point = selectedPoint ?: return
         dragged = when (change) {
             is GizmoChange.Move -> point.movedTo(point.at.add(change.offset))
-            is GizmoChange.Rotate -> point.copy(yaw = Mth.wrapDegrees((point.yaw ?: 0f) - Math.toDegrees(change.angle).toFloat()))
+            is GizmoChange.Rotate -> {
+                val degrees = Math.toDegrees(change.angle).toFloat()
+                if (abs(change.axis.y) > 0.5) point.copy(yaw = Mth.wrapDegrees((point.yaw ?: 0f) - degrees))
+                else point.copy(yaw = point.yaw ?: 0f, pitch = ((point.pitch ?: 0f) - degrees).coerceIn(-90f, 90f))
+            }
             is GizmoChange.Scale -> point
         }
     }
@@ -516,8 +529,11 @@ object RegionsTool : EditorTool {
                 when {
                     isAsset(area) -> details += "An asset: the asset tool edits it"
                     area.dim != playerDimension() -> details += "In ${area.world}"
-                    boxGizmo.hovered != null || boxGizmo.dragging ->
-                        hints += Hint(ToolStatus.DRAG, if ((boxGizmo.dragged ?: boxGizmo.hovered)!!.face < 0) "move the box (the area only)" else "move this face (the area only)")
+                    boxGizmo.hovered != null || boxGizmo.dragging -> {
+                        val face = (boxGizmo.dragged ?: boxGizmo.hovered)!!.face >= 0
+                        hints += Hint(ToolStatus.DRAG, if (face) "move this face (the area only)" else "move the box (the area only)")
+                        if (face) hints += Hint("Ctrl", "both sides at once")
+                    }
                     else -> hints += Hint(ToolStatus.DRAG, "an arrow moves the box, a knob resizes it")
                 }
             }
@@ -526,7 +542,8 @@ object RegionsTool : EditorTool {
                 listOfNotNull(point.build.ifEmpty { null }, point.room.ifEmpty { null }).takeIf { it.isNotEmpty() }?.let { details += it.joinToString(" · ") }
                 if (point.data.isNotEmpty()) details += point.data.entries.joinToString(" · ") { (k, v) -> "$k ${(v as? JsonPrimitive)?.content ?: v}" }.take(80)
                 pointGizmo.describe()?.takeIf { pointGizmo.dragging }?.let { details += "Dragged: $it" }
-                hints += if (pointGizmo.dragging) Hint("Ctrl", "drag freely") else Hint(ToolStatus.DRAG, "an arrow moves it, the ring turns it")
+                hints += if (pointGizmo.dragging) Hint("Ctrl", "drag freely") else Hint(ToolStatus.DRAG, "an arrow moves it, the center anywhere, the rings turn it and tilt it")
+                if (pointGizmo.dragging && pointGizmo.movingFreely) hints += Hint(ToolStatus.SCROLL, "farther, nearer")
             }
         }
         if (!boxGizmo.dragging && !pointGizmo.dragging) hints.add(0, Hint(ToolStatus.LEFT, if (hovered != null) "select it" else "on an area or a point: select it"))
