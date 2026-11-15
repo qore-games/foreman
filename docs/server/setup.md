@@ -128,8 +128,8 @@ developer's game, and it works behind a proxy (Velocity and BungeeCord pass plug
 - **Limits:** a player's requests run one after the other, `relay.calls-per-minute` tool calls a minute at most
   (default 120); a request is at most 1 MiB, an answer 16 MiB.
 - **Audit:** every tool call (through the relay or the MCP server) is a line in `plugins/Foreman/audit.log`, readable
-  by the server's user only: when, how it came (`relay`, `http`), the player, the tool, its arguments (cut at 500
-  characters), whether it worked and how long it took. Relayed calls also log a line
+  by the server's user only: when, how it came (`relay`, `http`, `mod`: the mod's own pages, its panels and forms), the
+  player, the tool, its arguments (cut at 500 characters), whether it worked and how long it took. Relayed calls also log a line
   (`[Foreman] Relay: Steve called server_status (ok, 35 ms)`). Past 10 MB the file moves to `audit.log.1`.
 
 ```yaml
@@ -186,6 +186,36 @@ same names.
 !!! warning
     The file holds the server's token, which is console access (`server_command`). It's readable by the server's user
     only, like `mcp-token.txt`: anything that reads it can act as the console.
+
+## Sessions and tool changes
+
+The MCP server speaks MCP's [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http)
+transport on `/mcp`, every request with `Authorization: Bearer <token>`. MCP clients (Claude Code, the SDKs) do all of
+this themselves; it's here for scripts and launchers that speak it by hand.
+
+- **Requests** are POSTed as JSON and answered with one JSON body (`202` with none for notifications).
+- **Sessions:** the answer to `initialize` carries an `Mcp-Session-Id` header. Send it back on the session's requests;
+  requests without one are served too (curl, scripts). A session is used only with the token that opened it. Sessions
+  live in memory: after a restart, or once 256 newer ones pushed it out, its id gets `404` (`Session not found`), and
+  the client starts again with `initialize`.
+- **Tool changes:** plugins publish and withdraw tools while the server runs (a plugin enabling, reloading or
+  disabling), so `initialize` announces `tools.listChanged`. `GET /mcp` with `Accept: text/event-stream` and the
+  session's `Mcp-Session-Id` opens the session's stream of server messages (Server-Sent Events), and each change sends
+  on it, a second after the last one (at most 5 s after the first), a single
+
+    ```text
+    event: message
+    data: {"jsonrpc":"2.0","method":"notifications/tools/list_changed"}
+    ```
+
+    then the client lists the tools again (`tools/list`). A comment (`: keep-alive`) comes every 25 s. One stream per
+    session: a new `GET` replaces the session's open one. Without `text/event-stream` in `Accept` a `GET` gets `405`,
+    without a session id `400`, past 32 open streams `429`.
+- **Ending:** `DELETE /mcp` with the session id ends the session and closes its stream; a stream also closes when the
+  plugin stops (open it again after `initialize`). Streams cost nothing while none is open, and a thread each while
+  open.
+
+[The relay](#the-relay) has no stream: chats through the game list the tools when they start.
 
 ## The plugin's folder
 

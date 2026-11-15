@@ -3,6 +3,29 @@
 One version for the mod, the plugin and the API artifacts, [semantic](https://semver.org): a release is the tag
 `v<version>` of `mod_version` in `gradle.properties`, and its notes are its section here.
 
+## [Unreleased]
+
+### Server (Paper plugin)
+
+- **MCP clients hear of new tools.** Tools that plugins publish after a client listed them (a plugin enabling late,
+  reloading, or a furniture plugin starting) and those withdrawn when a plugin disables used to stay unknown, or
+  listed, until the client reconnected. The MCP server now gives sessions (`Mcp-Session-Id` from `initialize`),
+  announces `tools.listChanged`, and opens a session's stream of server messages on `GET /mcp` (Server-Sent Events,
+  a keep-alive comment every 25 s): each change to the tools sends one `notifications/tools/list_changed` on every open
+  stream, a second after the last change (a plugin registering 20 tools sends one). `DELETE` ends a session and its
+  stream; an unknown or ended session gets `404`, and the client starts again (the mod's own clients do, and send the
+  call again). Requests without a session id are served as before. Nothing runs while no stream is open.
+- What builders change themselves in the mod's pages (panels, forms) is no longer announced in chat as an AI's
+  change; the audit log says `mod` for those calls. The mod's pages call with a token of their own (`editorToken` in
+  the hello, kept in memory, never given to the AI), so no other client can pass its calls off as the builder's. An AI's change asked as JSON is announced with its message, not
+  the raw answer.
+
+### Client (Fabric mod, any server)
+
+- `client_key`'s physical keys type their character too (`key.keyboard.i` types `i` into the focused field, as the
+  window sends it after the press), take `alt`, and carry the key code the layout gives on 26.3 (Ctrl+A and the other
+  shortcuts work): an AI tests editor mode's own keys (a tool's number, I, K, Delete) and screens like a player typing.
+
 ## [1.3.0] - 2026-11-09
 
 ### Building (mod and plugin)

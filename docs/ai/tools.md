@@ -50,7 +50,7 @@ answers a line a step, and the lines around a failure. A test is saved by `name`
 | `client_screen` | The open screen: its class and title, the GUI size, each widget with its text and bounds |
 | `client_click`, `client_hover`, `client_scroll` | Use the open screen like the mouse |
 | `client_drag` | Hold a mouse button and move: across a screen (scrollbars, sliders), or turning the camera in the world (gizmos, mining) |
-| `client_type`, `client_key` | Type into the focused field; press a key binding, or hold it (`hold_ms`); a physical key (`key.keyboard.f`, with `shift` / `ctrl`) goes through the game's keyboard handler like a real keyboard |
+| `client_type`, `client_key` | Type into the focused field; press a key binding, or hold it (`hold_ms`); a physical key (`key.keyboard.i`, `key.keyboard.0`, `key.keyboard.delete`, with `shift` / `ctrl` / `alt`) goes through the game's keyboard handler like a real keyboard, with the character it types: mods' raw keys (the [editor](../client/editor.md)'s tool keys) and the open screen get it as from a player |
 | `client_dialog_preview` | Opens a dialog on the client alone from its JSON, as the server would send it |
 | `inventory_snapshot`, `inventory_actions` | Read the open container, and click it like a player (bursts in one tick, optionally under a network profile or inbound packet drop, which need `foreman.test`) — [dupe testing](../server/dupe-testing.md) |
 

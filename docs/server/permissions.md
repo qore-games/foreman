@@ -17,7 +17,8 @@ anyone, whatever their permissions.
 - **Personal tokens:** each player with `foreman.client` gets one through the mod when they join, kept in
   `tokens.yml`. Calls with it act as that player: the tools above then need `foreman.admin`. A player who loses
   `foreman.client` can't use theirs any more, and it's revoked when they next join. `/foreman token revoke <player>`
-  revokes one; a new one comes on their next join.
+  revokes one; a new one comes on their next join. The mod's own pages (the library, the editors) call with a second
+  token, kept in memory and never given to the AI: their edits are the player's own, not announced to `foreman.watch`.
 - **The server's token** (`mcp.token`, or `mcp-token.txt` that Foreman makes when it's empty): for other MCP clients
   (Claude Code in a terminal, scripts), also in [`mcp.json`](setup.md#the-connection-file) with the address while the
   server runs. It needs no permission: it's the console's.

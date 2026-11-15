@@ -4,10 +4,12 @@ import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.mc.mixin.GameRendererAccessor
 import games.qore.foreman.client.mc.mixin.ItemLayerQuadsAccessor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.renderer.item.ItemStackRenderState
 import net.minecraft.client.resources.model.geometry.BakedQuad
 import net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket
 import net.minecraft.resources.Identifier
+import org.lwjgl.sdl.SDLKeyboard
 
 /**
  * What differs between the Minecraft versions Foreman is built for, here for 26.3. Every client/versions/<minecraft>
@@ -19,6 +21,12 @@ object Mc {
 
     /** The input type of keyboard key mappings. */
     val keyboard: InputConstants.Type = InputConstants.Type.KEYBOARD
+
+    /**
+     * A key event for [key] (an InputConstants key: an SDL scancode) as the window would send it: with the key code the
+     * keyboard's layout gives it (shortcuts such as Ctrl+A read that), and [modifiers].
+     */
+    fun keyEvent(key: Int, modifiers: Int): KeyEvent = KeyEvent(key, SDLKeyboard.SDL_GetKeyFromScancode(key, 0, true), modifiers)
 
     /** Whether [key] (an InputConstants key) is held down. */
     fun isKeyDown(key: Int): Boolean = InputConstants.isKeyDown(key)

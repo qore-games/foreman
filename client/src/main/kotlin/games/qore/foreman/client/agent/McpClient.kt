@@ -27,6 +27,7 @@ class McpClient(private val url: String, private val token: String) {
 
     /** Initializes the session; returns the server's instructions. */
     fun initialize(): String {
+        session = null
         val result = request("initialize", buildJsonObject {
             put("protocolVersion", "2025-06-18")
             put("capabilities", buildJsonObject {})
@@ -39,10 +40,10 @@ class McpClient(private val url: String, private val token: String) {
 
     fun tools(): List<JsonObject> = request("tools/list", buildJsonObject {})["tools"].arr()?.map { it.jsonObject } ?: emptyList()
 
-    fun callTool(name: String, arguments: JsonObject): JsonObject = request("tools/call", buildJsonObject {
+    fun callTool(name: String, arguments: JsonObject, timeout: Duration = Duration.ofMinutes(10)): JsonObject = request("tools/call", buildJsonObject {
         put("name", name)
         put("arguments", arguments)
-    }, timeout = Duration.ofMinutes(10))
+    }, timeout = timeout)
 
     fun prompts(): List<Prompt> = request("prompts/list", buildJsonObject {})["prompts"].arr()?.map { p ->
         Prompt(p["name"].str() ?: "", p["description"].str() ?: "", p["arguments"].arr()?.map { (it["name"].str() ?: "") to (it["required"].toString() == "true") } ?: emptyList())
@@ -79,12 +80,20 @@ class McpClient(private val url: String, private val token: String) {
             .header("Accept", "application/json, text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofString(message.toString()))
         if (token.isNotEmpty()) builder.header("Authorization", "Bearer $token")
-        session?.let { builder.header("Mcp-Session-Id", it) }
+        val sent = session
+        sent?.let { builder.header("Mcp-Session-Id", it) }
         protocol?.let { builder.header("MCP-Protocol-Version", it) }
         val response = try {
             http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        } catch (e: java.net.http.HttpTimeoutException) {
+            throw AgentException("No answer from the server in ${timeout.toSeconds()} s: busy, or stuck")
         } catch (e: java.io.IOException) {
             throw AgentException("Can't reach the MCP server at $url: ${e.message ?: e.javaClass.simpleName}")
+        }
+        // The server forgot the session (it restarted, or dropped it) before reading the message: a new one, then again.
+        if (response.statusCode() == 404 && sent != null) {
+            initialize()
+            return send(message, timeout)
         }
         response.headers().firstValue("Mcp-Session-Id").ifPresent { session = it }
         if (response.statusCode() == 401) throw AgentException("The MCP server refused the token (401): rejoin to get a new one")

@@ -234,11 +234,13 @@ object ScreenTools {
                 "`key.inventory`, `key.chat`, `key.jump`…), or `escape` (what Esc does on the open screen). `hold_ms` holds it " +
                 "down that long (walking, sneaking, using an item…), then releases and says how the player moved (at once with " +
                 "`wait` false); client_input holds several in sequence. Unknown ids list the known ones. A physical key " +
-                "(`key.keyboard.f`, `key.keyboard.1`, `key.keyboard.enter`, with `shift` / `ctrl`) goes through the game's " +
-                "keyboard handler like a real keyboard: what mods do with keys first, then every binding on it.",
+                "(`key.keyboard.i`, `key.keyboard.0`, `key.keyboard.delete`, `key.keyboard.enter`, with `shift` / `ctrl` / " +
+                "`alt`) goes through the game's keyboard handler like a real keyboard, the character it types too: what mods " +
+                "do with raw keys first (editor mode's tool keys), then the open screen or every binding on it.",
             ClientTools.schema("key" to "string: a key binding id, a physical key (key.keyboard.<name>) or escape", "hold_ms" to "integer: hold it down this long (default a tap: one tick)",
                 "wait" to "boolean: with hold_ms, return after the release (default true)", "wait_ms" to "integer: then wait this long (default 400)",
-                "shift" to "boolean: a physical key with Shift (default false)", "ctrl" to "boolean: a physical key with Ctrl (default false)"),
+                "shift" to "boolean: a physical key with Shift (default false)", "ctrl" to "boolean: a physical key with Ctrl (default false)",
+                "alt" to "boolean: a physical key with Alt (default false)"),
             enabled = { it.allowCommands },
             group = "Screens",
         ) { _, args ->
@@ -249,7 +251,7 @@ object ScreenTools {
                 ClientTools.onClient { screen().keyPressed(KeyEvent(InputConstants.KEY_ESCAPE, 0, 0)) }
                 "Pressed Esc"
             } else if (key.startsWith("key.keyboard.")) {
-                physicalKey(key, args["shift"].bool() == true, args["ctrl"].bool() == true, holdMs)
+                physicalKey(key, args["shift"].bool() == true, args["ctrl"].bool() == true, args["alt"].bool() == true, holdMs)
             } else {
                 val (mapping, label) = ClientTools.onClient { InputTools.mapping(key).let { it to "$key (${it.translatedKeyMessage.string})" } }
                 val ticks = holdMs?.let { InputTools.ticks(it) } ?: 1
@@ -265,20 +267,41 @@ object ScreenTools {
         })
     }
 
-    /** Presses [name] (`key.keyboard.f`) as the keyboard would, through the game's keyboard handler, for [holdMs]. */
-    private fun physicalKey(name: String, shift: Boolean, ctrl: Boolean, holdMs: Int?): String {
+    /**
+     * Presses [name] (`key.keyboard.f`) as the keyboard would, through the game's keyboard handler, for [holdMs]: the
+     * press, the character it types (without Ctrl or Alt, as the window sends it after the press), the release.
+     */
+    private fun physicalKey(name: String, shift: Boolean, ctrl: Boolean, alt: Boolean, holdMs: Int?): String {
         val code = runCatching { InputConstants.getKey(name) }.getOrNull()?.takeIf { it.type == Mc.keyboard && it != InputConstants.UNKNOWN }?.value
-            ?: throw ToolFailure("Unknown key $name: key.keyboard.f, key.keyboard.1, key.keyboard.enter, key.keyboard.left.shift…")
-        val modifiers = (if (shift) InputConstants.MOD_SHIFT else 0) or (if (ctrl) InputConstants.MOD_CONTROL else 0)
+            ?: throw ToolFailure("Unknown key $name: key.keyboard.f, key.keyboard.1, key.keyboard.enter, key.keyboard.delete, key.keyboard.left.shift…")
+        val modifiers = (if (shift) InputConstants.MOD_SHIFT else 0) or (if (ctrl) InputConstants.MOD_CONTROL else 0) or (if (alt) InputConstants.MOD_ALT else 0)
+        val typed = if (ctrl || alt) null else typed(name.removePrefix("key.keyboard."), shift)
         fun send(action: Int) = ClientTools.onClient {
             val minecraft = Minecraft.getInstance()
-            (minecraft.keyboardHandler as KeyboardHandlerInvoker).`foreman$keyPress`(minecraft.window.handle(), action, KeyEvent(code, 0, modifiers))
+            val keyboard = minecraft.keyboardHandler as KeyboardHandlerInvoker
+            keyboard.`foreman$keyPress`(minecraft.window.handle(), action, Mc.keyEvent(code, modifiers))
+            if (action == InputConstants.PRESS && typed != null) keyboard.`foreman$charTyped`(minecraft.window.handle(), CharacterEvent(typed.code))
         }
         send(InputConstants.PRESS)
         Thread.sleep((holdMs ?: 60).coerceIn(0, 60_000).toLong())
         send(InputConstants.RELEASE)
-        return "Pressed " + (if (ctrl) "Ctrl+" else "") + (if (shift) "Shift+" else "") + name
+        return "Pressed " + (if (ctrl) "Ctrl+" else "") + (if (alt) "Alt+" else "") + (if (shift) "Shift+" else "") + name
     }
+
+    /** The character the key named [key] (`f`, `1`, `minus`) types on a US layout, with [shift]; null for keys that type none. */
+    private fun typed(key: String, shift: Boolean): Char? {
+        val c = key.singleOrNull() ?: TYPED_NAMES[key] ?: return null
+        if (!shift) return c
+        if (c in 'a'..'z') return c.uppercaseChar()
+        return SHIFTED.getOrNull(UNSHIFTED.indexOf(c)) ?: c
+    }
+
+    private val TYPED_NAMES = mapOf(
+        "space" to ' ', "minus" to '-', "equal" to '=', "left.bracket" to '[', "right.bracket" to ']', "semicolon" to ';',
+        "apostrophe" to '\'', "comma" to ',', "period" to '.', "slash" to '/', "grave.accent" to '`', "backslash" to '\\',
+    )
+    private const val UNSHIFTED = "1234567890-=[];',./`\\"
+    private const val SHIFTED = "!@#\$%^&*()_+{}:\"<>?~|"
 
     /** What a previewed dialog would ask of the server: reported in chat instead, its screens opened locally. */
     private object PreviewAccess : DialogConnectionAccess {

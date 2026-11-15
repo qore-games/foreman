@@ -36,14 +36,24 @@ class Tool(
  */
 class ToolRegistry(private val allowed: (Tool) -> Boolean = { true }) {
     private val tools = java.util.concurrent.ConcurrentHashMap<String, Tool>()
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
 
     fun add(tool: Tool) {
-        if (allowed(tool)) tools[tool.name] = tool
+        if (!allowed(tool)) return
+        tools[tool.name] = tool
+        changed()
     }
 
-    fun remove(name: String) = tools.remove(name)
+    fun remove(name: String) = tools.remove(name)?.also { changed() }
 
-    fun removeProvider(provider: String) = tools.values.removeIf { it.provider == provider }
+    fun removeProvider(provider: String) = tools.values.removeIf { it.provider == provider }.also { if (it) changed() }
+
+    /** Calls [listener] after each change (a tool added, replaced or removed), on the thread that made it. */
+    fun onChange(listener: () -> Unit) {
+        listeners += listener
+    }
+
+    private fun changed() = listeners.forEach { it() }
 
     operator fun get(name: String?): Tool? = name?.let { tools[it] }
 

@@ -8,7 +8,9 @@ see them as one group named after your plugin: keep its tools few and their desc
 
 `compileOnly` on `games.qore:foreman-server-api` and a soft dependency on Foreman:
 [Add Foreman to your plugin](install.md#the-server-api). Register in `onEnable` (Foreman enables first). Your tools are removed when your plugin disables, so a reload
-registers them again.
+registers them again. Tools may come and go at any time: MCP clients connected to the server are told
+(`notifications/tools/list_changed`, one for a burst of changes, [Sessions and tool changes](../server/setup.md#sessions-and-tool-changes))
+and list them again.
 
 ## A command as a tool
 

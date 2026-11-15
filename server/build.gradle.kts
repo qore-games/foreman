@@ -30,6 +30,17 @@ dependencies {
     compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.16.1") { isTransitive = false }
     // Integrations (integrations/): loaded only while their plugin runs.
     compileOnly("com.ticxo.modelengine:ModelEngine:R4.2.0") { isTransitive = false }
+
+    // Unit tests of what runs without a server (JSON, checks, geometry).
+    testImplementation("io.papermc.paper:paper-api:${providers.gradleProperty("paper_version").get()}")
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform()
+    maxHeapSize = "1g"
 }
 
 kotlin {

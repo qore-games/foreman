@@ -42,8 +42,9 @@ the oldest changes leaving first. The history is in memory: a restart clears it.
 
 ## Watching the AI
 
-Ops with `foreman.watch` see each change in chat (the tool, who asked, how long it took). The client draws the box the
-AI just changed as the *Last AI change* overlay, with whose change it is.
+Ops with `foreman.watch` see each change in chat (the tool, who asked, how long it took); what builders change
+themselves in the mod's pages (panels, forms) isn't announced. The client draws the box the AI just changed as the
+*Last AI change* overlay, with whose change it is.
 
 ## Furniture
 

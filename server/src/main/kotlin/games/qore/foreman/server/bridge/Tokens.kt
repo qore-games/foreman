@@ -10,12 +10,15 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Per-player MCP tokens, given to the player's foreman client in the bridge hello so the AI running on their
  * computer can use the MCP server as them. Persisted in tokens.yml; revoking one makes the next hello issue a new one.
+ * The mod's own pages get an [editor] token of their own.
  */
 class Tokens(private val file: File) {
     data class Owner(val uuid: UUID, val name: String)
 
     private val byPlayer = ConcurrentHashMap<UUID, Pair<String, String>>()
     private val byToken = ConcurrentHashMap<String, Owner>()
+    private val editors = ConcurrentHashMap<UUID, String>()
+    private val byEditor = ConcurrentHashMap<String, Owner>()
 
     fun load() {
         if (!file.exists()) return
@@ -50,8 +53,24 @@ class Tokens(private val file: File) {
     /** Who [token] belongs to (any thread). */
     fun owner(token: String): Owner? = byToken[token]
 
+    /**
+     * The token of [player]'s mod itself, for its own pages (never given to its AI): what it calls are the builder's own
+     * edits. Issued now if they have none; kept in memory only.
+     */
+    fun editor(player: Player): String = synchronized(this) {
+        editors[player.uniqueId]?.let { return it }
+        val token = Secrets.token("fme_")
+        editors[player.uniqueId] = token
+        byEditor[token] = Owner(player.uniqueId, player.name)
+        token
+    }
+
+    /** Who the editor token [token] belongs to (any thread). */
+    fun editorOwner(token: String): Owner? = byEditor[token]
+
     /** Revokes [uuid]'s token, if they have one. */
     fun revoke(uuid: UUID) = synchronized(this) {
+        editors.remove(uuid)?.let { byEditor.remove(it) }
         byPlayer.remove(uuid)?.let { byToken.remove(it.second); save() }
     }
 
@@ -60,6 +79,7 @@ class Tokens(private val file: File) {
         val (uuid, entry) = byPlayer.entries.firstOrNull { it.value.first.equals(name, ignoreCase = true) } ?: return null
         byPlayer.remove(uuid)
         byToken.remove(entry.second)
+        editors.remove(uuid)?.let { byEditor.remove(it) }
         save()
         Owner(uuid, entry.first)
     }

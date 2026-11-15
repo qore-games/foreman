@@ -107,9 +107,11 @@ class Bridge(private val plugin: Foreman) : Listener {
         clients[player.uniqueId] = ConcurrentHashMap.newKeySet()
         send(player, message("hello") {
             // Where its AI reaches the tools: the MCP server with the player's token, and/or the relay over this connection.
+            // The mod's own pages call with a token of their own.
             if (plugin.mcp != null) {
                 addProperty("mcpUrl", mcpUrl)
                 addProperty("token", tokens.issue(player))
+                addProperty("editorToken", tokens.editor(player))
             }
             addProperty("relay", plugin.relay != null)
             // The server's opt-in for the client's packet options of dupe testing (network profiles, inbound drops).
@@ -153,7 +155,8 @@ class Bridge(private val plugin: Foreman) : Listener {
     }
 
     /** Called after every MCP tool call (HTTP thread): pushes check issues and AI changes, with whose they are. */
-    fun onToolCall(tool: Tool, args: Args, result: ToolResult, ms: Long, caller: Caller?) {
+    /** A tool call: a change it made goes to the mods, [editor] when a player made it in the mod's pages (not an AI). */
+    fun onToolCall(tool: Tool, args: Args, result: ToolResult, ms: Long, caller: Caller?, editor: Boolean) {
         if (result.isError || clients.isEmpty() || !plugin.worldTools) return
         val world = runCatching { plugin.world(args.string("world", null)) }.getOrNull() ?: return
         if (tool.modifies) {
@@ -162,6 +165,7 @@ class Bridge(private val plugin: Foreman) : Listener {
             val message = message("change") {
                 addProperty("label", ToolEvents.label(result, ms, author).ifEmpty { tool.name })
                 addProperty("by", author.name)
+                addProperty("editor", editor)
                 addWorld(world)
                 box?.let { add("box", box(it)) }
             }

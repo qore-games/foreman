@@ -137,7 +137,7 @@ object AIOverlay : OverlayLayer {
             val b = change.box?.toBlockBox() ?: return@let
             if (o.changes == Visibility.NEARBY && b.distanceTo(draw.camera) > o.nearDistance * 4) return@let
             box(draw, b, Colors.withAlpha(Colors.GREEN, alpha), 3f, Colors.withAlpha(Colors.GREEN, alpha * 0.12f), onTop = true)
-            draw.label(topCenter(b), "AI: ${change.label}" + if (change.by.isNotEmpty()) " (${change.by})" else "", Colors.withAlpha(Colors.GREEN, alpha.coerceAtLeast(0.1f)))
+            draw.label(topCenter(b), (if (change.editor) "" else "AI: ") + change.label + if (change.by.isNotEmpty()) " (${change.by})" else "", Colors.withAlpha(Colors.GREEN, alpha.coerceAtLeast(0.1f)))
         }
     }
 

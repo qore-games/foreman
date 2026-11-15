@@ -25,14 +25,17 @@ object ServerCalls {
         Minecraft.getInstance().execute { done(result) }
     }
 
-    /** Calls [tool] of the server and waits for its answer; its error result as an exception. Off the client thread. */
-    fun callNow(tool: String, args: JsonObject): JsonObject {
+    /**
+     * Calls [tool] of the server and waits for its answer, at most [timeout]; its error result as an exception. Off the
+     * client thread.
+     */
+    fun callNow(tool: String, args: JsonObject, timeout: java.time.Duration = java.time.Duration.ofMinutes(10)): JsonObject {
         val url = Bridge.mcpUrl
-        val token = Bridge.token
+        val token = Bridge.editorToken
         if (url == null || token == null) throw AgentException("No Foreman plugin on this server")
         val client = client(url, token)
         val result = try {
-            client.callTool(tool, args)
+            client.callTool(tool, args, timeout)
         } catch (e: AgentException) {
             session = null
             throw e

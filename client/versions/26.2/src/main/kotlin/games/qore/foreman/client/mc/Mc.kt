@@ -3,6 +3,7 @@ package games.qore.foreman.client.mc
 import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.mc.mixin.GameRendererAccessor
 import net.minecraft.client.Minecraft
+import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.renderer.LevelTargetBundle
 import net.minecraft.client.renderer.item.ItemStackRenderState
 import net.minecraft.client.resources.model.geometry.BakedQuad
@@ -20,6 +21,9 @@ object Mc {
 
     /** The input type of keyboard key mappings. */
     val keyboard: InputConstants.Type = InputConstants.Type.KEYSYM
+
+    /** A key event for [key] (an InputConstants key: a GLFW key) as the window would send it, with [modifiers]. */
+    fun keyEvent(key: Int, modifiers: Int): KeyEvent = KeyEvent(key, 0, modifiers)
 
     /** Whether [key] (an InputConstants key) is held down. */
     fun isKeyDown(key: Int): Boolean = InputConstants.isKeyDown(Minecraft.getInstance().window, key)

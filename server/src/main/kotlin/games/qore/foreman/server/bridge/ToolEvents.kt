@@ -1,5 +1,6 @@
 package games.qore.foreman.server.bridge
 
+import com.google.gson.JsonParser
 import com.sk89q.worldedit.math.BlockVector3
 import games.qore.foreman.server.Foreman
 import games.qore.foreman.server.mcp.Args
@@ -24,10 +25,15 @@ object ToolEvents {
         return box(text(result))
     }
 
-    /** The label of the change the call recorded ([author]'s newest undo step, when it is that recent), else the result's first line. */
+    /**
+     * The label of the change the call recorded ([author]'s newest undo step, when it is that recent), else the result's
+     * first line (an answer asked as JSON: its message).
+     */
     fun label(result: ToolResult, ms: Long, author: Caller): String {
         val recent = Edits.of(author).firstOrNull()?.takeIf { System.currentTimeMillis() - it.time <= ms + 1000 }
-        return recent?.label ?: text(result).lineSequence().firstOrNull().orEmpty().take(120)
+        val text = text(result)
+        val message = if (text.startsWith("{")) runCatching { JsonParser.parseString(text).asJsonObject.get("message")?.asString }.getOrNull() else null
+        return recent?.label ?: (message ?: text).lineSequence().firstOrNull().orEmpty().take(120)
     }
 
     private fun box(text: String): Box? = BOX.find(text)?.groupValues?.let { g ->

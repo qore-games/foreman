@@ -1,6 +1,7 @@
 package games.qore.foreman.server
 
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import com.google.gson.JsonObject
 import games.qore.foreman.api.ForemanTool
 import games.qore.foreman.server.admin.ServerLog
@@ -8,6 +9,7 @@ import games.qore.foreman.server.admin.TestPlayers
 import games.qore.foreman.server.admin.ServerWatch
 import games.qore.foreman.server.bridge.Bridge
 import games.qore.foreman.server.bridge.Relay
+import games.qore.foreman.server.bridge.Tokens
 import games.qore.foreman.server.mcp.Audit
 import games.qore.foreman.server.mcp.McpDispatcher
 import games.qore.foreman.server.integrations.Integrations
@@ -146,9 +148,13 @@ class Foreman : JavaPlugin() {
         ) { tool, args, result, ms, caller, via ->
             audit.call(via, caller, tool.name, args.json, !result.isError, ms)
             if (via == "relay") logger.info("Relay: ${caller?.name} called ${tool.name} (${if (result.isError) "error" else "ok"}, $ms ms)")
-            bridge.onToolCall(tool, args, result, ms, caller)
-            if (!tool.modifies) return@McpDispatcher
-            val text = result.content.firstOrNull()?.get("text")?.asString?.lineSequence()?.firstOrNull().orEmpty()
+            bridge.onToolCall(tool, args, result, ms, caller, editor = via == "mod")
+            // A builder's own edits in the mod's pages: no AI to announce.
+            if (!tool.modifies || via == "mod") return@McpDispatcher
+            val answer = result.content.firstOrNull()?.get("text")?.asString.orEmpty()
+            // An answer asked as JSON shows its message.
+            val message = if (answer.startsWith("{")) runCatching { JsonParser.parseString(answer).asJsonObject.get("message")?.asString }.getOrNull() else null
+            val text = (message ?: answer).lineSequence().firstOrNull().orEmpty()
             Bukkit.getScheduler().runTask(this, Runnable {
                 Bukkit.getOnlinePlayers().filter { it.hasPermission("foreman.watch") }.forEach {
                     val message = Component.text("AI${caller?.let { c -> " (${c.name})" }.orEmpty()} ${tool.name} (${ms}ms): ${text.take(160)}")
@@ -161,6 +167,10 @@ class Foreman : JavaPlugin() {
         bridge.start()
     }
 
+    /** Who a player's token stands for: no one once they lost foreman.client (it's revoked when they next join). */
+    private fun caller(owner: Tokens.Owner?) =
+        owner?.takeIf { Bukkit.getPlayer(it.uuid)?.hasPermission(Bridge.PERMISSION) != false }?.let { Caller(it.uuid, it.name) }
+
     private fun startMcp(bridge: Bridge, dispatcher: McpDispatcher) {
         val token = Secrets.mcpToken(config.getString("mcp.token", "")!!, File(dataFolder, TOKEN_FILE))
         val mcp = McpServer(
@@ -169,11 +179,8 @@ class Foreman : JavaPlugin() {
             config.getInt("mcp.port", 25599),
             config.getBoolean("mcp.strict-port", false),
             token,
-            { bearer ->
-                // A player who lost foreman.client can't use their token any more (it's revoked when they next join).
-                bridge.tokens.owner(bearer)?.takeIf { Bukkit.getPlayer(it.uuid)?.hasPermission(Bridge.PERMISSION) != false }
-                    ?.let { Caller(it.uuid, it.name) }
-            },
+            { bearer -> caller(bridge.tokens.owner(bearer)) },
+            { bearer -> caller(bridge.tokens.editorOwner(bearer)) },
             dispatcher,
         ).also { it.start() }
         this.mcp = mcp

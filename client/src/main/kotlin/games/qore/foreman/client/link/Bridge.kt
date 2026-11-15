@@ -111,20 +111,21 @@ data class Issue(val check: String, val severity: String, val pos: List<Int>, va
 @Serializable
 data class IssueReport(val world: String, val dim: String, val box: WireBox? = null, val issues: List<Issue>)
 
+/** A change a tool made in the world; [editor]: a player made it in the mod's pages, not an AI. */
 @Serializable
-data class AIChange(val label: String, val by: String = "", val world: String, val dim: String, val box: WireBox? = null) {
+data class AIChange(val label: String, val by: String = "", val world: String, val dim: String, val box: WireBox? = null, val editor: Boolean = false) {
     @kotlinx.serialization.Transient
     val received: Long = System.currentTimeMillis()
 }
 
 /**
- * The server's hello: its MCP address and this player's token (when it runs its MCP server), [relay] (its tools through
- * the game connection), [test] (the player has `foreman.test`, the server's opt-in for the packet options of dupe
- * testing), and the [features] it offers.
+ * The server's hello: its MCP address, this player's token and the mod's own [editorToken] (when it runs its MCP
+ * server), [relay] (its tools through the game connection), [test] (the player has `foreman.test`, the server's opt-in
+ * for the packet options of dupe testing), and the [features] it offers.
  */
 @Serializable
 data class Hello(
-    val mcpUrl: String? = null, val token: String? = null, val world: String = "", val dim: String = "", val version: Int = 1,
+    val mcpUrl: String? = null, val token: String? = null, val editorToken: String? = null, val world: String = "", val dim: String = "", val version: Int = 1,
     val test: Boolean = false, val relay: Boolean = false, val features: List<String> = emptyList(),
 )
 
@@ -175,6 +176,8 @@ object Bridge {
     /** Where the agent reaches the server's MCP: the config override, else what the server announced, else the relay. */
     val mcpUrl: String? get() = override ?: if (relayed) ClientMcp.relayUrl else hello?.mcpUrl
     val token: String? get() = if (override == null && relayed) ClientMcp.token else hello?.token
+    /** The token of the mod's own pages (the builder's own edits, not an AI's), where [token] is the server's. */
+    val editorToken: String? get() = if (override == null && relayed) ClientMcp.token else hello?.editorToken
     private val override get() = Config.settings.agent.mcpUrlOverride.ifBlank { null }
 
     /** This server runs Foreman and gives the player `foreman.test`. */

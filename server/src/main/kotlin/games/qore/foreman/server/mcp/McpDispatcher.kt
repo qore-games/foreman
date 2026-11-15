@@ -21,7 +21,7 @@ class McpDispatcher(
     /** Called after every tool call, from the calling thread, with the player who made it (or null) and how it came. */
     private val onCall: (Tool, Args, ToolResult, Long, Caller?, String) -> Unit,
 ) {
-    /** The answer to [request], or null for a notification. [via]: how it came (`http`, `relay`), for the audit. */
+    /** The answer to [request], or null for a notification. [via]: how it came (`http`, `relay`, `mod`: the mod's own pages), for the audit. */
     fun dispatch(request: JsonObject, caller: Caller?, via: String): JsonObject? {
         val id = request.get("id")
         val method = request.get("method")?.asString ?: return null
@@ -30,7 +30,7 @@ class McpDispatcher(
         val params = request.getAsJsonObject("params") ?: JsonObject()
         return try {
             val result = when (method) {
-                "initialize" -> initialize(params)
+                "initialize" -> initialize(params, via)
                 "ping" -> JsonObject()
                 "tools/list" -> JsonObject().apply {
                     add("tools", JsonArray().apply {
@@ -108,12 +108,13 @@ class McpDispatcher(
         }
     }
 
-    private fun initialize(params: JsonObject): JsonObject {
+    private fun initialize(params: JsonObject, via: String): JsonObject {
         val requested = params.get("protocolVersion")?.asString
         return JsonObject().apply {
             addProperty("protocolVersion", if (requested in PROTOCOL_VERSIONS) requested else PROTOCOL_VERSIONS.last())
             add("capabilities", JsonObject().apply {
-                add("tools", JsonObject())
+                // Plugins add and remove tools at any time: the HTTP server's session streams say so, the relay has none.
+                add("tools", JsonObject().apply { if (via != "relay") addProperty("listChanged", true) })
                 add("prompts", JsonObject())
             })
             add("serverInfo", JsonObject().apply {
