@@ -67,8 +67,8 @@ limits:
   max-render-blocks: 800000
 
 # Assets for the textured renders (look, model previews) and the models to spawn (list_models, /foreman model). The
-# client jar is downloaded from Mojang into cache/ unless client-jar is set; packs are the server's resource packs
-# (zips or folders), later ones winning.
+# client jar is downloaded from Mojang (in the background, when the world tools start) into cache/ unless client-jar is
+# set; packs are the server's resource packs (zips or folders), later ones winning.
 resources:
   client-jar: ""
   packs: []

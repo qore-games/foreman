@@ -89,7 +89,9 @@ object LibraryPanel {
         val all = Library.assets
         val status = when {
             Library.loading && all.isEmpty() -> "Loading…"
-            else -> "${all.size} assets" + if (Library.loading) " · loading…" else ""
+            else -> "${all.size} assets" + (if (Library.loading) " · loading…" else "") +
+                (if (Library.running > 0) " · rendering ${Library.running}" else "") +
+                Library.waiting().takeIf { it > 0 }?.let { " · $it waiting" }.orEmpty()
         }
         ui.text(status, x, y + 4, Theme.MUTED)
         var hx = x + ui.font.width(status) + 10
@@ -181,7 +183,16 @@ object LibraryPanel {
                 ui.text("no preview", x + (w - ui.font.width("no preview")) / 2, y + h / 2 - 4, Theme.FAINT)
                 ui.hit(x, y, w, h, renders.error)
             }
-            else -> ui.text("…", x + (w - ui.font.width("…")) / 2, y + h / 2 - 4, Theme.FAINT)
+            else -> {
+                // asked for: how long it has been rendering (the server renders a few at a time); not yet: waiting
+                val seconds = renders?.let { (System.currentTimeMillis() - it.asked) / 1000 }
+                val label = when {
+                    seconds == null -> "waiting"
+                    seconds < 3 -> "rendering…"
+                    else -> "rendering… ${seconds}s"
+                }
+                ui.text(ui.fit(label, w - 4), x + (w - min(ui.font.width(label), w - 4)) / 2, y + h / 2 - 4, Theme.FAINT)
+            }
         }
     }
 
@@ -217,7 +228,10 @@ object LibraryPanel {
         val error = renders.error
         if (error == null) image(ui, renders, view, x, top, side, side)
         else ui.rect(x, top, side, side, Theme.FIELD).also { ui.paragraph("No preview: $error", x + 6, top + 6, side - 12, Theme.WARN) }
-        if (renders.loading) ui.text("Rendering ${Library.VIEWS} views…", x + 6, top + 6, Theme.MUTED)
+        if (renders.loading) {
+            val seconds = (System.currentTimeMillis() - renders.asked) / 1000
+            ui.text("Rendering ${Library.VIEWS} views…" + if (seconds >= 3) " ${seconds}s" else "", x + 6, top + 6, Theme.MUTED)
+        }
         if (count > 1) {
             dragStep = side / count.toDouble()
             ui.hit(x, top, side, side, "Drag to turn it (or ← →)") { dragFrom = Double.NaN; dragView = view }
@@ -310,7 +324,9 @@ object LibraryPanel {
      * seen from above: dragging right takes the next one, so its near side follows the mouse.
      */
     fun drag(mouseX: Double): Boolean {
-        val from = dragFrom?.takeUnless { it.isNaN() } ?: mouseX.also { dragFrom = it }
+        // only a drag that started on the views: any other (a scrollbar's) is the screen's
+        val start = dragFrom ?: return false
+        val from = if (start.isNaN()) mouseX.also { dragFrom = it } else start
         view = dragView + ((mouseX - from) / dragStep).roundToInt()
         return true
     }

@@ -15,16 +15,38 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   stream, a second after the last change (a plugin registering 20 tools sends one). `DELETE` ends a session and its
   stream; an unknown or ended session gets `404`, and the client starts again (the mod's own clients do, and send the
   call again). Requests without a session id are served as before. Nothing runs while no stream is open.
+- A deadlock froze every tool (the mod's library renders waited forever): a model built for a render while a reload of
+  the resources cleared the model caches. Models are now built outside the caches' locks.
+- The first tool needing the game's models on a server without the vanilla client jar yet (`place_furniture`, a render)
+  froze the server while it downloaded the jar from Mojang (half a minute), and tried again on every call when Mojang
+  couldn't be reached. The jar is now downloaded in the background when the world tools start, checked against Mojang's
+  SHA-1 and moved in place whole (a download cut short left a broken jar there for good); reading models waits for the
+  first download, off the server thread, and a failed download is tried again after 10 minutes.
 - What builders change themselves in the mod's pages (panels, forms) is no longer announced in chat as an AI's
   change; the audit log says `mod` for those calls. The mod's pages call with a token of their own (`editorToken` in
   the hello, kept in memory, never given to the AI), so no other client can pass its calls off as the builder's. An AI's change asked as JSON is announced with its message, not
   the raw answer.
+- `list_furniture` takes `model` (the furniture showing an item model, the first the one `spawn_display` shows it as),
+  `format: json` and `poses` (each one's display pose for every rotation step on a floor and on each face it attaches
+  to); `place_furniture` against a face takes `yaw`/`facing` where the face leaves it free to turn (under a ceiling),
+  and places as the player calling it when they are in that world. `FurnitureType.pose(face, yaw)` and
+  `FurnitureProvider.place(type, player, against, face, yaw)` in `foreman-server-api` (default methods: providers
+  that don't have them keep working).
 
 ### Client (Fabric mod, any server)
 
+- The Library page says what its renders are doing: rendering (with the seconds it has taken) or waiting, and how many;
+  a render the server hasn't answered in 2 minutes fails with a message instead of loading forever.
+- The Library page's scrollbar can be dragged again (the page took every drag to turn the opened asset's views).
 - `client_key`'s physical keys type their character too (`key.keyboard.i` types `i` into the focused field, as the
   window sends it after the press), take `alt`, and carry the key code the layout gives on 26.3 (Ctrl+A and the other
   shortcuts work): an AI tests editor mode's own keys (a tool's number, I, K, Delete) and screens like a player typing.
+- The model placement tool's ghost shows the model exactly as it will be placed. Furniture kept its neutral rotation
+  until placed (lying on its back, facing the player): it now takes the pose its plugin gives (`list_furniture`'s
+  `poses`), on a floor at the furniture's rotation step (the scroll wheel turns it a step), attached to the wall or
+  ceiling looked at when it goes there, and is placed against that face; a model some furniture shows, placed as a
+  display, stands as that furniture. The ghost stays visible and lit as the placed one against walls (entity culling
+  hid it, a painting's middle in the wall darkened it).
 
 ## [1.3.0] - 2026-11-09
 

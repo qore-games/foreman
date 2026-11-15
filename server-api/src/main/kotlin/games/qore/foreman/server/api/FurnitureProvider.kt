@@ -43,6 +43,13 @@ interface FurnitureProvider {
     /** Wall, ceiling or hanging furniture attached to [face] of [against], as [player] would place it. Null when refused. */
     fun place(type: FurnitureType, player: Player, against: Block, face: BlockFace): PlacedFurniture?
 
+    /**
+     * [place] turned to [yaw] (as in [spawn]) where [face] leaves the furniture free to turn (under a ceiling), instead
+     * of as [player] looks: the mod's placement tool places it as its preview shows it. By default, [place].
+     */
+    fun place(type: FurnitureType, player: Player, against: Block, face: BlockFace, yaw: Float): PlacedFurniture? =
+        place(type, player, against, face)
+
     /** Removes the furniture [handle] (from [PlacedFurniture.handle]) without drops; false when it is gone. */
     fun remove(handle: UUID): Boolean
 }
@@ -76,6 +83,14 @@ interface FurnitureType {
      * renderer's half turn around y. Foreman multiplies the model's `display.fixed` transform in.
      */
     fun pose(yaw: Float): Matrix4d
+
+    /**
+     * Where its display shows its item model attached to [face] of a block (`DOWN`: under a ceiling, a side: on a
+     * wall), as [FurnitureProvider.place] places it with [yaw]: from the corner of the block before that face, like
+     * [pose]. Null when it doesn't go on that face. The mod's placement tool previews placements with it. By default
+     * [pose] on a floor (`UP`), nothing elsewhere.
+     */
+    fun pose(face: BlockFace, yaw: Float): Matrix4d? = if (face == BlockFace.UP) pose(yaw) else null
 }
 
 /**

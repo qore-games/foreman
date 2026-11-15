@@ -35,11 +35,16 @@ your root displays instead (same entities, new places): follow both with
 | `find(world, box)` | The furniture whose root block is in a box |
 | `spawn(type, root, yaw, state)` | Places floor furniture; null when refused |
 | `place(type, player, against, face)` | Places wall, ceiling or hanging furniture as a player would |
+| `place(type, player, against, face, yaw)` | The same, turned to `yaw` where the face leaves it free to turn (under a ceiling): the mod's placement tool places what its preview shows. By default the player's yaw |
 | `remove(handle)` | Removes one without drops |
 
 A `FurnitureType` gives its `id`, the `surfaces` it goes on (`floor`, `wall`, `ceiling`, `hanging`), its `rotations`
 (4 or 8), its `footprint` (collision cells relative to the root, front facing north), whether it's `interactive`
-(seats, containers: players must reach it), and its item `model` and `pose` so renders can draw it.
+(seats, containers: players must reach it), and its item `model` and `pose` so renders can draw it. `pose(face, yaw)`
+is where its display shows the model attached to a face of a block (`DOWN` under a ceiling, a side on a wall), as
+`place` puts it, null where it doesn't go: the mod's placement tool previews furniture with these poses
+(`list_furniture`'s `poses`), so return the ones your placement really gives. By default it is `pose` on a floor and
+nothing elsewhere.
 
 ## The look of each furniture
 

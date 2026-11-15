@@ -14,6 +14,7 @@ import com.sk89q.worldedit.regions.CuboidRegion
 import com.sk89q.worldedit.session.ClipboardHolder
 import games.qore.foreman.api.ForemanTool
 import games.qore.foreman.server.Foreman
+import games.qore.foreman.server.api.FurnitureType
 import games.qore.foreman.server.mcp.Args
 import games.qore.foreman.server.mcp.SchemaBuilder
 import games.qore.foreman.server.mcp.Tool
@@ -162,7 +163,15 @@ object AssetTools {
             ForemanTool.LIST_FURNITURE,
             "Lists the server's furniture (custom models): id, surfaces (floor/wall/ceiling/hanging), " +
                 "rotation steps, footprint size in blocks, notes from the catalog. Use a filter: there are many.",
-            schema { string("filter", "Only ids or notes containing this text", required = false) },
+            schema {
+                string("filter", "Only ids or notes containing this text", required = false)
+                string("model", "Only the furniture showing this item model (namespace:path), the one spawn_display shows it as first", required = false)
+                enum("format", listOf("text", "json"), "text (default), or json for programs: an array of {id, model, surfaces, rotations, " +
+                    "footprint: [[x, y, z]], notes?, poses?}", required = false)
+                bool("poses", "With format json: each one's display pose, from the corner of its root block, for every rotation step " +
+                    "(floor: as placed on a floor; down, north, south, east, west: attached to that face of a block, where it goes): " +
+                    "4x4 matrices, column-major, the model's display.fixed transform still to multiply in. For clients previewing placements", required = false)
+            },
             provider = provider,
         ) { args -> listFurniture(plugin, args) },
 
@@ -172,15 +181,15 @@ object AssetTools {
                 "to stand on the top block of that column (outdoors), facing: the side its front looks to (north/south/" +
                 "east/west: a sofa against a north wall faces south)}. yaw instead of facing is the yaw of a player " +
                 "placing it (the front turns toward that player). Wall/hanging/ceiling furniture: {id, against: the block " +
-                "it attaches to, face: the face of that block (north/south/east/west/up/down)}, which needs a player " +
-                "online. Or let it find the spot: {id, room: a point [x, y, z] in the room (feet level), or [[x, y, z], " +
+                "it attaches to, face: the face of that block (north/south/east/west/up/down), yaw? or facing? where the " +
+                "face leaves it free to turn (under a ceiling; else the player's)}, which needs a player online. Or let it find the spot: {id, room: a point [x, y, z] in the room (feet level), or [[x, y, z], " +
                 "[x, y, z]] its floor box, facing? (else any side with its back to a wall)}: back against a wall, front " +
                 "free, clear of doors, doorways and other furniture. {relocate: [x, y, z]} takes the furniture rooted " +
                 "there and moves it to the best spot of its room (fixes furniture blocking a doorway). Each placement " +
                 "is then checked: its model sunk into walls, it blocking a door or doorway. Look at the result with " +
                 "render view=plan. Undo removes them.",
             schema {
-                array("items", SchemaBuilder.type("object"), "Furniture to place: [{id, pos, facing?, yaw?, state?} | {id, against, face}]")
+                array("items", SchemaBuilder.type("object"), "Furniture to place: [{id, pos, facing?, yaw?, state?} | {id, against, face, yaw?}]")
                 string("claim", "Only place inside this claim (others are refused unless allow_overlap)", required = false)
                 bool("allow_overlap", "Allow placing inside other claims (default false)", required = false)
                 string("world", "World name", required = false)
@@ -587,10 +596,21 @@ object AssetTools {
 
     private fun listFurniture(plugin: Foreman, args: Args): ToolResult {
         val filter = args.string("filter", null)?.lowercase()
+        val model = args.string("model", null)
         val notes = notes(plugin)
-        val lines = Sync.main { Furniture.require().types().toList() }
-            .filter { filter == null || it.id().contains(filter) || notes[it.id()]?.lowercase()?.contains(filter) == true }
-            .sortedBy { it.id() }
+        val types = Sync.main {
+            Furniture.require().types().filter { t ->
+                (filter == null || t.id().contains(filter) || notes[t.id()]?.lowercase()?.contains(filter) == true) &&
+                    (model == null || runCatching { t.model() }.getOrNull() == model)
+            }
+        }
+        if (args.string("format", "text") == "json") {
+            val poses = args.bool("poses", false)
+            return ToolResult.text(GsonBuilder().disableHtmlEscaping().create().toJson(JsonArray().apply {
+                Sync.main { types.map { furnitureJson(it, notes[it.id()], poses) } }.forEach { add(it) }
+            }))
+        }
+        val lines = types.sortedBy { it.id() }
             .map { d ->
                 val cells = d.footprint()
                 val size = if (cells.isEmpty()) "1x1x1" else {
@@ -607,6 +627,31 @@ object AssetTools {
                     if (lines.size > 300) "\n… ${lines.size - 300} more: use a filter" else ""
         )
     }
+
+    /** [t] for list_furniture's json, with its [poses] when asked. Main thread. */
+    private fun furnitureJson(t: FurnitureType, notes: String?, poses: Boolean) = JsonObject().apply {
+        addProperty("id", t.id())
+        runCatching { t.model() }.getOrNull()?.let { addProperty("model", it) }
+        add("surfaces", JsonArray().apply { t.surfaces().forEach { add(it) } })
+        addProperty("rotations", t.rotations())
+        add("footprint", JsonArray().apply { t.footprint().forEach { c -> add(JsonArray().apply { add(c.blockX); add(c.blockY); add(c.blockZ) }) } })
+        notes?.let { addProperty("notes", it) }
+        if (!poses) return@apply
+        val yaws = (0 until t.rotations()).map { it * 360f / t.rotations() }
+        add("poses", JsonObject().apply {
+            add("floor", JsonArray().apply { yaws.forEach { add(matrix(t.pose(it))) } })
+            for (face in POSE_FACES) {
+                val each = yaws.map { runCatching { t.pose(face, it) }.getOrNull() }
+                if (each.all { it != null }) add(face.name.lowercase(), JsonArray().apply { each.forEach { add(matrix(it!!)) } })
+            }
+        })
+    }
+
+    /** The faces furniture attaches to besides floors, for list_furniture's poses. */
+    private val POSE_FACES = listOf(BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)
+
+    /** [m] column-major, rounded. */
+    private fun matrix(m: org.joml.Matrix4d) = JsonArray().apply { m.get(DoubleArray(16)).forEach { add(Math.round(it * 1e5) / 1e5) } }
 
     private fun placeFurniture(plugin: Foreman, args: Args): ToolResult {
         val world = plugin.world(args.string("world", null))
@@ -626,12 +671,14 @@ object AssetTools {
                 val id = item.string("id")
                 val type = Furniture.type(id)
                 val placed = if (item.has("against")) {
-                    val player = Bukkit.getOnlinePlayers().firstOrNull { it.world == world }
+                    // The player calling, else anyone in that world.
+                    val player = args.caller?.let { Bukkit.getPlayer(it.id) }?.takeIf { it.world == world } ?: Bukkit.getOnlinePlayers().firstOrNull { it.world == world }
                         ?: throw ToolError("Wall/ceiling placement needs a player online in ${world.name}")
                     val against = item.vec("against")
                     val face = runCatching { BlockFace.valueOf(item.string("face").uppercase()) }.getOrNull()
                         ?: throw ToolError("face must be north, south, east, west, up or down")
-                    provider.place(type, player, world.getBlockAt(against.x(), against.y(), against.z()), face)
+                    val block = world.getBlockAt(against.x(), against.y(), against.z())
+                    (if (item.has("yaw") || item.has("facing")) provider.place(type, player, block, face, yaw(item)) else provider.place(type, player, block, face))
                         ?.also { change.spawnedFurniture += it.handle }?.let(Furniture::of)?.also { change.touch(BlockVector3.at(it.x, it.y, it.z).let { p -> Box(p, p) }) }
                 } else {
                     pos ?: throw ToolError("Floor furniture needs pos")

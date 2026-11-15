@@ -26,6 +26,7 @@ import games.qore.foreman.server.tools.TestTools
 import games.qore.foreman.server.tools.SkillTools
 import games.qore.foreman.server.tools.WorldTools
 import games.qore.foreman.server.world.Assets
+import games.qore.foreman.server.world.Resources
 import games.qore.foreman.server.world.WorldData
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
@@ -94,6 +95,8 @@ class Foreman : JavaPlugin() {
         logger.info("Preset ${features.preset}: ${features.describe()} (config.yml, /foreman status)")
         worldTools = features[Feature.WORLD] && Bukkit.getPluginManager().isPluginEnabled("FastAsyncWorldEdit")
         if (features[Feature.WORLD] && !worldTools) logger.info("FastAsyncWorldEdit isn't installed: the world tools are off, the server tools and plugins' tools are on")
+        // Their renders and models read the vanilla client jar: downloaded now when missing, off the server thread
+        if (worldTools) Resources.prefetch()
 
         limits = Limits(
             config.getInt("limits.max-edit-blocks", 1_000_000),

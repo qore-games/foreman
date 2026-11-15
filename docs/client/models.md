@@ -43,7 +43,7 @@ where the crosshair is, to the move step (++g++ changes it):
 |---|---|
 | Look at a block | The ghost rests on the face you look at: on top of a floor, under a ceiling, against a wall. Its box and an arrow for its front are drawn around it |
 | ++ctrl++ | Free: right on the crosshair |
-| Scroll | Turn it by the turn step (++g++ just after: changes it; 15° when free; ++shift++: 90°) |
+| Scroll | Turn it by the turn step (++g++ just after: changes it; 15° when free; ++shift++: 90°); furniture by its own step |
 | ++r++ | Turn it 90° |
 | ++alt++ + scroll | Scale it by the scale step (++g++ with ++alt++ held changes it; an eighth when free; ++shift++ + ++alt++: by one) |
 | Right click, ++enter++ | Place it |
@@ -54,8 +54,18 @@ The server spawns the display (`spawn_display`) as one change: `/foreman undo` t
 that breaks its rules and says why in chat. The tool stays on after a placement, for the next one; the hub's Models
 page shows what you're placing and stops it.
 
-As furniture, the server places it with `place_furniture`, rooted in the block before the face you look at, turned
-toward where the ghost's front faces (the furniture snaps it to its own steps); it is placed at its own size.
+The ghost is posed exactly as the placement will be: a model that furniture shows stands as that furniture does (the
+server's furniture plugin gives the pose), and as furniture it is placed at its own size, rooted in the block before the
+face you look at:
+
+- **On a floor**, turned toward where the ghost's front faces, by the furniture's own steps (4 or 8 a turn): the scroll
+  wheel turns it a step.
+- **Against a wall, under a ceiling**, when the furniture goes there (its plugin says so): attached to the face you
+  look at as a player placing it would, the plugin's way (a lamp out of the wall, a painting flat on it); a wall turns
+  it, a ceiling leaves it free to turn. The status card says which side it is on. Furniture that doesn't go there
+  stands in the block before the face, as on a floor.
+
+The server places furniture with `place_furniture` (against a face: `against`, `face` and the yaw shown).
 
 ++r++ and ++enter++ are the placement keys the [asset library](library.md) uses too; ++n++ opens the Models section
 to pick another model. They are [editor mode](editor.md)'s keys while the tool is in use.

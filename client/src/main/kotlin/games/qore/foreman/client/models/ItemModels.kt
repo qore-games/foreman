@@ -10,19 +10,24 @@ import games.qore.foreman.client.util.arr
 import games.qore.foreman.client.util.get
 import games.qore.foreman.client.util.str
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.component.DataComponents
 import net.minecraft.resources.Identifier
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.phys.Vec3
+import org.joml.Matrix4f
 import java.util.UUID
 
 /**
@@ -136,6 +141,88 @@ object ItemModels {
             world()?.let { put("world", it) }
         }
         ServerCalls.run({ ServerCalls.text(ServerCalls.callNow("place_furniture", args)) }, done)
+    }
+
+    /**
+     * Places furniture [id] attached to [face] of the block [against] (under a ceiling, on a wall), turned to [yaw] where
+     * the face leaves it free, with the server's `place_furniture`: one undo step. [done] on the client thread.
+     */
+    fun placeFurniture(id: String, against: BlockPos, face: Direction, yaw: Float, done: (Result<String>) -> Unit) {
+        val args = buildJsonObject {
+            put("items", buildJsonArray {
+                add(buildJsonObject {
+                    put("id", id)
+                    put("against", JsonArray(listOf(against.x, against.y, against.z).map { JsonPrimitive(it) }))
+                    put("face", face.serializedName)
+                    put("yaw", yaw)
+                })
+            })
+            world()?.let { put("world", it) }
+        }
+        ServerCalls.run({ ServerCalls.text(ServerCalls.callNow("place_furniture", args)) }, done)
+    }
+
+    /**
+     * How a furniture's display shows its [model] wherever it goes, from the server ([ModelPlacementTool]'s ghost): for
+     * each of its [rotations] steps, the pose on a [floor] and attached to the [faces] it goes on (a ceiling, walls), from
+     * the corner of its root block, the model's `fixed` transform still to apply. [surfaces]: where it goes (`floor`,
+     * `wall`, `ceiling`, `hanging`).
+     */
+    class Poses(
+        val id: String, val rotations: Int, val floor: List<Matrix4f>, val faces: Map<Direction, List<Matrix4f>>,
+        val model: Identifier? = null, val surfaces: Set<String> = emptySet(),
+    ) {
+        /** The rotation step [yaw] falls on: the nearest, as the furniture snaps it. */
+        fun step(yaw: Float) = Math.floorMod(kotlin.math.floor(yaw * rotations / 360.0 + 0.5).toInt(), rotations)
+
+        /** Whether it goes against [face] of a block (`UP`: on a floor). */
+        fun goesOn(face: Direction) = if (face == Direction.UP) "floor" in surfaces || surfaces.isEmpty() else faces.containsKey(face)
+
+        /** Its pose at the rotation step of [yaw] against [face] (null or `UP`: on a floor). */
+        fun pose(face: Direction?, yaw: Float): Matrix4f {
+            val k = step(yaw)
+            return Matrix4f(face?.let { faces[it]?.getOrNull(k) } ?: floor[k])
+        }
+    }
+
+    /**
+     * The poses of the furniture showing [model], in the order `spawn_display` picks them (the first is how it shows the
+     * model), from the server's `list_furniture`. [done] on the client thread.
+     */
+    fun poses(model: Identifier, done: (Result<List<Poses>>) -> Unit) {
+        val args = buildJsonObject {
+            put("model", model.toString())
+            put("format", "json")
+            put("poses", true)
+        }
+        ServerCalls.run({ parsePoses(ServerCalls.text(ServerCalls.callNow("list_furniture", args))) }, done)
+    }
+
+    /** The poses of furniture [id], from the server's `list_furniture`; null when it has none. [done] on the client thread. */
+    fun furniturePoses(id: String, done: (Result<Poses?>) -> Unit) {
+        val args = buildJsonObject {
+            put("filter", id)
+            put("format", "json")
+            put("poses", true)
+        }
+        ServerCalls.run({ parsePoses(ServerCalls.text(ServerCalls.callNow("list_furniture", args))).firstOrNull { it.id == id } }, done)
+    }
+
+    private fun parsePoses(text: String): List<Poses> {
+        val array = runCatching { JSON.parseToJsonElement(text) as JsonArray }.getOrNull()
+            ?: throw AgentException("The server's list_furniture has no JSON format: its Foreman plugin is older than this mod")
+        fun matrices(list: JsonElement?) = list.arr().orEmpty().mapNotNull { m ->
+            m.arr()?.mapNotNull { (it as? JsonPrimitive)?.floatOrNull }?.takeIf { it.size == 16 }?.let { Matrix4f().set(it.toFloatArray()) }
+        }
+        return array.mapNotNull { f ->
+            val poses = f["poses"] as? JsonObject ?: return@mapNotNull null
+            val rotations = (f["rotations"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 } ?: return@mapNotNull null
+            val faces = poses.mapNotNull { (name, list) -> Direction.byName(name)?.let { it to matrices(list) } }.toMap()
+            Poses(
+                f["id"].str() ?: return@mapNotNull null, rotations, matrices(poses["floor"]), faces.filterValues { it.size == rotations },
+                f["model"].str()?.let(Identifier::tryParse), f["surfaces"].arr().orEmpty().mapNotNull { it.str() }.toSet(),
+            ).takeIf { it.floor.size == rotations }
+        }
     }
 
     private fun world() = Bridge.world.takeIf { it.isNotEmpty() }

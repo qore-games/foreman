@@ -11,7 +11,7 @@ Foreman collects nothing and has no telemetry. It connects to:
 |---|---|---|
 | The mod | The AI you chose: Claude Code and opencode (their own provider), or OpenRouter | Your prompts and what the AI's tools return: screenshots, chat lines, packets, logs, files of the chat's folders |
 | The mod | The server's Foreman plugin | Tool calls, with your personal token |
-| The plugin | Mojang (`piston-meta.mojang.com`), once | The client jar used for textured renders, kept in `cache/` (unless `resources.client-jar` is set) |
+| The plugin | Mojang (`piston-meta.mojang.com`), once per Minecraft version | The client jar used for textured renders, kept in `cache/` (unless `resources.client-jar` is set) |
 
 **Ask the AI** in the packet viewer sends the captured packets to your AI: they hold chat, player names and UUIDs,
 coordinates and inventories. Record only what you mean to share.

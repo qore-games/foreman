@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import games.qore.foreman.server.Foreman
+import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.block.data.BlockData
 import org.joml.Matrix4d
@@ -12,6 +13,11 @@ import org.joml.Vector3d
 import java.awt.image.BufferedImage
 import java.io.File
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.DigestInputStream
+import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 import javax.imageio.ImageIO
@@ -39,7 +45,16 @@ object Resources {
     private var sources: List<Source> = emptyList()
     /** The vanilla client jar among the sources. */
     private var vanilla: File? = null
-    private var problem: String? = null
+    /** Why the vanilla client jar isn't among them: downloading, or the last download's failure. */
+    @Volatile private var problem: String? = null
+    /** The download of the vanilla client jar running, off the server thread. */
+    @Volatile private var download: Thread? = null
+    /** When the last download failed: tried again only after [RETRY_MILLIS], not on every read. */
+    @Volatile private var failedAt = 0L
+    private const val RETRY_MILLIS = 10 * 60_000L
+    /** A download that outlasted a read's wait: later reads go on without waiting for it. */
+    @Volatile private var outwaited: Thread? = null
+    private const val WAIT_MILLIS = 60_000L
     private val listeners = mutableListOf<() -> Unit>()
 
     /** Called when the sources change (a pack was rebuilt): caches built on them are dropped. */
@@ -55,23 +70,76 @@ object Resources {
         return out
     }
 
+    /**
+     * The vanilla client jar: `resources.client-jar`, else the one downloaded into cache/. Missing, its download starts in
+     * the background and the sources go without it until it's there: the server thread never waits for Mojang.
+     */
+    @Synchronized
     private fun clientJar(plugin: Foreman): File? {
         plugin.config.getString("resources.client-jar")?.takeIf { it.isNotEmpty() }?.let { return File(it).takeIf { f -> f.isFile } }
         val version = plugin.server.minecraftVersion
         val cached = File(plugin.dataFolder, "cache/client-$version.jar")
         if (cached.isFile) return cached
-        return try {
-            val manifest = JsonParser.parseString(URI("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").toURL().readText()).asJsonObject
-            val entry = manifest.getAsJsonArray("versions").map { it.asJsonObject }.first { it.get("id").asString == version }
-            val meta = JsonParser.parseString(URI(entry.get("url").asString).toURL().readText()).asJsonObject
-            val url = meta.getAsJsonObject("downloads").getAsJsonObject("client").get("url").asString
-            cached.parentFile.mkdirs()
-            URI(url).toURL().openStream().use { input -> cached.outputStream().use { input.copyTo(it) } }
-            cached
-        } catch (e: Exception) {
-            problem = "No client jar for $version (set resources.client-jar): ${e.message}"
-            null
+        if (download == null && System.currentTimeMillis() - failedAt >= RETRY_MILLIS) {
+            problem = "the client jar for $version is downloading"
+            download = Thread({ fetch(plugin, version, cached) }, "Foreman client jar").apply { isDaemon = true; start() }
         }
+        return null
+    }
+
+    /**
+     * Downloads [version]'s client jar from Mojang into [target], checked against its SHA-1 and moved in place whole: a
+     * download cut short never leaves half a jar there.
+     */
+    private fun fetch(plugin: Foreman, version: String, target: File) {
+        val outcome = runCatching {
+            target.parentFile.mkdirs()
+            val manifest = JsonParser.parseString(fetchText("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")).asJsonObject
+            val entry = manifest.getAsJsonArray("versions").map { it.asJsonObject }.firstOrNull { it.get("id").asString == version }
+                ?: error("Mojang doesn't list $version")
+            val client = JsonParser.parseString(fetchText(entry.get("url").asString)).asJsonObject.getAsJsonObject("downloads").getAsJsonObject("client")
+            val part = File.createTempFile(target.name, ".part", target.parentFile)
+            try {
+                val digest = MessageDigest.getInstance("SHA-1")
+                DigestInputStream(open(client.get("url").asString), digest).use { input -> part.outputStream().use { input.copyTo(it) } }
+                check(HexFormat.of().formatHex(digest.digest()) == client.get("sha1").asString) { "the download doesn't match Mojang's SHA-1" }
+                Files.move(part.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                plugin.logger.info("Downloaded the client jar for $version into ${target.parentFile}")
+            } finally {
+                part.delete()
+            }
+        }
+        synchronized(this) {
+            download = null
+            outcome.onSuccess { problem = null }.onFailure {
+                failedAt = System.currentTimeMillis()
+                problem = "no client jar for $version (set resources.client-jar): ${it.message}"
+                plugin.logger.warning("Downloading the client jar for $version failed, tried again in 10 minutes: ${it.message}")
+            }
+        }
+    }
+
+    private fun open(url: String) = URI(url).toURL().openConnection().apply { connectTimeout = 15_000; readTimeout = 30_000 }.getInputStream()
+
+    private fun fetchText(url: String) = open(url).use { it.readBytes().decodeToString() }
+
+    /** Starts downloading the vanilla client jar when it isn't there yet (the world tools, at enable). */
+    fun prefetch() {
+        clientJar(Foreman.instance)
+    }
+
+    /**
+     * Waits, off the server thread only, for the first download of the client jar to end (at most [WAIT_MILLIS]), so a read
+     * right after startup finds the vanilla models. A retry after a failure, or a download that outlasted one wait, isn't
+     * waited for: reads go on without the vanilla models and [status] says why.
+     */
+    private fun awaitVanilla() {
+        if (Bukkit.isPrimaryThread()) return
+        clientJar(Foreman.instance)
+        val running = download ?: return
+        if (failedAt != 0L || running === outwaited) return
+        running.join(WAIT_MILLIS)
+        if (running.isAlive) outwaited = running
     }
 
     private var dirty = false
@@ -81,9 +149,14 @@ object Resources {
         dirty = true
     }
 
-    /** Opens the sources, or reopens them when one changed on disk. */
-    @Synchronized
+    /** Opens the sources, or reopens them when one changed on disk; off the server thread, after a first download of the client jar. */
     fun ensure() {
+        awaitVanilla()
+        openSources()
+    }
+
+    @Synchronized
+    private fun openSources() {
         val plugin = Foreman.instance
         val files = files(plugin)
         if (!dirty && files.map { it.absolutePath to it.lastModified() } == sources.map { it.file.absolutePath to it.modified }) return
@@ -98,8 +171,10 @@ object Resources {
 
     fun status(): String {
         ensure()
-        return if (sources.isEmpty()) "no asset sources" + (problem?.let { ": $it" } ?: "")
-        else sources.joinToString(", ") { it.file.name } + if (dirty) " (a pack is being rebuilt: its models are missing until it is done)" else ""
+        val missing = problem?.takeIf { vanilla == null }
+        return if (sources.isEmpty()) "no asset sources" + (missing?.let { ": $it" } ?: "")
+        else sources.joinToString(", ") { it.file.name } + (if (dirty) " (a pack is being rebuilt: its models are missing until it is done)" else "") +
+            (missing?.let { " (no vanilla models: $it)" } ?: "")
     }
 
     fun read(path: String): ByteArray? {
@@ -112,15 +187,16 @@ object Resources {
      * The files whose path matches [pattern] in every source (searched under [prefix]), each with whether a resource pack
      * has it (false: the vanilla client jar only).
      */
-    @Synchronized
     fun list(prefix: String, pattern: Regex): Map<String, Boolean> {
         ensure()
-        val out = HashMap<String, Boolean>()
-        for (source in sources) {
-            val pack = source.file != vanilla
-            source.list(prefix).filter { pattern.matches(it) }.forEach { path -> if (pack || path !in out) out[path] = pack }
+        return synchronized(this) {
+            val out = HashMap<String, Boolean>()
+            for (source in sources) {
+                val pack = source.file != vanilla
+                source.list(prefix).filter { pattern.matches(it) }.forEach { path -> if (pack || path !in out) out[path] = pack }
+            }
+            out
         }
-        return out
     }
 
     fun json(path: String): JsonObject? = read(path)?.let { runCatching { JsonParser.parseString(it.decodeToString()).asJsonObject }.getOrNull() }
@@ -199,14 +275,28 @@ object Models {
     private class Model(val textures: Map<String, String>, val elements: JsonArray?, val display: Map<String, JsonObject>, val generated: Boolean)
 
     private val models = ConcurrentHashMap<String, Model>()
-    private val textures = ConcurrentHashMap<String, Texture?>()
+    private val textures = ConcurrentHashMap<String, Texture>()
     private val blocks = ConcurrentHashMap<String, Baked>()
-    private val items = ConcurrentHashMap<String, ItemModel?>()
+    private val items = ConcurrentHashMap<String, ItemModel>()
     @Volatile private var itemIds: Map<String, Boolean>? = null
     private val ITEM_DEFINITION = Regex("assets/([^/]+)/items/(.+)\\.json")
+    /** Bumped on every reload: what was made from the sources before it isn't kept. */
+    @Volatile private var generation = 0
 
     init {
-        Resources.onReload { models.clear(); textures.clear(); blocks.clear(); items.clear(); itemIds = null }
+        Resources.onReload { generation++; models.clear(); textures.clear(); blocks.clear(); items.clear(); itemIds = null }
+    }
+
+    /**
+     * [map]'s value for [key], made by [make] when missing. Made outside the map's locks: making one reads the sources,
+     * whose lock a reload holds while it clears these maps (computeIfAbsent deadlocked the two). Two threads may make the
+     * same one, the first kept; nothing made across a reload is kept, nor a null.
+     */
+    private inline fun <V : Any> cached(map: ConcurrentHashMap<String, V>, key: String, make: () -> V?): V? {
+        map[key]?.let { return it }
+        val since = generation
+        val made = make() ?: return null
+        return if (since == generation) map.putIfAbsent(key, made) ?: made else made
     }
 
     /**
@@ -251,12 +341,12 @@ object Models {
         return model
     }
 
-    fun texture(id: String): Texture? = textures.computeIfAbsent(if (':' in id) id else "minecraft:$id") { key ->
+    fun texture(id: String): Texture? = (if (':' in id) id else "minecraft:$id").let { key -> cached(textures, key) {
         Resources.read(Resources.path(key, "textures", ".png"))?.let { bytes ->
             // ImageIO.read closes an ImageInputStream itself: closing it again throws on recent JDKs.
             runCatching { ImageIO.read(MemoryCacheImageInputStream(bytes.inputStream()))?.let { Texture.of(it) } }.getOrNull()
         }
-    }
+    } }
 
     private fun resolve(model: Model, ref: String): Texture? {
         var name = ref
@@ -357,7 +447,7 @@ object Models {
     // ---- Blocks ---------------------------------------------------------------------------------------------------
 
     /** The block state's model in block units (0..1), rotated as its blockstate file says. Empty for air and liquids. */
-    fun block(data: BlockData): Baked = blocks.computeIfAbsent(data.asString) { bakeBlock(data) }
+    fun block(data: BlockData): Baked = cached(blocks, data.asString) { bakeBlock(data) }!!
 
     private fun properties(data: BlockData): Map<String, String> {
         val s = data.asString
@@ -436,11 +526,11 @@ object Models {
     // ---- Items ----------------------------------------------------------------------------------------------------
 
     /** The model an item model id (`example:brown_sofa`, from the item's item_model) shows by default. */
-    fun item(id: String): ItemModel? = items.computeIfAbsent(if (':' in id) id else "minecraft:$id") { key ->
+    fun item(id: String): ItemModel? = (if (':' in id) id else "minecraft:$id").let { key -> cached(items, key) {
         val definition = Resources.json(Resources.path(key, "items", ".json"))?.getAsJsonObject("model")
         val modelId = definition?.let { modelOf(it) } ?: key.substringBefore(':') + ":item/" + key.substringAfter(':')
         modelFile(modelId)
-    }
+    } }
 
     /** A model file by id (`example:item/furniture/brown_sofa`), baked with its fixed display transform. */
     fun modelFile(id: String): ItemModel? {

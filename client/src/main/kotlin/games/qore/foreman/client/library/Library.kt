@@ -50,8 +50,9 @@ data class LibraryAsset(
         tags.any { it.lowercase().contains(query) } || blocks.any { it.contains(query) }
 }
 
-/** Images of an asset the server renders: [textures] once they came, [error] when it couldn't. */
+/** Images of an asset the server renders: [textures] once they came, [error] when it couldn't, asked for at [asked]. */
 class Renders {
+    val asked = System.currentTimeMillis()
     var textures: List<GuiTexture> = emptyList()
         internal set
     var error: String? = null
@@ -78,6 +79,8 @@ object Library {
     private const val KEPT_VIEWS = 3
     /** A card not drawn for this long is no longer waiting for its thumbnail. */
     private const val WANTED_MS = 1000L
+    /** A render the server hasn't sent by then failed: it is busy or stuck, and the page says so instead of waiting on. */
+    private val RENDER_TIMEOUT: java.time.Duration = java.time.Duration.ofMinutes(2)
 
     var assets: List<LibraryAsset> = emptyList()
         private set
@@ -94,7 +97,9 @@ object Library {
     private val views = LinkedHashMap<String, Renders>(8, 0.75f, true)
     /** The cards drawn lately and when, last drawn last: the next thumbnail is the first still in view. */
     private val wanted = LinkedHashMap<String, Long>()
-    private var running = 0
+    /** Renders asked for and not answered yet. */
+    var running = 0
+        private set
     /** Bumped when everything is dropped: answers to older requests are thrown away. */
     private var generation = 0
 
@@ -170,6 +175,9 @@ object Library {
         views.remove(asset.id)?.let(::release)
     }
 
+    /** The cards in view still waiting for their thumbnail to be asked for. */
+    fun waiting() = wanted.keys.count { it !in thumbs }
+
     /** Starts the next thumbnail: the first card still in view without one. */
     private fun pump() {
         val now = System.currentTimeMillis()
@@ -185,7 +193,7 @@ object Library {
         running++
         val generation = generation
         ServerCalls.run({
-            val result = ServerCalls.callNow("preview_asset", buildJsonObject { put("name", id); put("views", count); put("size", size) })
+            val result = ServerCalls.callNow("preview_asset", buildJsonObject { put("name", id); put("views", count); put("size", size) }, RENDER_TIMEOUT)
             val images = result["content"].arr().orEmpty().filter { it["type"].str() == "image" }.map { NativeImage.read(Base64.getDecoder().decode(it["data"].str())) }
             images.ifEmpty { throw AgentException(ServerCalls.text(result).ifBlank { "No image" }) }
         }) { result ->
