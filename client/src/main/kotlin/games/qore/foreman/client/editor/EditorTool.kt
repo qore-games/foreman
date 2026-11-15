@@ -44,10 +44,10 @@ interface EditorTool : Tool {
     fun status(): ToolStatus = ToolStatus()
 }
 
-/** The tools of editor mode, in the order its panel lists them (the number keys pick them). */
+/** The tools of editor mode, in the order its panel lists them (the number keys pick them: 1 to 9, then 0). */
 object EditorTools {
     /** The panel's order by id; tools with another id come after these, in the order they were registered. */
-    private val ORDER = listOf("selection", "displays", "models", "library", "assets", "regions", "measure", "locations", "worldedit")
+    private val ORDER = listOf("selection", "displays", "models", "library", "assets", "regions", "measure", "locations", "worldedit", "objects")
 
     private val registered = mutableListOf<EditorTool>()
 

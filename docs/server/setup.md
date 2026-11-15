@@ -32,6 +32,7 @@ features:
   # test-players: true  # Registered test players let through the whitelist, every permission only when elevated
   # plugin-tools: true  # Tools other plugins publish, and Foreman's tools for other plugins
   # learning: true      # The AI saving lessons and skills for every later session
+  # panels: true        # Plugins' panels and relations in the mod's editor, and the panel tools (they change plugins' things)
 
 mcp:
   # Bind to localhost unless the AI client runs on another machine. The server speaks plain HTTP: beyond this
@@ -99,6 +100,7 @@ features:
 | `test-players` | [Test players](../ai/testing.md#test-players): registered names through the whitelist, every permission only when elevated | on | off |
 | `plugin-tools` | Tools [other plugins publish](../developers/foreman-tools.md), and Foreman's tools for other plugins | on | off |
 | `learning` | `learn`, `lessons`, `save_skill`: the AI keeping lessons and skills for later sessions | on | off |
+| `panels` | Plugins' [panels and relations](../developers/panels.md) in the mod's editor, and the panel tools: they change what plugins manage, with only the plugin's own checks (no undo, no locks) | on | off |
 
 A feature that's off publishes none of its tools, whoever registers them, and costs nothing: with neither
 `diagnostics` nor `console`, Foreman doesn't keep the server log either. `read_skill` is always there. Permissions

@@ -1,5 +1,6 @@
 package games.qore.foreman.client.regions
 
+import games.qore.foreman.client.ui.kit.Popover
 import games.qore.foreman.client.ui.kit.Theme
 import games.qore.foreman.client.ui.kit.Ui
 
@@ -7,7 +8,7 @@ import games.qore.foreman.client.ui.kit.Ui
  * A pop-over list of the regions panels to pick one of [options] from, below [x], [y] and kept on screen: declared
  * types, choices, area names. Picking one runs [onPick] with its value; clicking beside it closes it.
  */
-class PickList(private val x: Int, private val y: Int, private val w: Int, private val options: List<Option>, private val onPick: (String) -> Unit) {
+class PickList(private val x: Int, private val y: Int, private val w: Int, private val options: List<Option>, private val onPick: (String) -> Unit) : Popover {
     /**
      * A row: [value] picks it ([label] shown, [detail] faint on the right, [color] a swatch, [tooltip] on hover,
      * [current] lit); without a value it is a heading.
@@ -15,7 +16,7 @@ class PickList(private val x: Int, private val y: Int, private val w: Int, priva
     class Option(val value: String?, val label: String, val detail: String = "", val color: Int? = null, val tooltip: String? = null, val current: Boolean = false)
 
     /** Draws it over the panel; [close] closes it (a pick or a click beside it). */
-    fun draw(ui: Ui, screenW: Int, screenH: Int, close: () -> Unit) {
+    override fun draw(ui: Ui, screenW: Int, screenH: Int, close: () -> Unit) {
         ui.backdrop(screenW, screenH, close)
         val h = (options.size * ROW + 6).coerceAtMost(screenH - 20)
         val top = y.coerceAtMost(screenH - h - 10).coerceAtLeast(10)

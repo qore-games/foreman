@@ -12,6 +12,7 @@ import games.qore.foreman.server.api.LayoutData
 import games.qore.foreman.server.api.LayoutField
 import games.qore.foreman.server.api.LayoutType
 import games.qore.foreman.server.mcp.ToolError
+import games.qore.foreman.server.panels.PanelJson
 import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -166,6 +167,7 @@ class Layout(private val plugin: Foreman) : ForemanLayout, Listener {
                 world != null && plugin.worlds.area(p.asString, world) == null -> "no area ${p.asString} in $world"
                 else -> null
             }
+            LayoutField.Type.TARGET -> if (runCatching { PanelJson.target(v) }.isSuccess) null else "a target expected: {type, world, uuid | x, y, z | kind, id}"
         }
     }
 
@@ -248,6 +250,8 @@ class Layout(private val plugin: Foreman) : ForemanLayout, Listener {
                     if (f.values.isNotEmpty()) add("values", JsonArray().apply { f.values.forEach { add(it) } })
                     f.min?.let { addProperty("min", it) }
                     f.max?.let { addProperty("max", it) }
+                    f.group?.let { addProperty("group", it) }
+                    if (f.dependsOn.isNotEmpty()) add("depends_on", JsonArray().apply { f.dependsOn.forEach { add(it) } })
                 })
             }
         })
@@ -265,7 +269,8 @@ class Layout(private val plugin: Foreman) : ForemanLayout, Listener {
         }
     }
 
-    private fun field(f: LayoutField): String {
+    /** A field in one line, for the AI: `rolls*: int 1..10 = 3 — what it is`. */
+    fun field(f: LayoutField): String {
         val type = when (f.type) {
             LayoutField.Type.ENUM -> f.values.joinToString("|")
             else -> f.type.name.lowercase() + when {
@@ -276,6 +281,7 @@ class Layout(private val plugin: Foreman) : ForemanLayout, Listener {
             }
         }
         return "${f.name}${if (f.isRequired) "*" else ""}: $type" + (f.defaultValue?.let { " = ${gson.toJson(it)}" } ?: "") +
+            (if (f.dependsOn.isNotEmpty()) " (choices depend on ${f.dependsOn.joinToString()})" else "") +
             (if (f.description.isNotEmpty()) " — ${f.description}" else "")
     }
 

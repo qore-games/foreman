@@ -5,6 +5,8 @@ import games.qore.foreman.client.agent.McpClient
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.gizmo.BlockBox
 import games.qore.foreman.client.net.Net
+import games.qore.foreman.client.objects.ObjectActions
+import games.qore.foreman.client.panels.Panels
 import games.qore.foreman.client.util.JSON
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -23,7 +25,9 @@ import kotlin.math.abs
 import kotlin.math.floor
 
 /** Layers the server pushes; the client subscribes to the ones its overlays show and its active tools need. */
-enum class BridgeLayer(val id: String) { AREAS("areas"), POINTS("points"), ISSUES("issues"), CHANGES("changes"), INSTANCES("instances"), LAYOUT("layout") }
+enum class BridgeLayer(val id: String) {
+    AREAS("areas"), POINTS("points"), ISSUES("issues"), CHANGES("changes"), INSTANCES("instances"), LAYOUT("layout"), OBJECTS("objects"), RELATIONS("relations"),
+}
 
 @Serializable
 data class WireBox(val min: List<Int>, val max: List<Int>) {
@@ -121,18 +125,22 @@ data class AIChange(val label: String, val by: String = "", val world: String, v
 /**
  * The server's hello: its MCP address, this player's token and the mod's own [editorToken] (when it runs its MCP
  * server), [relay] (its tools through the game connection), [test] (the player has `foreman.test`, the server's opt-in
- * for the packet options of dupe testing), and the [features] it offers.
+ * for the packet options of dupe testing), the [features] it offers and the version of its panels ([panelsVersion], 0
+ * without them).
  */
 @Serializable
 data class Hello(
     val mcpUrl: String? = null, val token: String? = null, val editorToken: String? = null, val world: String = "", val dim: String = "", val version: Int = 1,
     val test: Boolean = false, val relay: Boolean = false, val features: List<String> = emptyList(),
+    @SerialName("panels_version") val panelsVersion: Int = 0,
 )
 
 /**
  * The `foreman:bridge` channel to the foreman plugin: JSON messages with a `type`. The server says hello (how to reach
  * its tools: MCP URL and this player's token, or the relay), pushes areas, points, the declared point and area types,
- * check issues and AI changes; the client sends its selection and which layers it wants. Protocol in the README.
+ * the object kinds and the objects near the player (while the objects tool needs them), check issues and AI changes,
+ * and the [panels][Panels] (the one open, the relations near the player); the client sends its selection, which layers
+ * it wants and the panel it opens. Protocol in the README.
  */
 object Bridge {
     private val logger = LoggerFactory.getLogger("foreman")
@@ -158,6 +166,14 @@ object Bridge {
         private set
     /** The pasted copies of assets, in every world. */
     var instances: List<AssetInstance> = emptyList()
+        private set
+    /** The kinds of objects the server's plugins declare (the `objects` layer). */
+    var objectKinds: List<ObjectKind> = emptyList()
+        private set
+    /** The objects near the player, in their dimension (the `objects` layer), and when they last came. */
+    var objects: List<GameObject> = emptyList()
+        private set
+    var objectsAt = 0L
         private set
 
     /** Layers an active tool needs whatever the overlay settings (the asset tool: areas and copies). */
@@ -187,6 +203,9 @@ object Bridge {
         Relay.init()
         Net.incoming(CHANNEL, { JSON.parseToJsonElement(it.decodeToString()).jsonObject }, ::handle)
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> reset() }
+        // A proxy moving the player to another server fires no disconnect: what the last one said goes, and a server
+        // without Foreman sends nothing in its place. Its hello comes after this (the channels are registered after).
+        ClientPlayConnectionEvents.JOIN.register { _, _, _ -> reset() }
     }
 
     private fun reset() {
@@ -199,6 +218,10 @@ object Bridge {
         issues = null
         change = null
         instances = emptyList()
+        objectKinds = emptyList()
+        objects = emptyList()
+        ObjectActions.reset()
+        Panels.reset()
     }
 
     private fun handle(message: JsonObject) {
@@ -210,6 +233,7 @@ object Bridge {
                     world = hello.world
                     relayed = hello.relay && hello.mcpUrl == null
                     if (hello.relay && hello.mcpUrl != null && hello.token != null) probe(hello.mcpUrl, hello.token)
+                    Panels.hello()
                     subscribe()
                 }
                 "world" -> world = message["world"]?.jsonPrimitive?.content ?: world
@@ -219,6 +243,14 @@ object Bridge {
                 "issues" -> issues = JSON.decodeFromJsonElement<IssueReport>(message)
                 "change" -> change = JSON.decodeFromJsonElement<AIChange>(message)
                 "instances" -> instances = JSON.decodeFromJsonElement(message["instances"]!!)
+                "object_kinds" -> objectKinds = JSON.decodeFromJsonElement(message["kinds"]!!)
+                "objects" -> {
+                    val dim = message["dim"]?.jsonPrimitive?.content.orEmpty()
+                    objects = JSON.decodeFromJsonElement<List<GameObject>>(message["objects"]!!).map { it.copy(dim = dim) }
+                    objectsAt = System.currentTimeMillis()
+                }
+                "panel", "panel_resolved", "relations" -> Panels.handle(message["type"]!!.jsonPrimitive.content, message)
+                "object_actions", "object_action_done" -> ObjectActions.handle(message["type"]!!.jsonPrimitive.content, message)
             }
         } catch (e: Exception) {
             logger.warn("Bad foreman message {}", message, e)
@@ -246,7 +278,8 @@ object Bridge {
             BridgeLayer.AREAS to o.areas, BridgeLayer.POINTS to o.points, BridgeLayer.ISSUES to o.issues, BridgeLayer.CHANGES to o.changes,
             BridgeLayer.INSTANCES to o.instances,
         ).mapValues { (layer, visibility) -> layer in needed || visibility != games.qore.foreman.client.config.Visibility.OFF && o.enabled } +
-            (BridgeLayer.LAYOUT to (BridgeLayer.LAYOUT in needed))
+            (BridgeLayer.LAYOUT to (BridgeLayer.LAYOUT in needed)) + (BridgeLayer.OBJECTS to (BridgeLayer.OBJECTS in needed)) +
+            (BridgeLayer.RELATIONS to (BridgeLayer.RELATIONS in needed && Panels.supported))
         for (on in listOf(true, false)) {
             val layers = wanted.filterValues { it == on }.keys
             if (layers.isEmpty()) continue
@@ -256,6 +289,9 @@ object Bridge {
             })
         }
     }
+
+    /** Sends [message] to the plugin. */
+    fun send(message: JsonObject) = out.send(message)
 
     fun sendSelection(dimension: String?, box: BlockBox?) {
         out.send(buildJsonObject {

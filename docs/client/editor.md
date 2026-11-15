@@ -12,7 +12,7 @@ gameplay uses, so you see the layout in the world and the server can attach feat
 | | |
 |---|---|
 | ++b++ | Editor mode on, with the tool you used last (kept after a restart), or off |
-| ++1++ to ++9++ | Another tool, by its number in the panel |
+| ++1++ to ++9++, ++0++ | Another tool, by its number in the panel (++0++ the tenth) |
 | ++esc++ | The tool's own step back first (cancel a drag, unpin, deselect, close a question), else editor mode off. The pause menu doesn't open |
 
 The hub opens it too: the **Use** buttons of the tool cards (Selection, Locations, Library, Displays), **Place** on an
@@ -65,6 +65,7 @@ At the top left of the screen, in the same look as the panel, the tool says what
 | 7 | [Measure](#measuring) | Lengths, offsets and block counts between two points | ++backspace++ remove the last, ++delete++ clear them all |
 | 8 | [Location editor](locations.md#editing) | Plugin locations and your own sets | ++k++ / ++u++ / ++j++ to your feet / eyes / block, ++h++ gizmo on or off, ++n++ sources and categories |
 | 9 | [WorldEdit selection](selection.md#the-worldedit-selection) | The WorldEdit selection in any shape | ++n++ the hub's Selection page |
+| 0 | [World objects](objects.md) | What the server's plugins draw with entities and let you edit (cables, props); their [panels and relations](panels.md) | ++c++ new object, ++n++ panel (of the selected object, else of what you aim at), ++v++ next anchor, ++p++ anchor where you aim, ++delete++ delete (or unlink), ++z++ undo, ++k++ link mode; keys the server's plugins add |
 
 The clicks, the gizmo and the scroll wheel are each tool's own: see its page. The panel always shows the keys of the
 version you run.
@@ -146,7 +147,7 @@ has loaded and the busiest chunk. Counted twice a second while it is on.
 ## What the game still gets
 
 While editor mode is on (and no screen is open), the editor's keys are taken before Minecraft's key bindings: the tool
-keys, the snap key (++g++), the overlay keys (++x++, ++l++), ++1++ to ++9++, ++b++ and ++esc++. So ++f++ fits an asset instead of swapping your hands, ++1++ to ++9++ pick a
+keys, the snap key (++g++), the overlay keys (++x++, ++l++), ++1++ to ++0++, ++b++ and ++esc++. So ++f++ fits an asset instead of swapping your hands, ++1++ to ++0++ pick a
 tool instead of a hotbar slot, ++c++ doesn't save a hotbar. A key the tool asks for without ++shift++ also works with
 it held (flying down while you turn something).
 

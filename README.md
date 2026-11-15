@@ -89,6 +89,8 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   Plugins declare the point and area types they use with typed fields, filled in with forms in game and checked by the
   layout check. Locks, a per-player undo and a history for builders working together; overlays for hidden blocks
   and display entities per chunk, and a measure tool.
+- **World objects.** What your plugins draw with entities (cables, props) is selected, moved by its anchors, edited
+  in a form and placed in game, and by the AI, while the plugin keeps it.
 
 ### AI, with your own account
 
@@ -113,6 +115,8 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   furniture to the world tools.
 - **`ForemanLayout`, `RegionCopyEvent`, `ForemanWorldLoader`:** declare the point and area types your plugin reads,
   follow what copies and moves of regions do to your data, and load worlds on demand for the asset library.
+- **`ForemanObjects`:** let builders and their AI list, place, edit and remove the things your plugin draws with
+  entities, with forms made from their fields.
 
 ### For AIs
 

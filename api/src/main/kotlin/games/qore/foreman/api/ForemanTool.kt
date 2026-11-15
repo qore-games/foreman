@@ -87,6 +87,23 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     SPAWN_DISPLAY("spawn_display", "Displays", WORLD_EDIT),
     REMOVE_DISPLAYS("remove_displays", "Displays", WORLD_EDIT),
 
+    // Objects: things plugins draw with entities (cables, props), declared through ForemanObjects.
+    OBJECT_KINDS("object_kinds", "Objects", WORLD_EDIT),
+    LIST_OBJECTS("list_objects", "Objects", WORLD_EDIT),
+    PLACE_OBJECTS("place_objects", "Objects", WORLD_EDIT),
+    EDIT_OBJECTS("edit_objects", "Objects", WORLD_EDIT),
+    REMOVE_OBJECTS("remove_objects", "Objects", WORLD_EDIT),
+
+    // Panels: what plugins show and let builders change about their things, and the relations between them (ForemanPanels).
+    PANEL_GET("panel_get", "Panels"),
+    PANEL_EDIT("panel_edit", "Panels"),
+    PANEL_ACTION("panel_action", "Panels"),
+    PANEL_FACTS("panel_facts", "Panels"),
+    LIST_RELATIONS("list_relations", "Panels"),
+    LINK_TARGETS("link_targets", "Panels"),
+    UNLINK("unlink", "Panels"),
+    RELINK("relink", "Panels"),
+
     // Skills: how to do a kind of task here, read when needed.
     READ_SKILL("read_skill", "Skills"),
     SAVE_SKILL("save_skill", "Skills"),

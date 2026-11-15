@@ -109,7 +109,7 @@ The form is made from the fields:
 | Whole number, number | A number box, its range beside it (`1 – 64`) |
 | On/off | A switch |
 | Choice | Its choices as buttons, or a list when they don't fit |
-| Colour | A swatch and its `#rrggbb` |
+| Colour | A swatch and its `#rrggbb`. Click the swatch for a picker: drag in the square (saturation, brightness) and the bar (hue), or pick a common colour or the field's default. The box follows as you go; click beside the picker or press ++esc++ to close it |
 | Direction (yaw) | Degrees, with **Facing**: the point's own facing (for an area, where you look) |
 | Area | A list of the areas of the world |
 

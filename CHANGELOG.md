@@ -5,8 +5,57 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ## [Unreleased]
 
+### Building (mod and plugin)
+
+- **World objects.** Plugins declare the kinds of things they draw with entities (`ForemanObjects` in
+  `foreman-server-api`: a point placed by one anchor, or a line by its two ends, with typed fields like layout types and
+  a handler that finds, makes, changes and removes them), and builders edit them without Foreman knowing what they
+  are: the plugin's entities stay the truth. The AI gets `object_kinds`, `list_objects`, `place_objects`,
+  `edit_objects` and `remove_objects`, each call one undo step that calls the plugin back. The mod's tenth editor tool,
+  **World objects** (0), outlines those near you (a cable's curve as its plugin computes it), selects one with a
+  click, moves its anchors with the gizmo, edits its fields in a form made from the declaration, and places new ones
+  (C: pick a kind in its palette, cards drawn with the kind's icon model, by category, with a search; click its
+  anchors, fill in its form). A kind can be placed like a furniture of the server (`ObjectKind.furniture`): the tool
+  shows its model as it will stand on the face looked at, turned by the scroll wheel, and fills in its facing and
+  surface fields.
+
 ### Server (Paper plugin)
 
+- **Panels and relations.** Plugins show panels for the things they manage and the relations between them
+  (`ForemanPanels` in `foreman-server-api`: a `PanelProvider` resolves what a builder aims at (an entity, a block, a
+  world object, or a `global` target for its settings) to its own target, describes its panel as sections of rows
+  (text, values, fields of the layout field types plus the new `target` type, buttons, lists with their own buttons),
+  applies edits checked against the panel's fields and runs its buttons, names its targets (`name`, by default its
+  panel's title); optionally lists relations, links two targets (with questions and options) and unlinks). Foreman draws
+  them: the mod's panels (`panel_open`, a `panel` message whenever it changes, `panel_resolve` for which provider serves
+  what a builder aims at in link mode, `relations` within 64 blocks), and the AI's tools `panel_get` (also `aimed: true`), `panel_edit`,
+  `panel_action`, `list_relations`, `link_targets` and `unlink`. A provider's exception fails its call only, logged once.
+  Nothing runs while no panel is open and nobody shows relations. New feature `panels`: on in the `dev` preset, off in
+  `production`.
+- **Panels in tabs, statuses and conditions.** A section names its tab (`Section.tab`): the mod shows a tab bar, each
+  tab its sections (those without a tab on every tab) and keeps the last tab per kind of thing; a panel without tabs
+  is one page. `Panel.status(Status)` is a status line above every tab, `WorldObject.status(Status)` a badge the
+  objects tool draws under the object's name (ok green, off grey, blocked red, problem orange), and `list_objects`
+  gives it. A new row kind, `conditions` (`Row.conditions`): conditions with whether each holds now, what it read, the
+  things it reads (a click opens their panel) and their own buttons, and a builder in the mod (a subject picked in the
+  world or from the plugin's list, one of its typed facts, a comparison and a value, OR groups, or an expression typed
+  in the plugin's syntax), checked live by the plugin (`PanelProvider.subjects`, `facts`, `check`) and added through the
+  row's add button; Foreman parses nothing. New tool `panel_facts` (the vocabulary and checks, for the AI and the mod).
+  Relations get a state (`Relation.state`: active green with flowing chevrons, blocked red, idle grey), link mode a
+  `LinkResult.build` that opens the source's builder filled in, and the objects tool ++f++, the selected object's chain
+  only (what it reads and what reads it).
+- **Changing links.** A relation says what may change of it (`Relation.changes(REVERSE, FROM, TO)`) and what it links
+  for people once selected (`Relation.detail`, `lamp.power ← hall_switch`); `PanelProvider.relink(ctx, relationId,
+  change, to, choice)` reverses it or moves one end to another thing, answering like `link` (done, refused, a question,
+  or a condition to build, in the panel `LinkResult.on(target)` names: Foreman removes the old relation once the builder
+  adds it). New tool `relink {target, relation, provider, reverse | from | to, choice?}`; `list_relations` gives each
+  relation's detail and changes, `link_targets` a build's `target`.
+- A test player elevated (or demoted) while online gets the mod's Foreman features at once (or loses them), without
+  rejoining.
+- World objects' data takes `target` fields (another thing, as a target's JSON): checked like the others, resolved by
+  the panel providers when there are some (a furniture for its cell block) and stored as the target's JSON;
+  `LayoutData.target(name)` reads one as a `PanelTarget`. Data a plugin gives back with a `PanelTarget` in it is sent as
+  its JSON.
 - **MCP clients hear of new tools.** Tools that plugins publish after a client listed them (a plugin enabling late,
   reloading, or a furniture plugin starting) and those withdrawn when a plugin disables used to stay unknown, or
   listed, until the client reconnected. The MCP server now gives sessions (`Mcp-Session-Id` from `initialize`),
@@ -35,9 +84,45 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ### Client (Fabric mod, any server)
 
+- **Panels and relations** in the world objects tool, for plugins giving panels (`ForemanPanels`): N with nothing
+  selected opens the panel of what you aim at (an entity, a display, a block or a world object) beside the world, live as its plugin
+  changes it, its fields sent as you leave them (target fields picked in the world), its buttons and lists' buttons
+  run at once; the relations within 64 blocks show as arrows with their labels and chevrons flowing toward what each
+  feeds, a click selects one and Delete unlinks it; K links a source to other things, picking among the links the
+  plugin offers. In link mode, while picking a target and with N, the crosshair is on what the plugins serve: a block or hitbox of something a plugin manages (a
+  piece of furniture's collision cell) picks that thing, outlined and named as its plugin names it, and something a
+  plugin serves wins over a plain block just before or behind it (asked of the server for what you aim at, only
+  then). The forms' controls are one `FieldInput` shared by the regions, objects and panels forms.
+- **Editing links like cables.** A click on a relation's line selects it, in link mode too (when it is in front of what
+  the crosshair is on): it turns white with a card saying what it links and its keys, Delete unlinks it, and where its
+  plugin allows it, R reverses it and I / O move its source / destination to another thing (clicked in the world, or
+  picked from a list of the objects near you with the same key again). The plugin makes the new link and removes the old
+  one, or opens its condition builder filled in; then the old link goes once the condition is added. The changed link
+  is selected again once the server sends it.
+- **One panel for a world object.** N or a click on the selected object (N on an object aimed at) opens one panel
+  beside the world: its Location (anchors and facing), then its kind's fields merged with the panel a plugin gives for
+  that object (`{"type":"object", …}` resolved by its provider: live values, fields sent as you leave them, buttons,
+  lists): a field's `group` (`LayoutField.group`) shows at the top of the panel's section of the same title, in one
+  scrolling body. Without a provider for it, just the form. Save sends the anchors and the fields the builder changed
+  (an `edit_objects` patch), and the fields left alone follow the object as the server sends it. A choice that
+  `dependsOn` other fields offers what the kind's handler gives for the form's values (`ObjectHandler.choices`, also
+  `object_kinds {kind, data, id?}` for the AI), asked again as those change. N on anything else opens the plugin's
+  panel alone; a list item naming an object opens the object's panel. The side panels are wider (half the screen,
+  between 300 and 520), with text cut short shown whole on hover.
+- **Keys from plugins in the objects tool.** `ForemanObjects.addAction` adds a switch or an action to the world
+  objects tool (`ObjectAction`: id, label, the letter it asks for, a handler giving its state and running it for the
+  builder): the mod binds it to that letter or the first free one of its label, lists it with its state among the
+  tool's keys, says on the status card while a switch is on, and shows its answer. The server sends them only while
+  the tool is on.
+- Object kinds may have `target` fields (`LayoutField.target`): the form picks one in the world (Pick, then click it)
+  and shows the thing by the name its plugin gives (`panel_resolve`), as panels' target fields do.
 - The move gizmo has a knob at its center that moves what it holds anywhere: across your view as you grabbed it,
   snapped on every axis, the scroll wheel pushing it farther or pulling it nearer while you drag (displays, locations,
   points, world objects' anchors, placements).
+- Joining another server behind the same proxy forgets what the last one's Foreman said (its hello, object kinds,
+  areas, panels, furniture): a server without Foreman no longer offers the last one's object kinds and tools.
+- The world objects tool draws one shape per object: a point's marker only when its plugin gives no outline (a prop
+  showed its box and a marker at its anchor).
 - The Library page says what its renders are doing: rendering (with the seconds it has taken) or waiting, and how many;
   a render the server hasn't answered in 2 minutes fails with a message instead of loading forever.
 - The Library page's scrollbar can be dragged again (the page took every drag to turn the opened asset's views).
@@ -52,6 +137,8 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 - Clear the WorldEdit selection: Delete in the WorldEdit tool, or *Clear* beside it in the hub's Selection section.
 - V in the WorldEdit tool hides or shows the WorldEdit selection, like the hub's switch.
 - A point's gizmo tilts it up and down too (its pitch, a second ring around its right), besides turning it.
+- A colour picker for colour fields in the areas-and-points forms (a light's colour): saturation and brightness in a
+  square, the hue in a bar, common colours and the field's default; the `#rrggbb` box follows as you drag.
 - The display editor leaves out displays riding a player (hats, held models) and those that only exist on the
   client (plugins' packet entities, which the server doesn't list and can't edit): they were picked, listed and
   selected by the box like a build's.
@@ -64,6 +151,11 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   ceiling looked at when it goes there, and is placed against that face; a model some furniture shows, placed as a
   display, stands as that furniture. The ghost stays visible and lit as the placed one against walls (entity culling
   hid it, a painting's middle in the wall darkened it).
+- The world objects tool draws the objects it doesn't select lighter and fades them out with distance (full within 12
+  blocks, gone by 40), their outlines fading away from the line through their anchors too: a street of spot lights no
+  longer hides the build under their cones (a wide one shows its axis and the start of its cone, a cable stays whole).
+  The selected one and the one under the crosshair are drawn whole; what has faded out can't be picked. The panels'
+  relation arrows fade the same way.
 
 ## [1.3.0] - 2026-11-09
 

@@ -66,9 +66,12 @@ do the rest.
 | `color(name)` | `"#rrggbb"` |
 | `yaw(name)` | A direction, degrees as Minecraft's yaw (0 south, 90 west): turned with the asset or region a paste or move turns |
 | `area(name)` | The name of an area of the same world (`check_layout` reports one that doesn't exist) |
+| `target(name)` | Another thing of the world, a [target's JSON](panels.md#targets) (an entity, a block, a world object); `data.target(name)` reads it as a `PanelTarget`. Picked in the world in [world objects](world-objects.md#target-fields)' forms and panels |
 
 Each returns a field to refine: `label`, `description`, `required()` (a point or area without it is refused and
-reported), `defaultValue(value)` (what one without it reads; a colour as `0xRRGGBB` or `"#rrggbb"`). Field names are
+reported), `defaultValue(value)` (what one without it reads; a colour as `0xRRGGBB` or `"#rrggbb"`), `group(title)`
+(the heading it shows under in the editor's forms, with the other fields of that group) and, for a
+[world object](world-objects.md#choices-that-depend-on-other-fields)'s choice, `dependsOn(fields…)`. Field names are
 lowercase letters, digits and `_`.
 
 ## Data

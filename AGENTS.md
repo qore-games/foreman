@@ -11,7 +11,7 @@ working on the code.
 |---|---|---|
 | `client` | The Fabric mod, a jar per Minecraft version (see below): the hub (`ui/HubScreen.kt`), packet viewer (`packets/`), HUD inspector (`hud/`), locations (`locations/`), fast resource reloads (`reload/`), AI chats (`agent/`), the client MCP server and its tools (`mcp/`), lean mode for test clients (`lean/`) | Kotlin, Java mixins |
 | `server` | The Paper plugin: the MCP server (`mcp/`), server tools (`tools/ServerTools.kt`), world tools (`tools/`, `world/`), skills (`skills/`), integrations with other plugins (`integrations/`), the bridge to the mod (`bridge/`) | Kotlin |
-| `server-api` | What plugins compile against: `ForemanTools` (tools and skills), `ForemanWorlds`, `FurnitureProvider` | Kotlin, Java-friendly |
+| `server-api` | What plugins compile against: `ForemanTools` (tools and skills), `ForemanWorlds`, `FurnitureProvider`, `ForemanObjects`, `ForemanPanels` | Kotlin, Java-friendly |
 | `api` | The location protocol, and `ForemanTool`: the names of Foreman's own tools, shared by the client and the server | Kotlin |
 | `paper` | The location API's Paper side, shaded into other plugins | Kotlin |
 | `fastload` | The fast reload algorithms (`Mipmaps`, `FontProviders`, `ZipIndex`) on plain values, and `Claims` (who handles each feature, in system properties): no Minecraft types, no dependencies, bundled into the mod and usable by other mods and Java agents. Its API is `fastload/API.md`: keep it exact. The mod's `reload/` and mixins adapt Minecraft's types to it | Java 21 |

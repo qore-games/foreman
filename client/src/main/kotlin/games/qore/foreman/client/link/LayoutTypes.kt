@@ -1,5 +1,6 @@
 package games.qore.foreman.client.link
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
@@ -23,12 +24,14 @@ data class LayoutType(
 /**
  * A field of a [LayoutType]'s data: [type] `string`, `int`, `number`, `bool`, `enum` (one of [values]), `color`
  * (`#rrggbb`), `yaw` (degrees) or `area` (an area name of the same world); [min] and [max] bound numbers, [default] is
- * what one without it reads.
+ * what one without it reads. [group]: the heading it shows under in forms; [dependsOn]: the fields whose values its
+ * choices depend on (an object's form asks the server for them as those change).
  */
 @Serializable
 data class LayoutField(
     val name: String, val type: String, val label: String = "", val description: String = "", val required: Boolean = false,
     val default: JsonElement? = null, val values: List<String> = emptyList(), val min: Double? = null, val max: Double? = null,
+    val group: String? = null, @SerialName("depends_on") val dependsOn: List<String> = emptyList(),
 )
 
 /** The server's declared types ([Bridge.layout]) by what they type. */

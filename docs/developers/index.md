@@ -7,6 +7,8 @@
 | Show your plugin's locations in the mod and receive moves | [Location API](locations-api.md) (`foreman-paper`) | no |
 | Read the areas and points Foreman keeps in a world | [`ForemanWorlds`](foreman-worlds.md) (`foreman-server-api`) | yes |
 | Offer your furniture to the world tools | [`FurnitureProvider`](furniture.md) (`foreman-server-api`) | yes |
+| Let builders and their AI edit what you draw with entities (cables, props) | [`ForemanObjects`](world-objects.md) (`foreman-server-api`) | yes |
+| Show panels for your things in the editor (values, fields, buttons) and link them | [`ForemanPanels`](panels.md) (`foreman-server-api`) | yes |
 | Follow the asset library's copies and moves, load worlds for it | [`RegionCopyEvent`, `ForemanWorldLoader`](asset-library.md) (`foreman-server-api`) | yes |
 
 Start with [Add Foreman to your plugin](install.md): the repository, the dependency for Gradle (Kotlin or Groovy)

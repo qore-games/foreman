@@ -109,6 +109,22 @@ with the values plugins add ([your values in server traces](../developers/forema
 to compare with `client_trace`. Need `foreman.test`. `test_players` registers [test players](testing.md#test-players)
 (through the whitelist, plain players until elevated) and elevates or demotes them; it needs `foreman.admin`.
 
+### Panels
+
+What the server's plugins show and let builders change about their things, and the relations between them
+([panels and relations](../developers/panels.md); the `panels` feature):
+
+| Tool | Does |
+|---|---|
+| `panel_get` | The panel of a target, or of what the calling player aims at (`aimed: true`): its values, fields (type, range, choices) and buttons |
+| `panel_edit` | Sets a field of a panel, checked against it; the plugin applies or refuses it |
+| `panel_action` | Presses a button of a panel (a list item's by its `item` arg; a conditions row's add with `condition`) |
+| `panel_facts` | What a panel's conditions row can read: its subjects, a subject's facts (type, values, now), whether a condition holds now |
+| `list_relations` | What links the plugins' things near a point or the player: ids, providers, both ends |
+| `link_targets` | Links two things through the plugin serving the first: done, refused, or a question with options to answer with `choice` |
+| `unlink` | Removes a relation through its plugin |
+| `relink` | Changes a relation through its plugin: reverses it, or moves its from or to end to another thing (as `link_targets` answers) |
+
 ### Other plugins
 
 | Plugin | Tools |
@@ -132,6 +148,7 @@ runs with `server_command` (or `worldedit`).
 | Models | `preview_model`, `list_models` (the item models of the server's resources) |
 | Displays | `list_displays`, `edit_displays` (move, turn, scale, stretch item, block and text displays, furniture included), `spawn_display` (a model, block or text, or a copy of a display), `remove_displays`: [displays and models](../server/displays.md) |
 | Furniture | `list_furniture`, `place_furniture`, `remove_furniture` (with a [furniture provider](../developers/furniture.md)) |
+| Objects | `object_kinds` (what plugins let you edit: cables, props, with their shape and fields; with `kind` and `data`, the choices of fields that depend on others for that data), `list_objects`, `place_objects`, `edit_objects` (anchors and fields), `remove_objects`: [world objects](../developers/world-objects.md) |
 | Lessons | `learn`, `lessons` |
 
 See [World tools](../server/world-tools.md).

@@ -42,6 +42,7 @@ object ItemModels {
         private set
     private var source: Map<Identifier, *>? = null
     private var list: List<Identifier> = emptyList()
+    private var known: Set<Identifier> = emptySet()
     private val stacks = HashMap<Identifier, ItemStack>()
 
     /** Furniture ids by model, from the server; empty until fetched or without the plugin. */
@@ -56,6 +57,8 @@ object ItemModels {
     fun init() {
         ModelPreview.init()
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> Minecraft.getInstance().execute { clear() } }
+        // Another server behind the same proxy: its furniture isn't the last one's.
+        ClientPlayConnectionEvents.JOIN.register { _, _, _ -> clear() }
     }
 
     /** Every item model of the loaded packs. On the client thread. */
@@ -64,10 +67,17 @@ object ItemModels {
         if (models !== source) {
             source = models
             list = models.keys.sortedWith(compareBy({ it.namespace }, { it.path }))
+            known = list.toHashSet()
             stacks.clear()
             version++
         }
         return list
+    }
+
+    /** Whether the loaded packs have the item model [id] (else an item showing it would show the missing model). */
+    fun has(id: Identifier): Boolean {
+        all()
+        return id in known
     }
 
     /** An item showing [id] (its `item_model`). */

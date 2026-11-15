@@ -25,16 +25,16 @@ import net.minecraft.resources.Identifier
 
 /**
  * Editor mode: Foreman's building tools behind one key. B turns it on with the last tool used and a panel on the right
- * of the screen lists the tools (1-9 pick one) and the keys of the current one. While it is on, those keys are the
+ * of the screen lists the tools (1-9, then 0, pick one) and the keys of the current one. While it is on, those keys are the
  * editor's: the keyboard mixin hands every key press here before the game's key bindings see it, and the editor's keys
- * go no further (F doesn't swap hands, 1-9 don't change the hotbar); every other key plays as usual. The editor's own
+ * go no further (F doesn't swap hands, the numbers don't change the hotbar); every other key plays as usual. The editor's own
  * [keys] (the gizmos' [Snapping], two overlays) work with every tool. The current tool is [Tools.active], which gets
  * the clicks and the scroll wheel. The crosshair shows in spectator mode while it is on.
  */
 object EditorMode {
     private val DIGITS = listOf(
         InputConstants.KEY_1, InputConstants.KEY_2, InputConstants.KEY_3, InputConstants.KEY_4, InputConstants.KEY_5,
-        InputConstants.KEY_6, InputConstants.KEY_7, InputConstants.KEY_8, InputConstants.KEY_9,
+        InputConstants.KEY_6, InputConstants.KEY_7, InputConstants.KEY_8, InputConstants.KEY_9, InputConstants.KEY_0,
     )
     private const val NOTE_MS = 3000L
 
@@ -89,7 +89,7 @@ object EditorMode {
 
     /** The keys that open [tool] for the hub's cards: the editor's key, then its number. */
     fun caption(tool: EditorTool): String {
-        val number = EditorTools.all.indexOf(tool).takeIf { it in DIGITS.indices }?.let { "${it + 1}" }
+        val number = EditorTools.all.indexOf(tool).takeIf { it in DIGITS.indices }?.let { "${(it + 1) % 10}" }
         val key = binding.takeIf { !it.isUnbound }?.translatedKeyMessage?.string
         return listOfNotNull(key, number).joinToString(" ")
     }

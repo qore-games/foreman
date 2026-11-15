@@ -125,6 +125,8 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
     private val gson: Gson = GsonBuilder().disableHtmlEscaping().create()
     /** The point and area types plugins declare. */
     val layout = Layout(plugin)
+    /** The object kinds plugins declare, and their objects. */
+    val objects = WorldObjects(plugin)
 
     private class Entry(val areas: LinkedHashMap<String, Area>, val points: ArrayList<Point>, var profile: JsonObject, val instances: LinkedHashMap<String, Instance>)
 
@@ -135,6 +137,7 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
         Bukkit.getPluginManager().registerEvents(this, plugin)
         Bukkit.getServicesManager().register(ForemanWorlds::class.java, this, plugin, ServicePriority.Normal)
         layout.start()
+        objects.start()
     }
 
     @EventHandler

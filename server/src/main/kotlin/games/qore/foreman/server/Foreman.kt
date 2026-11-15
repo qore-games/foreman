@@ -21,6 +21,8 @@ import games.qore.foreman.server.tools.LessonTools
 import games.qore.foreman.server.skills.Skills
 import games.qore.foreman.server.tools.ServerTools
 import games.qore.foreman.server.tools.PacketTools
+import games.qore.foreman.server.tools.PanelTools
+import games.qore.foreman.server.panels.Panels
 import games.qore.foreman.server.tools.TestPlayerTools
 import games.qore.foreman.server.tools.TestTools
 import games.qore.foreman.server.tools.SkillTools
@@ -76,6 +78,9 @@ class Foreman : JavaPlugin() {
         private set
     /** What this server wrote to [MCP_FILE], so it removes only its own. */
     private var mcpFile: String? = null
+    /** The panel providers plugins register, when the panels feature is on. */
+    var panels: Panels? = null
+        private set
     /** The foreman client bridge (overlays, per-player tokens, client selections). */
     var bridge: Bridge? = null
     /** Every MCP tool: Foreman's and those other plugins publish, of the features that are on. */
@@ -110,7 +115,8 @@ class Foreman : JavaPlugin() {
         fun text(resource: String) = getResource(resource)!!.readAllBytes().decodeToString()
         val instructions = if (worldTools) text("instructions-world.md") + "\n" + text("instructions.md") else text("instructions.md")
 
-        val builtin = (if (worldTools) WorldTools.start(this) else emptyList()) + LessonTools.all(this) + SkillTools.all(this) + ServerTools.all(this) + TestTools.all(this) + TestPlayerTools.all(this) + PacketTools.all(this)
+        if (features[Feature.PANELS]) panels = Panels(this).also { it.start() }
+        val builtin = (if (worldTools) WorldTools.start(this) else emptyList()) + LessonTools.all(this) + SkillTools.all(this) + ServerTools.all(this) + TestTools.all(this) + TestPlayerTools.all(this) + PacketTools.all(this) + PanelTools.all(this)
         builtin.forEach(tools::add)
         // Every built-in tool is a ForemanTool (the client knows those), and every ForemanTool is built in or published
         // on its condition (`requires`: FastAsyncWorldEdit, a furniture plugin): a mismatch is a tool added on one side only.

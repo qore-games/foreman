@@ -5,6 +5,7 @@ import games.qore.foreman.client.link.GamePoint
 import games.qore.foreman.client.link.LayoutType
 import games.qore.foreman.client.link.Layouts
 import games.qore.foreman.client.ui.kit.KitScreen
+import games.qore.foreman.client.ui.kit.Popover
 import games.qore.foreman.client.ui.kit.Style
 import games.qore.foreman.client.ui.kit.Theme
 import games.qore.foreman.client.ui.kit.Ui
@@ -46,7 +47,7 @@ class PointPanel(private val point: GamePoint?, private val back: Screen? = null
     /** The boxes of [values], in their order. */
     private val boxes = ArrayList<EditBox>()
     private var form = form(null)
-    private var pick: PickList? = null
+    private var pick: Popover? = null
     /** The type list was offered (a new point asks for its type first). */
     private var asked = point != null
     private var saving = false
@@ -120,7 +121,7 @@ class PointPanel(private val point: GamePoint?, private val back: Screen? = null
         if (back != null) minecraft.gui.setScreen(back) else super.onClose()
     }
 
-    private fun openPick(list: PickList) {
+    private fun openPick(list: Popover) {
         resetScroll("pick")
         pick = list
     }

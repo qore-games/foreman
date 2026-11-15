@@ -6,6 +6,7 @@ import games.qore.foreman.client.link.Bridge
 import games.qore.foreman.client.ui.kit.Style
 import games.qore.foreman.client.ui.kit.Theme
 import games.qore.foreman.client.ui.kit.Ui
+import games.qore.foreman.client.ui.kit.filterChips
 import games.qore.foreman.client.ui.kit.grid
 import net.minecraft.client.Minecraft
 import net.minecraft.client.input.KeyEvent
@@ -139,36 +140,35 @@ object ModelsPanel {
     /** The top folders of the namespaces shown, the fullest first (two rows at most); a click narrows the list to one. */
     private fun folderChips(ui: Ui, x: Int, y: Int, w: Int, view: View): Int {
         if (view.folders.size < 2 && folder == null) return 0
-        var cx = x
-        var cy = y
-        for ((name, n) in view.folders) {
-            val label = "${if (view.namespaces.count { it.first !in view.hidden } > 1) name else name.substringAfter(':')}/ $n"
-            val cw = ui.font.width(label) + 8
-            if (cx + cw > x + w) {
-                if (cy > y) break
-                cx = x
-                cy += 16
-            }
-            val on = name == folder
-            ui.chip(cx, cy, label, if (on) Theme.TEXT else Theme.MUTED, if (on) Theme.ACCENT_DARK else Theme.FIELD)
-            ui.hit(cx, cy, cw, 12, if (on) "Click: every folder" else "Only $name/") { folder = if (on) null else name }
-            cx += cw + 4
-        }
-        return cy - y + 20
+        val several = view.namespaces.count { it.first !in view.hidden } > 1
+        val options = view.folders.map { (name, n) -> name to "${if (several) name else name.substringAfter(':')}/ $n" }
+        return ui.filterChips(x, y, w, options, folder, 2, { name, on -> if (on) "Click: every folder" else "Only $name/" }) { folder = it }
     }
 
     private fun card(ui: Ui, id: Identifier, x: Int, y: Int, w: Int, h: Int) {
+        val furniture = ItemModels.furniture[id.toString()]
+        modelCard(ui, x, y, w, h, id, id.path.substringAfterLast('/'), id.toString() + (furniture?.let { "\nFurniture: " + it.joinToString(", ") } ?: ""),
+            badge = if (furniture != null) "furniture" else null) { open(id) }
+    }
+
+    /**
+     * A card of a grid of models, [w] wide and [w] + 24 tall ([h]): [model] drawn in 3D as in an inventory (when the
+     * packs have it and it draws something; else [fallback] draws in its square, or "empty"), [badge] in its corner,
+     * [label] under it; a click runs [onClick]. The Models page's, and the objects tool's palette's.
+     */
+    fun modelCard(
+        ui: Ui, x: Int, y: Int, w: Int, h: Int, model: Identifier?, label: String, tooltip: String?, badge: String? = null,
+        fallback: ((x: Int, y: Int, side: Int) -> Unit)? = null, onClick: () -> Unit,
+    ) {
         val hover = ui.hovered(x, y, w, h)
         ui.card(x, y, w, h, if (hover) Theme.PANEL_HOVER else Theme.PANEL, if (hover) Theme.ACCENT_DARK else Theme.BORDER)
         val side = w - 8
         ui.rect(x + 4, y + 4, side, side, Theme.FIELD)
-        if (!ModelPreview.draw(ui.g, id, ItemDisplayContext.GUI, x + 4, y + 4, side)) {
-            ui.text("empty", x + (w - ui.font.width("empty")) / 2, y + side / 2, Theme.FAINT)
-        }
-        val furniture = ItemModels.furniture[id.toString()]
-        if (furniture != null) ui.chip(x + 6, y + 6, "furniture", Theme.ACCENT)
-        ui.text(ui.fit(id.path.substringAfterLast('/'), w - 12), x + 6, y + side + 9, Theme.TEXT)
-        ui.hit(x, y, w, h, id.toString() + (furniture?.let { "\nFurniture: " + it.joinToString(", ") } ?: "")) { open(id) }
+        val drawn = model != null && ItemModels.has(model) && ModelPreview.draw(ui.g, model, ItemDisplayContext.GUI, x + 4, y + 4, side)
+        if (!drawn) fallback?.invoke(x + 4, y + 4, side) ?: ui.text("empty", x + (w - ui.font.width("empty")) / 2, y + side / 2, Theme.FAINT)
+        badge?.let { ui.chip(x + 6, y + 6, it, Theme.ACCENT) }
+        ui.text(ui.fit(label, w - 12), x + 6, y + side + 9, Theme.TEXT)
+        ui.hit(x, y, w, h, tooltip, onClick)
     }
 
     // ---- A model ----------------------------------------------------------------------------------------------------

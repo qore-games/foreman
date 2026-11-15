@@ -32,8 +32,14 @@ object Theme {
 
 enum class Style { NORMAL, PRIMARY, DANGER, GHOST }
 
-/** A clickable area registered while drawing; the last one under the mouse gets the click. */
-class Hit(val x: Int, val y: Int, val w: Int, val h: Int, val tooltip: String?, val onClick: (() -> Unit)?, val blocks: Boolean = false) {
+/**
+ * A clickable area registered while drawing; the last one under the mouse gets the click. One with [onDrag] gets the
+ * mouse's position on the click and while the button is held.
+ */
+class Hit(
+    val x: Int, val y: Int, val w: Int, val h: Int, val tooltip: String?, val onClick: (() -> Unit)?, val blocks: Boolean = false,
+    val onDrag: ((Double, Double) -> Unit)? = null,
+) {
     fun contains(mx: Double, my: Double) = mx >= x && mx < x + w && my >= y && my < y + h
 }
 
@@ -110,6 +116,14 @@ class Ui(
     fun hit(x: Int, y: Int, w: Int, h: Int, tooltip: String? = null, onClick: (() -> Unit)? = null) {
         hits += Hit(x, y, w, h, tooltip, onClick)
     }
+
+    /** An area dragged with the mouse: [onDrag] gets the mouse's position on the click and while the button is held. */
+    fun drag(x: Int, y: Int, w: Int, h: Int, tooltip: String? = null, onDrag: (Double, Double) -> Unit) {
+        hits += Hit(x, y, w, h, tooltip, null, onDrag = onDrag)
+    }
+
+    /** A vertical gradient from [top] to [bottom] (ARGB). */
+    fun gradient(x: Int, y: Int, w: Int, h: Int, top: Int, bottom: Int) = g.fillGradient(x, y, x + w, y + h, top, bottom)
 
     fun button(x: Int, y: Int, w: Int, h: Int, label: String, style: Style = Style.NORMAL, enabled: Boolean = true, tooltip: String? = null, onClick: () -> Unit) {
         val hover = enabled && hovered(x, y, w, h)
@@ -212,6 +226,8 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
     /** The scroll area whose scrollbar is held, and where the thumb was grabbed (from its top). */
     private var held: String? = null
     private var grab = 0.0
+    /** The area being dragged ([Ui.drag]) while the button is held. */
+    private var dragging: Hit? = null
 
     /**
      * The screen's size against the game's GUI: below 1 on a small GUI (the default window, the automatic scale on a
@@ -253,6 +269,9 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
         scrolls.remove(id)
     }
 
+    /** Whether the scroll area [id] is scrolled down from its top. */
+    protected fun scrolled(id: String) = (scrolls[id]?.offset ?: 0) > 0
+
     override fun extractRenderState(graphics: GuiGraphicsExtractor, realX: Int, realY: Int, a: Float) {
         val mouseX = (realX / zoom).toInt()
         val mouseY = (realY / zoom).toInt()
@@ -285,7 +304,12 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
             held = area.id
             return true
         }
-        val hit = hits.lastOrNull { it.onClick != null && it.contains(event.x(), event.y()) } ?: return false
+        val hit = hits.lastOrNull { (it.onClick != null || it.onDrag != null) && it.contains(event.x(), event.y()) } ?: return false
+        hit.onDrag?.let { drag ->
+            dragging = hit
+            drag(event.x(), event.y())
+            return true
+        }
         Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1f))
         hit.onClick!!()
         return true
@@ -293,14 +317,19 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
 
     override fun mouseDragged(real: MouseButtonEvent, dx: Double, dy: Double): Boolean {
         val event = real.scaled()
+        dragging?.onDrag?.let { drag ->
+            drag(event.x(), event.y())
+            return true
+        }
         val area = held?.let(scrolls::get) ?: return super.mouseDragged(event, dx / zoom, dy / zoom)
         area.dragTo(event.y() - grab)
         return true
     }
 
     override fun mouseReleased(real: MouseButtonEvent): Boolean {
-        if (held == null) return super.mouseReleased(real.scaled())
+        if (held == null && dragging == null) return super.mouseReleased(real.scaled())
         held = null
+        dragging = null
         return true
     }
 

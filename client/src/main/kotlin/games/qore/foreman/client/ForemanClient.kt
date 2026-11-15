@@ -45,6 +45,7 @@ object ForemanClient : ClientModInitializer {
         Library.init()
         DisplayEditor.init()
         games.qore.foreman.client.regions.RegionsTool.init()
+        games.qore.foreman.client.objects.ObjectsTool.init()
         ItemModels.init()
         EditorMode.init()
         games.qore.foreman.client.overlays.HiddenBlocks.init()

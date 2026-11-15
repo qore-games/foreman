@@ -67,7 +67,7 @@ object EditorPanel {
             val lit = t === tool
             val usable = t.available()
             if (lit) ui.rect(2, y - 2, w - 4, TOOL_ROW, Theme.PANEL_HOVER)
-            if (i < 9) ui.text("${i + 1}", PAD, y, if (lit) Theme.ACCENT else Theme.FAINT)
+            if (i < 10) ui.text("${(i + 1) % 10}", PAD, y, if (lit) Theme.ACCENT else Theme.FAINT)
             ui.text(ui.fit(t.title, inner - 12), PAD + 12, y, when {
                 lit -> Theme.TEXT
                 usable -> Theme.MUTED

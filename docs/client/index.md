@@ -13,6 +13,8 @@ The mod works on any server. Everything it adds starts from the [hub](hub.md) (+
   furniture (placing needs the Foreman plugin).
 - [Display editor](displays.md): select item, block and text displays (furniture too) by what they draw, and move,
   turn and scale them with a gizmo (saving needs the Foreman plugin).
+- [World objects](objects.md): what the server's plugins draw with entities and let you edit (cables, props): outlined,
+  selected, their anchors moved and their fields edited in a form, new ones placed (needs the Foreman plugin).
 - [Plugin messages and helpers](plugin-messages.md): a log of plugin channels, copying your position.
 - [Resource packs](resource-packs.md): faster reloads that keep the game going, their timings and their warnings.
 - [Keys and commands](keys-commands.md): every key and client command.

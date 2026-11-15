@@ -109,7 +109,8 @@ class LayoutType private constructor(
 /**
  * A field of a [LayoutType]'s data: its [name] (the key in `data`), its [type], what builders read ([label],
  * [description]), whether it must be set ([isRequired]), its [defaultValue] (what a point or area without it reads),
- * the [values] of a choice, the [min] and [max] of a number. Immutable: each call returns a changed copy.
+ * the [values] of a choice, the [min] and [max] of a number, the [group] it shows under in forms and the fields its
+ * choices depend on ([dependsOn]). Immutable: each call returns a changed copy.
  */
 class LayoutField private constructor(
     val name: String,
@@ -121,18 +122,21 @@ class LayoutField private constructor(
     val values: List<String>,
     val min: Double?,
     val max: Double?,
+    val group: String?,
+    val dependsOn: List<String>,
 ) {
     /**
      * What a field holds: text ([STRING]), whole ([INT]) or decimal ([NUMBER]) numbers, [BOOL], one of [values]
      * ([ENUM]), a colour `"#rrggbb"` ([COLOR]), a direction (a yaw in degrees, Minecraft's: 0 south, 90 west), which
-     * turns with the asset or region it is pasted or moved with ([YAW]), the name of an area of the same world ([AREA]).
+     * turns with the asset or region it is pasted or moved with ([YAW]), the name of an area of the same world ([AREA]),
+     * another thing builders pick in the world ([TARGET]: a [PanelTarget], as its JSON map in data).
      */
-    enum class Type { STRING, INT, NUMBER, BOOL, ENUM, COLOR, YAW, AREA }
+    enum class Type { STRING, INT, NUMBER, BOOL, ENUM, COLOR, YAW, AREA, TARGET }
 
     private fun copy(
         label: String = this.label, description: String = this.description, required: Boolean = isRequired, default: Any? = defaultValue,
-        min: Double? = this.min, max: Double? = this.max,
-    ) = LayoutField(name, type, label, description, required, default, values, min, max)
+        min: Double? = this.min, max: Double? = this.max, group: String? = this.group, dependsOn: List<String> = this.dependsOn,
+    ) = LayoutField(name, type, label, description, required, default, values, min, max, group, dependsOn)
 
     fun label(label: String) = copy(label = label)
 
@@ -156,13 +160,27 @@ class LayoutField private constructor(
 
     fun max(max: Double) = copy(max = max)
 
+    /**
+     * The heading it shows under in the editor's forms (`Inputs`), with the other fields of that group; without one, under
+     * its type's name. In a [world object][ObjectKind]'s panel, a [Section] of the same title shows under that heading too.
+     * A [YAW] field without a group shows with the object's position.
+     */
+    fun group(title: String) = copy(group = title.trim().ifEmpty { null })
+
+    /**
+     * Its choices depend on the values of the fields [names] (the outputs of the thing another field links): a
+     * [world object][ObjectKind]'s form asks its [ObjectHandler.choices] for them as the builder changes those fields.
+     * [values] stays every choice it may take, which the checks hold it to.
+     */
+    fun dependsOn(vararg names: String) = copy(dependsOn = names.toList())
+
     companion object {
         private val NAME = Regex("[a-z][a-z0-9_]*")
 
         private fun of(name: String, type: Type, values: List<String> = emptyList()): LayoutField {
             require(name.matches(NAME)) { "Field names are lowercase letters, digits and _: '$name'" }
             val label = name.replace('_', ' ').replaceFirstChar { it.uppercase() }
-            return LayoutField(name, type, label, "", false, null, values, null, null)
+            return LayoutField(name, type, label, "", false, null, values, null, null, null, emptyList())
         }
 
         @JvmStatic fun string(name: String) = of(name, Type.STRING)
@@ -176,12 +194,16 @@ class LayoutField private constructor(
         @JvmStatic fun color(name: String) = of(name, Type.COLOR)
         @JvmStatic fun yaw(name: String) = of(name, Type.YAW)
         @JvmStatic fun area(name: String) = of(name, Type.AREA)
+
+        /** Another thing, picked in the world: an entity, a block, a world object ([PanelTarget]). */
+        @JvmStatic fun target(name: String) = of(name, Type.TARGET)
     }
 }
 
 /**
- * The `data` of a point or area: its field values (String, Double, Boolean, List or Map, as JSON has them), with the
- * defaults of its declared types filled in where it has none.
+ * The `data` of a point, an area or a world object: its field values (String, Double, Boolean, List or Map, as JSON has
+ * them; a target field's is its JSON map, [target] reads it), with the defaults of its declared types filled in where it
+ * has none.
  */
 class LayoutData(values: Map<String, Any?>) {
     private val values: Map<String, Any?> = java.util.Collections.unmodifiableMap(LinkedHashMap(values))
@@ -205,6 +227,13 @@ class LayoutData(values: Map<String, Any?>) {
     fun bool(name: String): Boolean? = values[name] as? Boolean
 
     fun bool(name: String, fallback: Boolean): Boolean = bool(name) ?: fallback
+
+    /** A target field ([LayoutField.Type.TARGET]): the thing it names; null when unset or not a target. */
+    fun target(name: String): PanelTarget? = when (val v = values[name]) {
+        is PanelTarget -> v
+        is Map<*, *> -> runCatching { @Suppress("UNCHECKED_CAST") PanelTarget.of(v as Map<String, *>) }.getOrNull()
+        else -> null
+    }
 
     /** A colour field, `0xRRGGBB`; null when unset or not `#rrggbb`. */
     fun color(name: String): Int? = string(name)?.removePrefix("#")?.takeIf { it.length == 6 }?.toIntOrNull(16)

@@ -121,11 +121,13 @@ class TestPlayers(private val plugin: Foreman) : Listener {
         (Bukkit.getPluginManager().permissions.map { it.name } + grant).forEach { attachment.setPermission(it, true) }
         attachments[player.uniqueId] = attachment
         player.updateCommands()
+        plugin.bridge?.permissionsChanged(player)
     }
 
     private fun detach(player: Player) {
         attachments.remove(player.uniqueId)?.let { runCatching { player.removeAttachment(it) } }
         player.updateCommands()
+        plugin.bridge?.permissionsChanged(player)
     }
 
     private fun save() {

@@ -14,6 +14,7 @@ features:
   # test-players: true  # Registered test players let through the whitelist, every permission only when elevated
   # plugin-tools: true  # Tools other plugins publish, and Foreman's tools for other plugins
   # learning: true      # The AI saving lessons and skills for every later session
+  # panels: true        # Plugins' panels and relations in the mod's editor, and the panel tools (they change plugins' things)
 
 mcp:
   # Bind to localhost unless the AI client runs on another machine. The server speaks plain HTTP: beyond this

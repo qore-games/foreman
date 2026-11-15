@@ -17,6 +17,7 @@ enum class Feature(val key: String, val about: String, val production: Boolean) 
     TEST_PLAYERS("test-players", "Registered test players (test clients, bots) let through the whitelist, with every permission only when elevated", false),
     PLUGIN_TOOLS("plugin-tools", "Tools other plugins publish, and Foreman's tools for other plugins", false),
     LEARNING("learning", "The AI saving lessons and skills for every later session", false),
+    PANELS("panels", "Plugins' panels and relations: builders see and change their things in the mod's editor, the AI with the panel tools", false),
     ;
 
     companion object {
@@ -66,6 +67,7 @@ class Features(val preset: String, private val on: Set<Feature>, /** The ones `f
         fun needs(tool: Tool): List<Feature> {
             val known = ForemanTool.of(tool.name) ?: return listOf(Feature.PLUGIN_TOOLS)
             return when {
+                known.group == "Panels" -> listOf(Feature.PANELS)
                 known.world -> if (tool.modifies) listOf(Feature.WORLD, Feature.WORLD_EDIT) else listOf(Feature.WORLD)
                 known == ForemanTool.SERVER_COMMAND || known == ForemanTool.SERVER_RELOAD_PLUGIN -> listOf(Feature.CONSOLE)
                 known == ForemanTool.TEST_PLAYERS -> listOf(Feature.TEST_PLAYERS)

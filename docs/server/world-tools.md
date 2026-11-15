@@ -13,9 +13,10 @@ overlays and furniture that go with them.
 | **Buildings** | `build_structure` (a whole building from [templates](building-templates.md)), `demolish` (puts the land back), `list_styles` |
 | **Library** | `list_assets`, `preview_asset`, `paste_asset`, `scatter_assets`, `save_asset` ([schematic library](assets.md)) |
 | **Displays** | `list_displays`, `edit_displays` (move, turn, scale, stretch), `spawn_display`, `remove_displays`, `list_models` ([displays and models](displays.md)) |
+| **Objects** | `object_kinds`, `list_objects`, `place_objects`, `edit_objects`, `remove_objects`: what plugins draw with entities and declare ([world objects](../developers/world-objects.md)) |
 | **Checking** | `check`, `measure_site`, `repair_terrain`, `connect_doors` |
 | **Context** | `set_mark`, `claim`, `world_profile`, `points` ([world context](world-context.md)) |
-| **Undo** | `undo` reverts your own changes, furniture and displays included, `history` lists them ([undo](#undo)) |
+| **Undo** | `undo` reverts your own changes, furniture, displays and objects included, `history` lists them ([undo](#undo)) |
 
 ## check
 

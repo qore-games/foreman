@@ -15,9 +15,9 @@ unbinds) or in Minecraft's controls.
 
 ## Editor mode's keys
 
-The building tools have no key bindings of their own: [editor mode](editor.md) (++b++) lists them, ++1++ to ++9++
+The building tools have no key bindings of their own: [editor mode](editor.md) (++b++) lists them, ++1++ to ++0++
 pick one, and while it is on the current tool's keys are the editor's, before the game's (++f++ doesn't swap hands,
-++1++ to ++9++ don't change the hotbar slot). ++esc++ steps back, then leaves. The hub's Keys section lists every
+++1++ to ++0++ don't change the hotbar slot). ++esc++ steps back, then leaves. The hub's Keys section lists every
 tool with its keys.
 
 | # | Tool | Keys |
@@ -31,6 +31,7 @@ tool with its keys.
 | 7 | [Measure](editor.md#measuring) | ++backspace++ remove the last measure, ++delete++ clear them all |
 | 8 | [Location editor](locations.md#editing) | ++k++ / ++u++ / ++j++ to your feet / eyes / block, ++h++ gizmo, ++n++ sources and categories |
 | 9 | [WorldEdit selection](selection.md#the-worldedit-selection) | ++n++ the hub's Selection page |
+| 0 | [World objects](objects.md) | ++c++ new object, ++n++ the [panel](objects.md#the-panel) of the selected object (else of what you aim at), ++v++ next anchor, ++p++ anchor where you aim, ++delete++ delete or [unlink](panels.md#relations), ++z++ undo, ++k++ [link mode](panels.md#linking), and the [keys plugins add](objects.md#keys-from-plugins) |
 | any | [Snapping](editor.md#gizmos-and-snapping) of every gizmo | ++g++ the step of what the gizmo does now: moving (free, 1/16 to 1/2, block grid), turning or scaling; ++ctrl++ held while dragging: free |
 | any | Overlays | ++x++ [hidden blocks](editor.md#hidden-blocks), ++l++ [displays per chunk](editor.md#displays-per-chunk) |
 
