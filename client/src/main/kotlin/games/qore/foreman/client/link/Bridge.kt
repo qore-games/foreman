@@ -91,12 +91,14 @@ data class InstanceSource(val world: String = "", val area: String = "")
 
 /**
  * A pasted copy of an asset: where it is ([box], min then max corner), the [asset] and its [source] area, its quarter
- * turn [rotate] (degrees clockwise), the points it carries, and who pasted it ([by]) and when ([created]).
+ * turn [rotate] (degrees clockwise) after a [mirror] east–west, the points it carries, and who pasted it ([by]) and when
+ * ([created]). [parent]: the copy it is nested in (pasted as part of that one's asset); [detached]: syncs leave it.
  */
 @Serializable
 data class AssetInstance(
     val id: String, val world: String = "", val dim: String = "", val asset: String = "", val source: InstanceSource? = null, val box: List<Int>,
     val rotate: Int = 0, val points: List<InstancePoint> = emptyList(), val created: kotlinx.serialization.json.JsonElement? = null, val by: String = "",
+    val mirror: Boolean = false, val detached: Boolean = false, val parent: String? = null,
 ) {
     val blockBox get() = BlockBox.of(box[0], box[1], box[2], box[3], box[4], box[5])
 

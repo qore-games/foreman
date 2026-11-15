@@ -127,7 +127,7 @@ object Library {
      * cleared to air, the destination replaced), their block data ([ChunkBlockData]), the entities (teleported: each
      * keeps its UUID, its position and yaw turned) and players standing there, the points (turned), and the areas and
      * instances lying inside it (an asset area's own area, an instance's own record: their boxes, points and written
-     * blocks turned). Announces it with a [RegionCopyEvent] ([RegionCopyEvent.Kind.MOVE]). Undo moves it all back. Main
+     * blocks turned, their fingerprints taken again). Announces it with a [RegionCopyEvent] ([RegionCopyEvent.Kind.MOVE]). Undo moves it all back. Main
      * thread.
      */
     fun move(scope: EditScope, from: Box, placement: Placement): Moved {
@@ -146,11 +146,14 @@ object Library {
         val instances = worlds.instances(world.name).filter { from.containsBox(it.box) }
         val movedPoints = points.map { placement.point(it) }
         val movedInstances = instances.map { i ->
+            val (rotate, mirror) = placement.compose(i.rotate, i.mirror)
             i.copy(
-                origin = placement.block(i.origin), rotate = (i.rotate + placement.rotate) % 360, box = placement.box(i.box),
+                origin = placement.block(i.origin), rotate = rotate, mirror = mirror, box = placement.box(i.box),
                 points = i.points.map { placement.point(it) }, written = i.written?.moved(placement),
             )
         }
+        // Their fingerprints are taken again where they land; those changed before stay changed.
+        val changed = instances.filter { Fingerprints.changed(world, it) }.map { it.id }.toSet()
 
         // Undo runs the restores newest first: the block data (recorded below) goes back before this puts the rest.
         var moved = false
@@ -168,7 +171,7 @@ object Library {
                 worlds.addPoints(world.name, points)
             }
             areas.forEach { worlds.put(it) }
-            instances.forEach { worlds.putInstance(it) }
+            worlds.putInstances(instances)
             // An entity put back by a later undo (a deleted instance's) is another entity now: the block data put back
             // above still names the one recorded.
             Bukkit.getPluginManager().callEvent(back.event(RegionCopyEvent.Kind.MOVE, world, to, world, entities.associate { it.id to Edits.current(it.id) }))
@@ -186,7 +189,7 @@ object Library {
         val blockData = ChunkBlockData.copy(data, placement, world, scope.change, from = world, clear = to)
         carryPlayers(world, from, placement)
         for (e in entities) {
-            val entity = Bukkit.getEntity(e.id) ?: continue
+            val entity = world.getEntity(e.id) ?: continue
             entity.teleport(placement.location(e.at, world))
             if (entity is Hanging && e.facing != null) entity.setFacingDirection(placement.face(e.facing), true)
         }
@@ -195,10 +198,14 @@ object Library {
             worlds.addPoints(world.name, movedPoints)
         }
         areas.forEach { a -> worlds.put(placement.area(a)) }
-        movedInstances.forEach { worlds.putInstance(it) }
+        worlds.putInstances(movedInstances)
         moved = true
         Bukkit.getPluginManager().callEvent(placement.event(RegionCopyEvent.Kind.MOVE, world, from, world, entities.associate { it.id to it.id }))
-        return Moved(from, to, entities.size, blockData, points.size, areas.size, movedInstances)
+        val fingerprinted = movedInstances.map { i ->
+            if (i.fingerprint == null) i else i.copy(fingerprint = if (i.id in changed) Fingerprints.CHANGED else Fingerprints.of(world, i))
+        }
+        worlds.putInstances(fingerprinted)
+        return Moved(from, to, entities.size, blockData, points.size, areas.size, fingerprinted)
     }
 
     /**

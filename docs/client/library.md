@@ -121,8 +121,12 @@ library to pick another):
 | Scroll, ++r++ | Turn it a quarter (it starts with its front toward you) |
 | Right click | Pin it where it is: the gizmo appears, drag an arrow or a square to nudge it a block at a time (scroll while dragging: one more block) |
 | Right click again, ++enter++ | Paste it. ++enter++ pastes at once, pinned or not |
+| ++z++ | Undo your last change: the last paste, most often |
 | Left click | Unpin it; while it follows, leave the tool |
 | ++esc++ | Leave the tool |
+
+The selection tool's ++ctrl+v++ places your [clipboard](selection.md#copy-and-paste) with this tool the same way, as it
+was copied (not turned toward you); leaving goes back to the selection tool.
 
 ### The ghost
 

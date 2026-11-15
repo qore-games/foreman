@@ -39,6 +39,8 @@ class Change(var label: String, val world: World, val author: Caller = Caller.cu
     val spawnedEntities = mutableListOf<Pair<UUID, Location>>()
     val spawnedFurniture = mutableListOf<UUID>()
     val removedFurniture = mutableListOf<RemovedFurniture>()
+    /** Changes made with it in other worlds, after it ([Edits.join]): undone with it, as one step. */
+    val linked = mutableListOf<Change>()
     var blocks = 0
     val time = System.currentTimeMillis()
     /** Its place in the order changes were recorded, everyone's. */
@@ -133,10 +135,11 @@ object Edits {
         scoped(world, label) { block(it.session, it.change) }
 
     /**
-     * Runs [block] with an [EditScope] that can flush midway. All its sessions are one undo step. When [block] throws,
-     * everything it already wrote is rolled back before the error propagates: a failed edit leaves the world as it was.
+     * Runs [block] with an [EditScope] that can flush midway. All its sessions are one undo step, recorded unless not a
+     * [step] of its own: a part of one that [join] records. When [block] throws, everything it already wrote is rolled
+     * back before the error propagates: a failed edit leaves the world as it was.
      */
-    fun <T> scoped(world: World, label: String, block: (EditScope) -> T): Pair<T, Change> = Sync.main {
+    fun <T> scoped(world: World, label: String, step: Boolean = true, block: (EditScope) -> T): Pair<T, Change> = Sync.main {
         val scope = EditScope(world, Change(label, world))
         scope.open()
         val result = try {
@@ -148,9 +151,32 @@ object Edits {
             throw e
         }
         scope.close()
-        record(scope.change)
+        if (step) record(scope.change) else ordered(scope.change)
         result to scope.change
     }.also { Locks.verify(it.second) }
+
+    /**
+     * Makes [changes], made one after the other by one author (in several worlds), one undo step under [label], the
+     * newest of their author's history: the first holds the others ([Change.linked]). Those recorded leave the history;
+     * the step is recorded again, whether or not the history still held its first change. Many changes are best made
+     * as no [scoped] step of their own: each recorded pushes one of the author's oldest changes out. Returns the first.
+     */
+    fun join(changes: List<Change>, label: String): Change? {
+        val head = changes.minByOrNull { it.order } ?: return null
+        head.label = label
+        val rest = changes.filter { it !== head }
+        synchronized(histories) {
+            changes.forEach { c -> histories[c.author.id]?.remove(c) }
+            histories.values.removeIf { it.isEmpty() }
+        }
+        rest.sortedBy { it.order }.forEach { c ->
+            head.linked += c
+            head.linked += c.linked
+            head.blocks += c.blocks
+        }
+        record(head)
+        return head
+    }
 
     /** Takes [change] back at once, out of its author's history: a change refused once made ([Locks.verify]). */
     fun revert(change: Change) = Sync.main {
@@ -186,10 +212,21 @@ object Edits {
         while (true) c = replacedEntities[c] ?: return c
     }
 
-    /** The entity [id] (or what it is now), loading the chunk at [at] when it isn't loaded. Main thread. */
-    fun entity(id: UUID, at: Location?): org.bukkit.entity.Entity? {
+    /** The entity [id] (or what it is now) of [at]'s world, loading the chunk at [at] when it isn't loaded. Main thread. */
+    fun entity(id: UUID, at: Location): org.bukkit.entity.Entity? {
         val now = current(id)
-        return Bukkit.getEntity(now) ?: at?.chunk?.entities?.firstOrNull { it.uniqueId == now }
+        return at.world.getEntity(now) ?: at.chunk.entities.firstOrNull { it.uniqueId == now }
+    }
+
+    /**
+     * The loaded entity [id] of [world]; with none, of the one world that has it (worlds cloned from one map share
+     * entity UUIDs: a [ToolError] asks which when several do). Main thread.
+     */
+    fun loaded(world: World?, id: UUID): org.bukkit.entity.Entity? {
+        if (world != null) return world.getEntity(id)
+        val found = Bukkit.getWorlds().mapNotNull { it.getEntity(id) }
+        if (found.size > 1) throw ToolError("$id is in several worlds (${found.joinToString { it.world.name }}): give world")
+        return found.firstOrNull()
     }
 
     private fun rollback(change: Change) {
@@ -223,10 +260,13 @@ object Edits {
         change.touch(box)
     }
 
-    /** Adds [change] to its author's history. Over the snapshot budget, the oldest changes of anyone's leave. */
+    /**
+     * Adds [change] to its author's history, the newest, in its place in the order (given now unless [ordered] before).
+     * Over the snapshot budget, the oldest changes of anyone's leave.
+     */
     fun record(change: Change) {
         synchronized(histories) {
-            change.order = ++recorded
+            if (change.order == 0L) change.order = ++recorded
             val history = histories.getOrPut(change.author.id) { ArrayDeque() }
             history.push(change)
             if (history.size > HISTORY_SIZE) history.removeLast()
@@ -239,6 +279,9 @@ object Edits {
             histories.values.removeIf { it.isEmpty() }
         }
     }
+
+    /** Gives [change] its place in the order changes are made, unrecorded: a part of a step [join] records. */
+    private fun ordered(change: Change) = synchronized(histories) { change.order = ++recorded }
 
     /** What an undo did: the labels undone, newest first, and the change it [stopped] at, which later changes [by] others overlap. */
     class Undone(val labels: List<String>, val stopped: Change? = null, val by: List<Change> = emptyList(), val locked: Area? = null) {
@@ -264,31 +307,37 @@ object Edits {
     /** Waits, off the main thread and 2 s at most, until FAWE has [Change.written] the histories of [changes], so their boxes are known. */
     fun await(changes: List<Change>) {
         if (Bukkit.isPrimaryThread()) return
+        val all = changes.flatMap { listOf(it) + it.linked }
         val until = System.currentTimeMillis() + 2000
-        while (changes.any { !it.written } && System.currentTimeMillis() < until) Thread.sleep(10)
+        while (all.any { !it.written } && System.currentTimeMillis() < until) Thread.sleep(10)
     }
 
     private fun undoNow(author: Caller, count: Int, force: Boolean): Undone {
         val undone = mutableListOf<String>()
         repeat(count) {
             val change = synchronized(histories) { histories[author.id]?.peekFirst() } ?: return Undone(undone)
-            if (!force) overlapping(change).takeIf { it.isNotEmpty() }?.let { return Undone(undone, change, it) }
-            change.box?.let { Locks.locks(change.world.name, it) }?.let { return Undone(undone, change, locked = it) }
+            val steps = change.linked.asReversed() + change
+            if (!force) steps.flatMap { overlapping(it, change) }.distinct().takeIf { it.isNotEmpty() }?.let { return Undone(undone, change, it) }
+            steps.firstNotNullOfOrNull { c -> c.box?.let { Locks.locks(c.world.name, it) } }?.let { return Undone(undone, change, locked = it) }
             synchronized(histories) {
                 histories[author.id]?.remove(change)
                 histories.values.removeIf { it.isEmpty() }
             }
-            rollback(change)
-            Furniture.undo(change)
+            steps.forEach {
+                rollback(it)
+                Furniture.undo(it)
+            }
             undone += change.label
         }
         return Undone(undone)
     }
 
-    /** The changes others recorded after [change] whose box overlaps its box, newest first. */
-    private fun overlapping(change: Change): List<Change> {
+    /** The changes others recorded after [head] (whose step [change] is) that overlap [change]'s box, theirs linked included, newest first. */
+    private fun overlapping(change: Change, head: Change = change): List<Change> {
         val box = change.box ?: return emptyList()
-        return recent.filter { it.order > change.order && it.author.id != change.author.id && it.world == change.world && it.box?.intersect(box) != null }
+        return recent.filter { c ->
+            c.order > head.order && c.author.id != head.author.id && (listOf(c) + c.linked).any { it.world == change.world && it.box?.intersect(box) != null }
+        }
     }
 
     /** A line of a history: when, who, what, where. */

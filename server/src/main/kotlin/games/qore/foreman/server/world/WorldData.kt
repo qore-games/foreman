@@ -95,18 +95,35 @@ data class Point(
 
 /**
  * An asset of the library pasted into [world] ([AreaAssets], `paste_asset`): its [id] (`<asset>-<n>`, unique in the
- * world), the [asset] id, the area it came from (area assets), where its bottom centre went ([origin]) turned [rotate]°,
- * the [box] it occupies, the [points] and [areas] it brought (named `<id>/…`), its [entities] (the asset's UUID → the
- * copy's), when and by whom, and the blocks it [written] (null for a paste recorded before Foreman kept them).
+ * world), the [asset] id, the area it came from (area assets), where its bottom centre went ([origin]) mirrored east–west
+ * when [mirror] then turned [rotate]°, the [box] it occupies, the [points] and [areas] it brought (named `<id>/…`), its
+ * [entities] (the asset's UUID → the copy's), when and by whom, and the blocks it [written] (null for a paste recorded
+ * before Foreman kept them).
+ *
+ * A copy pasted as part of another's asset (an instance lying in the asset's area) is nested: its id is `<parent>/<its
+ * id in the asset>`, its placement the parent's composed with its own; the parent's own points, areas, entities and
+ * [fingerprint] leave out its children's. [detached]: it no longer follows its asset (syncs leave it, and a sync of its
+ * parent keeps its box as it is). [fingerprint]: what its paste left ([Fingerprints]), refreshed by syncs, moves and
+ * attach; null when unknown. [edited]: known changed when that fingerprint was taken (its source copy was).
  */
 data class Instance(
     val id: String, val world: String, val asset: String, val sourceWorld: String?, val sourceArea: String?,
     val origin: BlockVector3, val rotate: Int, val box: Box, val points: List<Point>, val areas: List<String>,
     val entities: Map<UUID, UUID>, val created: Long, val by: String, val written: Written? = null,
+    val mirror: Boolean = false, val detached: Boolean = false, val fingerprint: String? = null, val edited: Boolean = false,
 ) {
-    fun describe() = "$id: $asset at ${Box.fmt(origin)}" + (if (rotate != 0) " turned $rotate°" else "") + ", ${box.describe()}" +
+    /** The id of the copy it is nested in, null at the top. */
+    val parent: String? get() = id.substringBeforeLast('/', "").ifEmpty { null }
+
+    /** Whether it lies within [other]'s tree: one of its children, or theirs. */
+    fun isUnder(other: String) = id.startsWith("$other/")
+
+    /** Its turn and mirror in words: `turned 90°, mirrored`. */
+    val orientation: String get() = listOfNotNull(if (rotate != 0) "turned $rotate°" else null, if (mirror) "mirrored" else null).joinToString(", ")
+
+    fun describe() = "$id: $asset at ${Box.fmt(origin)}" + orientation.let { if (it.isEmpty()) "" else " $it" } + ", ${box.describe()}" +
         (if (points.isNotEmpty()) ", ${points.size} points" else "") + (if (areas.isNotEmpty()) ", ${areas.size} areas" else "") +
-        (if (entities.isNotEmpty()) ", ${entities.size} entities" else "") + " — by $by"
+        (if (entities.isNotEmpty()) ", ${entities.size} entities" else "") + (if (detached) " [detached]" else "") + " — by $by"
 }
 
 /**
@@ -404,7 +421,7 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
         WorldInstance(
             i.id, world, i.asset, i.sourceWorld, i.sourceArea, i.origin.x(), i.origin.y(), i.origin.z(), i.rotate,
             BoundingBox(b.min.x().toDouble(), b.min.y().toDouble(), b.min.z().toDouble(), b.max.x() + 1.0, b.max.y() + 1.0, b.max.z() + 1.0),
-            i.points.map { api(world, it) }, i.areas, i.entities, i.created, i.by,
+            i.points.map { api(world, it) }, i.areas, i.entities, i.created, i.by, i.mirror, i.parent, i.detached,
         )
     }
 
@@ -417,18 +434,36 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
 
     fun instance(world: String, id: String): Instance? = synchronized(worlds) { entry(world).instances[id] }
 
-    /** A free instance id in [world] for an asset named [name]: `<name>-<n>`, the lowest n not taken. */
+    /** A free instance id in [world] for an asset named [name]: `<name>-<n>`, the lowest n not taken (nor a nested copy's parent). */
     fun instanceId(world: String, name: String): String {
         val base = name.substringAfterLast('/').lowercase().replace(Regex("[^a-z0-9_-]+"), "_").trim('_').ifEmpty { "asset" }
-        val taken = synchronized(worlds) { entry(world).instances.keys.toSet() }
+        val taken = synchronized(worlds) { entry(world).instances.keys.flatMap { id -> id.split('/').runningReduce { a, b -> "$a/$b" } }.toSet() }
         return generateSequence(1) { it + 1 }.map { "$base-$it" }.first { it !in taken }
     }
+
+    /** The instances of [world] nested in [id], at any depth. */
+    fun descendants(world: String, id: String): List<Instance> = instances(world).filter { it.isUnder(id) }
 
     /** Adds or replaces [instance]. */
     fun putInstance(instance: Instance) {
         val e = entry(instance.world)
         synchronized(worlds) { e.instances[instance.id] = instance }
         save(instance.world, WorldDataChangeEvent.Part.INSTANCES)
+    }
+
+    /** Adds or replaces [list], instances of one world, saved once. */
+    fun putInstances(list: List<Instance>) {
+        val world = list.firstOrNull()?.world ?: return
+        val e = entry(world)
+        synchronized(worlds) { list.forEach { e.instances[it.id] = it } }
+        save(world, WorldDataChangeEvent.Part.INSTANCES)
+    }
+
+    /** Removes the instances [ids] of [world], saved once. */
+    fun removeInstances(world: String, ids: Collection<String>) {
+        val e = entry(world)
+        val removed = synchronized(worlds) { ids.count { e.instances.remove(it) != null } }
+        if (removed > 0) save(world, WorldDataChangeEvent.Part.INSTANCES)
     }
 
     fun removeInstance(world: String, id: String): Instance? {
@@ -444,6 +479,10 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
         if (i.sourceWorld != null) add("source", JsonObject().apply { addProperty("world", i.sourceWorld); addProperty("area", i.sourceArea) })
         add("origin", JsonArray().apply { add(i.origin.x()); add(i.origin.y()); add(i.origin.z()) })
         addProperty("rotate", i.rotate)
+        if (i.mirror) addProperty("mirror", true)
+        if (i.detached) addProperty("detached", true)
+        i.fingerprint?.let { addProperty("fingerprint", it) }
+        if (i.edited) addProperty("edited", true)
         add("box", JsonArray().apply { listOf(i.box.min.x(), i.box.min.y(), i.box.min.z(), i.box.max.x(), i.box.max.y(), i.box.max.z()).forEach { add(it) } })
         if (i.points.isNotEmpty()) add("points", JsonArray().apply { i.points.forEach { add(json(it)) } })
         if (i.areas.isNotEmpty()) add("areas", JsonArray().apply { i.areas.forEach { add(it) } })
@@ -465,6 +504,8 @@ class WorldData(private val plugin: Foreman) : Listener, ForemanWorlds {
             (o.get("areas") as? JsonArray)?.map { it.asString }.orEmpty(),
             (o.get("entities") as? JsonObject)?.entrySet()?.associate { (k, v) -> UUID.fromString(k) to UUID.fromString(v.asString) }.orEmpty(),
             o.get("created")?.asLong ?: 0L, o.get("by")?.asString ?: "",
+            mirror = o.get("mirror")?.asBoolean ?: false, detached = o.get("detached")?.asBoolean ?: false,
+            fingerprint = o.get("fingerprint")?.asString, edited = o.get("edited")?.asBoolean ?: false,
         ).let { i -> i.copy(written = o.get("written")?.asString?.let { runCatching { Written.decode(i.box, it) }.getOrNull() }) }
     }.getOrNull()
 

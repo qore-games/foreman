@@ -50,8 +50,11 @@ interface FurnitureProvider {
     fun place(type: FurnitureType, player: Player, against: Block, face: BlockFace, yaw: Float): PlacedFurniture? =
         place(type, player, against, face)
 
-    /** Removes the furniture [handle] (from [PlacedFurniture.handle]) without drops; false when it is gone. */
-    fun remove(handle: UUID): Boolean
+    /**
+     * Removes the furniture [handle] (from [PlacedFurniture.handle]) of [world] without drops; false when it is gone.
+     * Look it up in [world] only: worlds cloned from one map hold furniture with the same handles.
+     */
+    fun remove(world: World, handle: UUID): Boolean
 }
 
 /** A kind of furniture. */

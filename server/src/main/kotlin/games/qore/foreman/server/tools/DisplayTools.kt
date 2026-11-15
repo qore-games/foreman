@@ -268,7 +268,7 @@ object DisplayTools {
                 }
                 try {
                     val request = request(e, true)
-                    val found = DisplayEdits.find(uuid(raw)) ?: throw ToolError("no loaded display has this uuid (list_displays loads them)")
+                    val found = DisplayEdits.find(world, uuid(raw)) ?: throw ToolError("no loaded display has this uuid (list_displays loads them)")
                     if (world != null && found.display.world != world) throw ToolError("it is in world ${found.display.world.name}")
                 Locks.guard(found.display.location)
                     val c = change ?: Change("edit displays", found.display.world).also { change = it }
@@ -284,7 +284,7 @@ object DisplayTools {
                 Edits.record(it)
             }
             // What each edited display ended as: a furniture keeps its root and takes the move in its transformation.
-            for (raw in edited) DisplayEdits.find(replaced[uuid(raw)] ?: uuid(raw))?.let { poses.add(DisplayEdits.json(it)) }
+            for (raw in edited) DisplayEdits.find(change?.world ?: world, replaced[uuid(raw)] ?: uuid(raw))?.let { poses.add(DisplayEdits.json(it)) }
         }
         if (json) return ToolResult.text(gson.toJson(JsonObject().apply {
             add("edited", JsonArray().apply { edited.forEach { add(it) } })
@@ -348,7 +348,7 @@ object DisplayTools {
         val request = request(args, false)
         val json = json(args)
         val display = Sync.main {
-            val found = DisplayEdits.find(id) ?: throw ToolError("No loaded display has the uuid $id (list_displays loads them)")
+            val found = DisplayEdits.find(world, id) ?: throw ToolError("No loaded display has the uuid $id (list_displays loads them)")
             if (world != null && found.display.world != world) throw ToolError("$id is in world ${found.display.world.name}")
             val from = found.display.location
             val at = Location(from.world, position?.get(0) ?: from.x, position?.get(1) ?: from.y, position?.get(2) ?: from.z, yaw ?: from.yaw, pitch ?: from.pitch)
@@ -378,7 +378,7 @@ object DisplayTools {
             val world = worldName?.let { plugin.world(it) }
             var change: Change? = null
             for (raw in ids) try {
-                val found = DisplayEdits.find(uuid(raw)) ?: throw ToolError("no loaded display has this uuid (list_displays loads them)")
+                val found = DisplayEdits.find(world, uuid(raw)) ?: throw ToolError("no loaded display has this uuid (list_displays loads them)")
                 if (world != null && found.display.world != world) throw ToolError("it is in world ${found.display.world.name}")
                 Locks.guard(found.display.location)
                 val c = change ?: Change("remove displays", found.display.world).also { change = it }

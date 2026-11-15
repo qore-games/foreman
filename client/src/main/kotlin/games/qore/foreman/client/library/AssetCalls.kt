@@ -92,7 +92,11 @@ object AssetCalls {
         array.map { JSON.decodeFromJsonElement<AssetInstance>(it) }
     }, done)
 
+    /** Detaches [copy] from its asset: syncs leave it as it is, until [attach]. */
     fun detach(copy: AssetInstance, done: (Result<String>) -> Unit) = call("detach_instance", args(copy.world) { put("id", copy.id) }, done)
+
+    /** Makes a detached [copy] follow its asset again: its next sync replaces what it holds. */
+    fun attach(copy: AssetInstance, done: (Result<String>) -> Unit) = call("attach_instance", args(copy.world) { put("id", copy.id) }, done)
 
     /** Deletes [copy] from the world: its blocks and the points it carries go. */
     fun deleteCopy(copy: AssetInstance, done: (Result<String>) -> Unit) = call("delete_instance", args(copy.world) { put("id", copy.id) }, done)
@@ -103,8 +107,11 @@ object AssetCalls {
         put("rotate", degrees)
     }, done)
 
-    /** Pastes [copy]'s asset again in its place, as it is now: what was changed in the copy is lost. */
-    fun syncCopy(copy: AssetInstance, done: (Result<String>) -> Unit) = call("sync_instance", args(copy.world) { put("id", copy.id) }, done)
+    /** Pastes [copy]'s asset again in its place, as it is now: what was changed in the copy is lost (the player said yes). */
+    fun syncCopy(copy: AssetInstance, done: (Result<String>) -> Unit) = call("sync_instance", args(copy.world) {
+        put("id", copy.id)
+        put("force", true)
+    }, done)
 
     /** Teleports the player to the asset area [copy] was pasted from (the server loads its world when needed). */
     fun openSource(copy: AssetInstance, done: (Result<String>) -> Unit) = call("open_asset_source", args(copy.world) { put("instance", copy.id) }, done)

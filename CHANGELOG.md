@@ -7,6 +7,19 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ### Building (mod and plugin)
 
+- **Copy and paste.** The selection tool copies the selection (++ctrl+c++) or cuts it (++ctrl+x++, one undo step) into
+  your clipboard, kept by the server, and ++ctrl+v++ places it with the asset placement tool: a ghost at the crosshair,
+  turned with R, pasted with Enter or a right click, again and again, Z undoing the last change. It is the asset paste:
+  blocks, block data, displays and furniture, the entities that stay (markers, item frames, paintings, armor stands,
+  mobs that don't despawn: a cut takes them away too, and its undo puts them back), the points, areas and copies of
+  assets lying in the box,
+  each paste a detached copy of its own (`clipboard-<n>`), so plugins following copies keep its objects to itself (a
+  pasted room's lamp reads its own switch). The AI gets `copy_region` (`cut`), then `paste_asset {name: "clipboard"}` and
+  `asset_content {name: "clipboard"}`; one clipboard per player, shared with their AI chats, until the server restarts.
+  The placement tool takes Z (undo) for assets too. `RegionCopyEvent.clipboard` tells plugins a paste is a clipboard's:
+  its source may have changed, been cut or unloaded since (read what the paste carried, `source` for its coordinates).
+- **Pastes carry marker entities** (where plugins keep data in the world, such as placed lights) besides displays and
+  furniture.
 - **World objects.** Plugins declare the kinds of things they draw with entities (`ForemanObjects` in
   `foreman-server-api`: a point placed by one anchor, or a line by its two ends, with typed fields like layout types and
   a handler that finds, makes, changes and removes them), and builders edit them without Foreman knowing what they
@@ -18,6 +31,24 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   anchors, fill in its form). A kind can be placed like a furniture of the server (`ObjectKind.furniture`): the tool
   shows its model as it will stand on the face looked at, turned by the scroll wheel, and fills in its facing and
   surface fields.
+- **Nested copies, sync everywhere.** An asset area holding pasted copies of other assets (apartments in a building)
+  pastes them as copies nested in the new one: their own instances of their own assets (`<parent>/<child>`), placed
+  with the parent, their entities, points and areas their own; `list_instances` and `instance_info` show the tree, the
+  mod's copies layer too. `sync_asset` pastes a changed asset again over every copy of it in the loaded worlds, nested
+  ones inside their own box only, as one undo step, and lists what it skipped and why; `sync_instance` works the same
+  way. Pastes take a fingerprint of what they left (blocks, block data, entities; nested copies' boxes aside): syncs
+  skip copies changed since unless `force`. What a copy's neighbours change (a fence or a pane joining a block placed
+  beside it, stairs' shape, waterlogging) and entities settling after the paste (a boat, a minecart, an armor stand
+  falling) don't count as changes. A sync over any number of worlds stays one undo step. `detach_instance` is now reversible (the copy stays recorded, flagged
+  detached: syncs leave it, a parent's sync keeps its box as it is), `attach_instance` undoes it (`sync: true`), and
+  `forget_instance` is the old detach. The mod's copy panel attaches a detached copy again, and draws detached copies
+  grey and nested ones thinner.
+- **Mirrored pastes.** `paste_asset {mirror: true}` mirrors an asset east–west before its turn (8 orientations):
+  blocks flipped with their states as WorldEdit flips them, block data, entities' positions and yaws, displays'
+  transformations and block displays' blocks (an asymmetric item model still shows its own side: models can't be
+  mirrored), item frames' and paintings' facing, points and areas. Instances record it; syncs, `rotate_instance` and
+  nesting compose it; `diff_regions` takes `target.mirror`. `RegionCopyEvent` gains `mirror` and `face(BlockFace)`,
+  and its `block`, `position` and `yaw` follow the mirror.
 
 ### Server (Paper plugin)
 
@@ -44,6 +75,11 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   Relations get a state (`Relation.state`: active green with flowing chevrons, blocked red, idle grey), link mode a
   `LinkResult.build` that opens the source's builder filled in, and the objects tool ++f++, the selected object's chain
   only (what it reads and what reads it).
+- **Cloned worlds.** Worlds cloned from one map share their entities' UUIDs, so Foreman looks entities up in their own
+  world: `PanelTarget.findEntity` (an entity target's equality takes its world in), the display, asset and move tools.
+  A display or panel tool without `world` asks for it when several worlds hold that UUID, and `findEntity` on a target
+  without a world finds the entity only in the one world that has it. **Breaking:** `FurnitureProvider.remove(world,
+  handle)` takes the furniture's world (it was `remove(handle)`).
 - **Changing links.** A relation says what may change of it (`Relation.changes(REVERSE, FROM, TO)`) and what it links
   for people once selected (`Relation.detail`, `lamp.power ← hall_switch`); `PanelProvider.relink(ctx, relationId,
   change, to, choice)` reverses it or moves one end to another thing, answering like `link` (done, refused, a question,

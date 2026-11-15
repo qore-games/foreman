@@ -12,13 +12,15 @@ import net.minecraft.world.phys.Vec3
 import kotlin.math.max
 
 /**
- * The pasted copies of assets ([Bridge.instances]) in the world: each one's box, dimmer than the areas, labelled
- * `asset · turn · by`, and the points it carries as small named markers. Drawn as the Pasted copies overlay says, and
- * always while the asset tool is on (which selects them, turns, syncs and deletes them).
+ * The pasted copies of assets ([Bridge.instances]) in the world: each one's box, dimmer than the areas (grey when
+ * detached, thinner when nested in another), labelled `asset · turn · mirrored · detached · by`, and the points it
+ * carries as small named markers. Drawn as the Pasted copies overlay says, and always while the asset tool is on (which
+ * selects them, turns, syncs and deletes them).
  */
 object CopyLayer : OverlayLayer {
     private const val COLOR = 0xFFB89CFF.toInt()
     private const val POINT = 0xFFE6D8FF.toInt()
+    private const val DETACHED = 0xFF9A96A6.toInt()
     /** Points are drawn this close, named closer. */
     private const val POINTS = 48.0
     private const val POINT_NAMES = 16.0
@@ -37,8 +39,9 @@ object CopyLayer : OverlayLayer {
             val distance = box.distanceTo(draw.camera)
             if (distance > range) continue
             val lit = copy.id == AssetTool.hoveredCopy
-            val color = if (lit) Colors.HOVER else Colors.withAlpha(COLOR, 0.6f)
-            AIOverlay.box(draw, box, color, if (lit) 2.5f else 1.5f, if (lit) Colors.withAlpha(color, 0.06f) else 0, o.throughBlocks || lit)
+            val color = if (lit) Colors.HOVER else Colors.withAlpha(if (copy.detached) DETACHED else COLOR, 0.6f)
+            val width = if (lit) 2.5f else if (copy.parent != null) 1f else 1.5f
+            AIOverlay.box(draw, box, color, width, if (lit) Colors.withAlpha(color, 0.06f) else 0, o.throughBlocks || lit)
             if (distance <= o.labelDistance + max(box.sizeX, box.sizeZ) / 2.0) draw.label(AIOverlay.topCenter(box), label(copy), color, o.throughBlocks || lit, 0.8f)
             if (distance <= POINTS) points(draw, copy, o.throughBlocks)
         }
@@ -54,6 +57,8 @@ object CopyLayer : OverlayLayer {
         }
     }
 
-    /** `asset · 90° · by`. */
-    fun label(copy: AssetInstance) = listOf(copy.assetName, "${copy.rotate}°", copy.by).filter { it.isNotEmpty() }.joinToString(" · ")
+    /** `asset · 90° · mirrored · detached · by`. */
+    fun label(copy: AssetInstance) = listOf(
+        copy.assetName, "${copy.rotate}°", if (copy.mirror) "mirrored" else "", if (copy.detached) "detached" else "", copy.by,
+    ).filter { it.isNotEmpty() }.joinToString(" · ")
 }

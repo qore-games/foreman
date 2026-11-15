@@ -64,6 +64,7 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     ASSET_CONTENT("asset_content", "Assets", WORLD_EDIT),
     SCATTER_ASSETS("scatter_assets", "Assets", WORLD_EDIT),
     PASTE_ASSET("paste_asset", "Assets", WORLD_EDIT),
+    COPY_REGION("copy_region", "Assets", WORLD_EDIT),
     SAVE_ASSET("save_asset", "Assets", WORLD_EDIT),
     DEFINE_ASSET("define_asset", "Assets", WORLD_EDIT),
     FIT_ASSET("fit_asset", "Assets", WORLD_EDIT),
@@ -72,9 +73,12 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     LIST_INSTANCES("list_instances", "Assets", WORLD_EDIT),
     INSTANCE_INFO("instance_info", "Assets", WORLD_EDIT),
     DETACH_INSTANCE("detach_instance", "Assets", WORLD_EDIT),
+    ATTACH_INSTANCE("attach_instance", "Assets", WORLD_EDIT),
+    FORGET_INSTANCE("forget_instance", "Assets", WORLD_EDIT),
     DELETE_INSTANCE("delete_instance", "Assets", WORLD_EDIT),
     ROTATE_INSTANCE("rotate_instance", "Assets", WORLD_EDIT),
     SYNC_INSTANCE("sync_instance", "Assets", WORLD_EDIT),
+    SYNC_ASSET("sync_asset", "Assets", WORLD_EDIT),
     OPEN_ASSET_SOURCE("open_asset_source", "Assets", WORLD_EDIT),
 
     // Models: the resources' item models.

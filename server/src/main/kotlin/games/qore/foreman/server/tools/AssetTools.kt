@@ -35,8 +35,10 @@ import games.qore.foreman.server.world.Grid
 import games.qore.foreman.server.world.Walk
 import games.qore.foreman.server.world.Change
 import games.qore.foreman.server.world.Chunks
+import games.qore.foreman.server.world.Clipboards
 import games.qore.foreman.server.world.EditScope
 import games.qore.foreman.server.world.Edits
+import games.qore.foreman.server.world.Fingerprints
 import games.qore.foreman.server.world.Furniture
 import games.qore.foreman.server.world.Instance
 import games.qore.foreman.server.world.Library
@@ -120,18 +122,22 @@ object AssetTools {
         Tool(
             ForemanTool.PASTE_ASSET,
             "Pastes an asset of the library, a schematic or an asset area (its blocks with their block data, furniture, " +
-                "display entities, and the points and areas inside it, into any loaded world). `position` is where the " +
-                "bottom-center of the asset goes (put y on the ground surface + 1 for a build standing on it). Records an " +
-                "instance (list_instances). One undo step. Returns the box it occupies: then run foundation / " +
-                "blend_terrain on it and render to check.",
+                "entities (displays, markers, item frames, armor stands…), and the points and areas inside it, into any loaded world). `position` is where the " +
+                "bottom-center of the asset goes (put y on the ground surface + 1 for a build standing on it); `mirror` " +
+                "flips it east-west first, so with `rotate` it takes any of 8 orientations. Records an instance " +
+                "(list_instances); the instances lying in an asset area become copies nested in it (`<id>/<theirs>`), which " +
+                "follow their own asset (sync_asset). One undo step. Returns the box it occupies: then run foundation / " +
+                "blend_terrain on it and render to check. `clipboard` pastes your clipboard (copy_region; `clipboard:<player>` " +
+                "a player's): a detached copy, with no asset to follow.",
             schema {
-                string("name", "Asset name or area id from list_assets")
+                string("name", "Asset name or area id from list_assets, or clipboard")
                 vec("position", "Bottom-center target [x, y, z]")
                 int("rotate", "Clockwise degrees seen from above: 0, 90, 180, 270 (default 0)", required = false)
+                bool("mirror", "Mirror it east-west (x negated about its bottom center) before the turn: stairs, doors and rails flip as WorldEdit flips them, displays keep their model unmirrored (default false)", required = false)
                 bool("ignore_air", "Keep existing blocks where the asset has air (default true)", required = false)
                 string("claim", "Claim the pasted box under this name; fails if it overlaps another claim", required = false)
                 bool("allow_overlap", "Allow pasting into other claims (default false)", required = false)
-                enum("format", listOf("text", "json"), "text (default), or json: the instance (as list_instances gives it) with blocks, displays, furniture and block_data counts", required = false)
+                enum("format", listOf("text", "json"), "text (default), or json: the instance (as list_instances gives it) with blocks, displays, furniture, block_data counts and the nested copies' ids (children)", required = false)
                 resultOptions()
                 string("world", "World name", required = false)
             },
@@ -347,20 +353,35 @@ object AssetTools {
     }
 
     private fun pasteArea(plugin: Foreman, args: Args): ToolResult {
-        val world = plugin.world(args.string("world", null))
         val area = AreaAssets.get(plugin.worlds, args.string("name"))
-        val id = AreaAssets.id(area)
+        return pasteCopy(plugin, args, AreaAssets.id(area), area.name, area.bounds, { world, result -> AreaAssets.prepare(area, world, result) }) { AreaAssets.copy(area) }
+    }
+
+    /** paste_asset of a clipboard ([Clipboards]): as it was copied, a detached copy of its own each time. */
+    private fun pasteClipboard(plugin: Foreman, args: Args): ToolResult {
+        val clip = Clipboards.get(args.string("name"))
+        return pasteCopy(plugin, args, Clipboards.ASSET, Clipboards.ASSET, clip.box, { world, result -> Chunks.loadEntities(world, listOf(result)) }) { clip.copy }
+    }
+
+    /**
+     * Pastes what [read] reads ([box], named [id], its copies named after [name]) as the args say, [prepare] loading its
+     * chunks and those of where it goes off the main thread first.
+     */
+    private fun pasteCopy(
+        plugin: Foreman, args: Args, id: String, name: String, box: Box, prepare: (org.bukkit.World, Box) -> Unit, read: () -> AreaAssets.Copy,
+    ): ToolResult {
+        val world = plugin.world(args.string("world", null))
         val position = args.vec("position")
         val rotate = rotation(args)
-        val box = area.bounds.requireVolume(plugin.limits.maxEditBlocks.toLong(), "paste_asset")
-        val result = AreaAssets.footprint(box, rotate, position)
+        val mirror = args.bool("mirror", false)
+        val result = AreaAssets.footprint(box.requireVolume(plugin.limits.maxEditBlocks.toLong(), "paste_asset"), rotate, position, mirror)
 
         QualityTools.guard(plugin, world, result, args.string("claim", null), args.bool("allow_overlap", false))
-        AreaAssets.prepare(area, world, result)
-        val label = "paste $id at ${Box.fmt(position)}" + if (rotate != 0) " rotated $rotate°" else ""
-        val copy = Sync.main { AreaAssets.copy(area) }
-        val instance = plugin.worlds.instanceId(world.name, area.name)
-        val (pasted, change) = Edits.scoped(world, label) { scope -> AreaAssets.paste(scope, copy, position, rotate, args.bool("ignore_air", true), instance) }
+        prepare(world, result)
+        val label = "paste $id at ${Box.fmt(position)}" + (if (mirror) " mirrored" else "") + if (rotate != 0) " rotated $rotate°" else ""
+        val copy = Sync.main { read() }
+        val instance = plugin.worlds.instanceId(world.name, name)
+        val (pasted, change) = Edits.scoped(world, label) { scope -> AreaAssets.paste(scope, copy, position, rotate, mirror, args.bool("ignore_air", true), instance) }
         args.string("claim", null)?.let { plugin.worlds.reserve(it, world.name, result) }
         if (json(args)) return ToolResult.text(LibraryTools.json(pasted.instance).apply {
             addProperty("blocks", change.blocks)
@@ -368,14 +389,16 @@ object AssetTools {
             addProperty("furniture", pasted.furniture + pasted.replaced)
             addProperty("furniture_lost", pasted.lost)
             addProperty("block_data", pasted.blockData)
+            add("children", JsonArray().apply { pasted.children.forEach { add(it.id) } })
         }.toString())
         val copied = listOfNotNull(
-            pasted.displays.takeIf { it > 0 }?.let { "$it display entities" },
+            pasted.displays.takeIf { it > 0 }?.let { "$it entities (displays, markers, item frames…)" },
             (pasted.furniture + pasted.replaced).takeIf { it > 0 }?.let { "$it furniture" + if (pasted.replaced > 0) " (${pasted.replaced} placed again: the provider didn't take the copies in)" else "" },
             pasted.lost.takeIf { it > 0 }?.let { "$it furniture that could not be placed (obstructed)" },
             pasted.blockData.takeIf { it > 0 }?.let { "$it block data entries" },
             pasted.instance.points.size.takeIf { it > 0 }?.let { "$it points" },
             pasted.instance.areas.size.takeIf { it > 0 }?.let { "$it areas (${pasted.instance.areas.joinToString(", ")})" },
+            pasted.children.size.takeIf { it > 0 }?.let { "$it nested copies (${pasted.children.joinToString(", ") { c -> "${c.id} of ${c.asset}" }})" },
         )
         return InspectTools.result(
             plugin, world, "Pasted $id as instance ${pasted.instance.id}: it occupies ${result.describe()}, ${change.blocks} blocks" + copied.joinToString("") { ", $it" } + ".",
@@ -390,21 +413,23 @@ object AssetTools {
     }
 
     private fun paste(plugin: Foreman, args: Args): ToolResult {
+        if (Clipboards.isId(args.string("name"))) return pasteClipboard(plugin, args)
         if (AreaAssets.isId(args.string("name"))) return pasteArea(plugin, args)
         val world = plugin.world(args.string("world", null))
         val asset = plugin.assets.get(args.string("name"))
         val position = args.vec("position")
         val rotate = rotation(args)
+        val mirror = args.bool("mirror", false)
 
         val clipboard = plugin.assets.read(asset)
-        val result = footprint(clipboard, rotate, position)
+        val result = footprint(clipboard, rotate, position, mirror)
 
         QualityTools.guard(plugin, world, result, args.string("claim", null), args.bool("allow_overlap", false))
-        val label = "paste ${asset.name} at ${Box.fmt(position)}" + if (rotate != 0) " rotated $rotate°" else ""
+        val label = "paste ${asset.name} at ${Box.fmt(position)}" + (if (mirror) " mirrored" else "") + if (rotate != 0) " rotated $rotate°" else ""
         Chunks.loadEntities(world, listOf(result))
         val id = plugin.worlds.instanceId(world.name, asset.name)
         val (instance, change) = Edits.scoped(world, label) { scope ->
-            pasteSchematic(plugin, scope, asset.name, clipboard, position, rotate, args.bool("ignore_air", true), id)
+            pasteSchematic(plugin, scope, asset.name, clipboard, position, rotate, mirror, args.bool("ignore_air", true), id)
         }
         args.string("claim", null)?.let { plugin.worlds.reserve(it, world.name, result) }
         if (json(args)) return ToolResult.text(LibraryTools.json(instance).apply { addProperty("blocks", change.blocks) }.toString())
@@ -412,19 +437,20 @@ object AssetTools {
     }
 
     /**
-     * Pastes schematic [name] ([clipboard]) into the scope's world, its bottom centre at [position] turned [rotate]°, as
-     * instance [id]: the entities it adds are tagged with it, the blocks it writes recorded. Recorded in the scope's
-     * change. Main thread, the chunks of where it goes loaded with their entities.
+     * Pastes schematic [name] ([clipboard]) into the scope's world, its bottom centre at [position], mirrored when
+     * [mirror] then turned [rotate]°, as instance [id]: the entities it adds are tagged with it, the blocks it writes
+     * recorded, its fingerprint taken. Recorded in the scope's change. Main thread, the chunks of where it goes loaded
+     * with their entities.
      */
     fun pasteSchematic(
         plugin: Foreman, scope: EditScope, name: String, clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard,
-        position: BlockVector3, rotate: Int, ignoreAir: Boolean, id: String,
+        position: BlockVector3, rotate: Int, mirror: Boolean, ignoreAir: Boolean, id: String,
     ): Instance {
         val world = scope.world
         // Bottom-center origin, so position and rotation are about the footprint's center.
         clipboard.origin = origin(clipboard)
-        val placement = Placement(clipboard.origin, rotate, position)
-        val result = footprint(clipboard, rotate, position)
+        val placement = Placement(clipboard.origin, rotate, position, mirror)
+        val result = footprint(clipboard, rotate, position, mirror)
         // The entities the paste adds are those that weren't there before: they get the instance's tag.
         val before = Library.entities(world, result).map { it.uniqueId }.toSet()
         val holder = ClipboardHolder(clipboard)
@@ -440,12 +466,14 @@ object AssetTools {
             val handle = roots[e.uniqueId]?.handle
             if (handle != null) scope.change.spawnedFurniture += handle else scope.change.spawnedEntities += e.uniqueId to e.location
         }
-        val instance = Instance(
+        val recorded = Instance(
             id, world.name, name, null, null, position, rotate, result, emptyList(), emptyList(), added.associate { it.uniqueId to it.uniqueId },
-            System.currentTimeMillis(), Caller.current()?.name ?: Caller.CONSOLE.name, AreaAssets.written(clipboard, placement, result),
+            System.currentTimeMillis(), Caller.current()?.name ?: Caller.CONSOLE.name, AreaAssets.written(clipboard, placement, result), mirror = mirror,
         )
+        plugin.worlds.putInstance(recorded)
+        scope.change.restores += Runnable { AreaAssets.forget(recorded) }
+        val instance = Fingerprints.taken(world, listOf(recorded)).first()
         plugin.worlds.putInstance(instance)
-        scope.change.restores += Runnable { AreaAssets.forget(instance) }
         return instance
     }
 
@@ -584,8 +612,8 @@ object AssetTools {
         return cells.ifEmpty { listOf(0 to 0) }
     }
 
-    private fun footprint(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard, rotate: Int, position: BlockVector3): Box =
-        AreaAssets.footprint(region(clipboard), rotate, position)
+    fun footprint(clipboard: com.sk89q.worldedit.extent.clipboard.Clipboard, rotate: Int, position: BlockVector3, mirror: Boolean = false): Box =
+        AreaAssets.footprint(region(clipboard), rotate, position, mirror)
 
     private fun notes(plugin: Foreman): Map<String, String> {
         val file = File(plugin.dataFolder, "catalog/furniture.yml")

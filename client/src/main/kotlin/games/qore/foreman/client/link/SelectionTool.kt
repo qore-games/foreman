@@ -12,6 +12,7 @@ import games.qore.foreman.client.gizmo.BoxGizmo
 import games.qore.foreman.client.input.MouseButton
 import games.qore.foreman.client.input.Ray
 import games.qore.foreman.client.input.playerDimension
+import games.qore.foreman.client.library.Clipboard
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.client.ui.ChatScreen
@@ -26,7 +27,7 @@ import net.minecraft.core.BlockPos
  * A box selection made on the client: left click a block for the first corner, right click for the second, then drag
  * the face knobs to resize or the center arrows to move it. Sent to foreman (`get_context` shows it to the AI). The
  * editor's other tools make their new things from it ([current]): assets, areas. [toWorldEdit] makes it WorldEdit's
- * selection, for WorldEdit's own commands.
+ * selection, for WorldEdit's own commands. Ctrl+C / Ctrl+X copy or cut it into the [Clipboard], Ctrl+V places that.
  */
 object SelectionTool : EditorTool {
     override val title = "Selection"
@@ -43,6 +44,9 @@ object SelectionTool : EditorTool {
     private val gizmo = BoxGizmo({ box }, { box = it }, { send() })
 
     override fun keys() = listOf(
+        EditorKey(InputConstants.KEY_C, "Copy it", ctrl = true) { Clipboard.copy(cut = false) },
+        EditorKey(InputConstants.KEY_X, "Cut it", ctrl = true) { Clipboard.copy(cut = true) },
+        EditorKey(InputConstants.KEY_V, "Paste the clipboard", ctrl = true) { Clipboard.paste() },
         EditorKey(InputConstants.KEY_RETURN, "Ask a chat about it") { ask() },
         EditorKey(InputConstants.KEY_P, "Select it in WorldEdit") { toWorldEdit() },
         EditorKey(InputConstants.KEY_DELETE, "Clear it") { clear() },
@@ -153,8 +157,10 @@ object SelectionTool : EditorTool {
                 Hint(ToolStatus.LEFT, "a block: the first corner"),
                 Hint(ToolStatus.RIGHT, "a block: the second corner"),
                 if (box != null) Hint(ToolStatus.DRAG, "a knob resizes it, an arrow moves it") else null,
+                if (box != null && Bridge.connected) Hint("Ctrl+C", "copy it (Ctrl+X: cut)") else null,
+                if (Bridge.connected) Hint("Ctrl+V", "paste the clipboard") else null,
             )
         },
-        notes = if (Bridge.connected) emptyList() else listOf(Note("No Foreman plugin here: chats get it from you")),
+        notes = if (Bridge.connected) listOfNotNull(Clipboard.note()) else listOf(Note("No Foreman plugin here: chats get it from you")),
     )
 }

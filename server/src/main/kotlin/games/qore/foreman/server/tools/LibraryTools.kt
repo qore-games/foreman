@@ -18,7 +18,9 @@ import games.qore.foreman.server.world.AreaAssets
 import games.qore.foreman.server.world.Box
 import games.qore.foreman.server.world.Change
 import games.qore.foreman.server.world.Chunks
+import games.qore.foreman.server.world.Clipboards
 import games.qore.foreman.server.world.Edits
+import games.qore.foreman.server.world.Fingerprints
 import games.qore.foreman.server.world.Furniture
 import games.qore.foreman.server.world.Instance
 import games.qore.foreman.server.world.Instances
@@ -34,7 +36,6 @@ import org.bukkit.Location
 import org.bukkit.World
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.util.Vector
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -116,30 +117,35 @@ object LibraryTools {
 
         Tool(
             ForemanTool.LIST_INSTANCES,
-            "Lists the instances paste_asset recorded (each paste of a library asset): id, asset, where, turned how, " +
-                "points and areas it brought, when and by whom. With `asset`: where that asset is used.",
+            "Lists the instances paste_asset recorded (each paste of a library asset) as a tree: the copies nested in a " +
+                "copy (the instances its asset area held, `<parent>/<child>`) under it. Each: id, asset, where, turned and " +
+                "mirrored how, detached or not, points and areas it brought, when and by whom. With `asset`: where that " +
+                "asset is used, nested copies included.",
             schema {
                 string("asset", "Only instances of this asset (its id or name, or part of it)", required = false)
-                format("an array of {id, world, dim, asset, source?: {world, area}, origin, rotate, box, points: [{name, type, kind, position}], areas, created, by}")
+                format("an array of {id, world, dim, asset, source?: {world, area}, origin, rotate, mirror, detached, parent?, box, points: [{name, type, kind, position}], areas, created, by}, parents before their children")
                 string("world", "Only this world (default: every loaded world)", required = false)
             },
         ) { args -> listInstances(plugin, args) },
 
         Tool(
             ForemanTool.INSTANCE_INFO,
-            "Everything recorded of one instance: its asset and source, origin, rotation, box, points, areas and " +
-                "entities (the asset's UUID → the pasted copy's).",
+            "Everything recorded of one instance: its asset and source, origin, rotation, mirror, box, points, areas and " +
+                "entities (the asset's UUID → the pasted copy's), the copy it is nested in and those nested in it, and " +
+                "whether each was changed since its paste (what sync_instance and sync_asset skip without force).",
             schema {
-                string("id", "Instance id, e.g. market_stall-2")
-                format("{id, world, dim, asset, source?, origin, rotate, box, points, areas, entities: {source uuid: pasted uuid}, created, by}")
+                string("id", "Instance id, e.g. market_stall-2 or a nested one, town_hall-1/market_stall-2")
+                format("{id, world, dim, asset, source?, origin, rotate, mirror, detached, parent?, children: [{id, asset, detached, edited}], edited: true|false|null (unknown), box, points, areas, entities: {source uuid: pasted uuid}, created, by}")
                 string("world", "World name (default: the loaded world that has it)", required = false)
             },
         ) { args -> instanceInfo(plugin, args) },
 
         Tool(
             ForemanTool.DETACH_INSTANCE,
-            "Forgets an instance: its record and its entities' `foreman:instance` tag go, what it pasted stays (blocks, " +
-                "entities, points and areas, which keep their names).",
+            "Detaches a pasted copy from its asset, reversibly: it stays recorded with its points, areas and entities, " +
+                "flagged detached, and syncs never touch it (sync_asset skips it; a sync of the copy it is nested in keeps " +
+                "its box exactly as it is). For a copy you mean to change by hand. attach_instance undoes it; " +
+                "forget_instance drops the record instead. Undo puts it back.",
             schema {
                 string("id", "Instance id")
                 string("world", "World name (default: the loaded world that has it)", required = false)
@@ -148,14 +154,40 @@ object LibraryTools {
         ) { args -> detach(plugin, args) },
 
         Tool(
-            ForemanTool.DELETE_INSTANCE,
-            "Removes a pasted copy (an instance, list_instances) and only it: the blocks its paste wrote (to air; " +
-                "blocks it didn't write, like the ground it was pasted on, stay), the entities tagged with it (furniture " +
-                "through the furniture plugin), their block data, the points and areas it brought, and its record. One " +
-                "undo step.",
+            ForemanTool.ATTACH_INSTANCE,
+            "Attaches a detached copy to its asset again: what it holds now counts as unchanged, so its next sync " +
+                "(sync_asset, sync_instance) replaces it with the asset's content; `sync: true` syncs it now. Undo puts it " +
+                "back (the sync too).",
             schema {
                 string("id", "Instance id")
-                format("{deleted: id}")
+                bool("sync", "Sync it with its asset now (default false)", required = false)
+                bool("force", "With sync: also replace copies nested in it that were changed (default false)", required = false)
+                string("world", "World name (default: the loaded world that has it)", required = false)
+            },
+            modifies = true,
+        ) { args -> attach(plugin, args) },
+
+        Tool(
+            ForemanTool.FORGET_INSTANCE,
+            "Forgets a pasted copy and the copies nested in it: their records and their entities' `foreman:instance` tag " +
+                "go, what they pasted stays (blocks, entities, points and areas, which keep their names): plain blocks, no " +
+                "longer a copy of anything. Undo puts them back.",
+            schema {
+                string("id", "Instance id")
+                string("world", "World name (default: the loaded world that has it)", required = false)
+            },
+            modifies = true,
+        ) { args -> forget(plugin, args) },
+
+        Tool(
+            ForemanTool.DELETE_INSTANCE,
+            "Removes a pasted copy (an instance, list_instances) and only it, with the copies nested in it: the blocks " +
+                "their pastes wrote (to air; blocks they didn't write, like the ground it was pasted on, stay), the " +
+                "entities tagged with them (furniture through the furniture plugin), their block data, the points and " +
+                "areas they brought, and their records. One undo step.",
+            schema {
+                string("id", "Instance id")
+                format("{deleted: id, instances: [ids]}")
                 string("world", "World name (default: the loaded world that has it)", required = false)
             },
             modifies = true,
@@ -164,9 +196,9 @@ object LibraryTools {
         Tool(
             ForemanTool.ROTATE_INSTANCE,
             "Turns a pasted copy in place about the bottom centre of its box, with everything in the box (blocks and " +
-                "their block data, entities and furniture, points, areas), as move_asset does; its record follows " +
-                "(rotation, box, points, the blocks it wrote). Refused when the turned box lands on another asset area " +
-                "or claim. One undo step.",
+                "their block data, entities and furniture, points, areas, the copies nested in it), as move_asset does; " +
+                "the records follow (rotation, box, points, the blocks written, fingerprints). Refused when the turned box " +
+                "lands on another asset area or claim. One undo step.",
             schema {
                 string("id", "Instance id")
                 int("rotate", "Clockwise degrees seen from above: 90, 180 or 270")
@@ -178,17 +210,37 @@ object LibraryTools {
 
         Tool(
             ForemanTool.SYNC_INSTANCE,
-            "Replaces a pasted copy with its asset's current content, at the same place and rotation and under the same " +
-                "id: the copy is removed (as delete_instance) and the asset pasted again. Anything changed inside the copy " +
-                "since it was pasted is lost. Fails when the asset, or the world it comes from, isn't available. One undo " +
-                "step.",
+            "Replaces a pasted copy with its asset's current content, at the same place, rotation and mirror, under the " +
+                "same id: the copy and those nested in it removed (as delete_instance), its detached nested copies kept " +
+                "as they are, the asset pasted again, its nested copies made again from the asset's current inner " +
+                "instances. A nested copy is pasted again inside its own box only (refused when its asset changed size). " +
+                "Refused for a detached copy, and for one changed since its paste (or with nested copies changed) unless " +
+                "`force`. Fails when the asset, or the world it comes from, isn't available. One undo step.",
             schema {
                 string("id", "Instance id")
-                format("the instance, as list_instances gives it")
+                bool("force", "Sync it even when it, or a copy nested in it, was changed since its paste: the changes are lost (default false)", required = false)
+                format("the instance, as list_instances gives it, with children: [ids]")
                 string("world", "World name (default: the loaded world that has it)", required = false)
             },
             modifies = true,
         ) { args -> syncInstance(plugin, args) },
+
+        Tool(
+            ForemanTool.SYNC_ASSET,
+            "After changing an asset, makes every copy of it follow: pastes it again over each of its instances in the " +
+                "loaded worlds, nested ones included (an apartment inside each pasted building), as sync_instance does. " +
+                "Skips, and lists with the reason, detached copies, copies changed since their paste (unless `force`), " +
+                "copies lying in the asset's own area, and nested copies whose asset changed size; a copy nested in " +
+                "another being synced is made again with it. One undo step for every world. Returns what it synced and " +
+                "what it skipped.",
+            schema {
+                string("asset", "Asset id (area:<world>/<area>), asset area name, or schematic name")
+                bool("force", "Also sync copies changed since their paste: their changes are lost (default false)", required = false)
+                string("world", "Only the copies in this world (default: every loaded world)", required = false)
+                format("{asset, synced: [{id, world, children: [ids]}], covered: [{id, world, with}], skipped: [{id, world, reason}], blocks}")
+            },
+            modifies = true,
+        ) { args -> syncAsset(plugin, args) },
 
         Tool(
             ForemanTool.OPEN_ASSET_SOURCE,
@@ -391,6 +443,9 @@ object LibraryTools {
         })
         if (full) add("origin", JsonArray().apply { add(i.origin.x()); add(i.origin.y()); add(i.origin.z()) })
         addProperty("rotate", i.rotate)
+        if (full || i.mirror) addProperty("mirror", i.mirror)
+        if (full || i.detached) addProperty("detached", i.detached)
+        i.parent?.let { addProperty("parent", it) }
         add("box", box(i.box))
         add("points", JsonArray().apply {
             i.points.forEach { p ->
@@ -428,38 +483,129 @@ object LibraryTools {
         val asset = args.string("asset", null)?.lowercase()
         val all = args.string("world", null)?.let { plugin.worlds.instances(plugin.world(it).name) } ?: plugin.worlds.allInstances
         val list = all.filter { asset == null || it.asset.lowercase() == asset || it.sourceArea?.lowercase() == asset || it.asset.lowercase().contains(asset) }
+            .sortedWith(compareBy({ it.world }, { it.id }))
         if (json(args)) return ToolResult.text(JsonArray().apply { list.forEach { add(json(it)) } }.toString())
         if (list.isEmpty()) return ToolResult.text("No instances" + (asset?.let { " of $it" } ?: "") + ". paste_asset records one per paste.")
         return ToolResult.text(list.groupBy { it.world }.entries.joinToString("\n") { (world, items) ->
-            "$world:\n" + items.take(300).joinToString("\n") { "  " + it.describe() }
+            "$world:\n" + items.take(300).joinToString("\n") { i ->
+                // Under its parent when it is listed too.
+                val depth = if (asset == null) i.id.count { it == '/' } else 0
+                "  " + "  ".repeat(depth) + i.describe()
+            }
         })
     }
 
     private fun instanceInfo(plugin: Foreman, args: Args): ToolResult {
         val i = instance(plugin, args.string("id"), args.string("world", null))
-        if (json(args)) return ToolResult.text(json(i).toString())
+        val world = Bukkit.getWorld(i.world) ?: throw ToolError("World ${i.world} is not loaded")
+        val children = plugin.worlds.descendants(i.world, i.id)
+        Instances.prepare(world, i)
+        val tree = listOf(i) + children
+        val changed = Sync.main { tree.filter { Fingerprints.changed(world, it) }.map { it.id }.toSet() }
+        val states = tree.associate { c -> c.id to Fingerprints.state(c) { c.id in changed } }
+        fun state(id: String) = when {
+            id in changed -> "changed since its paste"
+            states[id] == Fingerprints.State.EDITED -> "pasted with the changes its source copy had (in the asset holding it)"
+            states[id] == Fingerprints.State.CLEAN -> "unchanged"
+            else -> "unknown (pasted before Foreman took fingerprints)"
+        }
+        if (json(args)) return ToolResult.text(json(i).apply {
+            add("children", JsonArray().apply {
+                children.forEach { c ->
+                    add(JsonObject().apply {
+                        addProperty("id", c.id)
+                        addProperty("asset", c.asset)
+                        addProperty("detached", c.detached)
+                        states[c.id]?.takeIf { it != Fingerprints.State.UNKNOWN }?.let { addProperty("edited", it == Fingerprints.State.EDITED) }
+                    })
+                }
+            })
+            when (states[i.id]) {
+                Fingerprints.State.UNKNOWN, null -> add("edited", com.google.gson.JsonNull.INSTANCE)
+                else -> addProperty("edited", states[i.id] == Fingerprints.State.EDITED)
+            }
+        }.toString())
         return ToolResult.text(
             i.describe() + " in ${i.world}, ${java.time.Instant.ofEpochMilli(i.created)}" +
                 (i.sourceWorld?.let { "\nSource: area ${i.sourceArea} in $it" } ?: "\nSource: schematic ${i.asset}") +
+                (i.parent?.let { "\nNested in $it" } ?: "") +
+                "\nState: " + (if (i.detached) "detached (syncs leave it); " else "") + state(i.id) +
+                (if (children.isNotEmpty()) "\nNested copies:\n" + children.joinToString("\n") { c ->
+                    "  " + "  ".repeat(c.id.count { it == '/' } - i.id.count { it == '/' } - 1) + "${c.id}: ${c.asset}" +
+                        c.orientation.let { if (it.isEmpty()) "" else ", $it" } + (if (c.detached) ", detached" else "") + ", ${state(c.id)}"
+                } else "") +
                 (if (i.points.isNotEmpty()) "\nPoints:\n" + i.points.joinToString("\n") { "  " + it.describe() } else "") +
                 (if (i.areas.isNotEmpty()) "\nAreas: " + i.areas.joinToString(", ") else "") +
                 (if (i.entities.isNotEmpty()) "\nEntities (asset → pasted):\n" + i.entities.entries.take(100).joinToString("\n") { "  ${it.key} → ${it.value}" } else ""),
         )
     }
 
+    /** Puts [now] in place of [i]'s record as [label], one undo step. Main thread. */
+    private fun replace(plugin: Foreman, world: World, i: Instance, now: Instance, label: String): Change {
+        plugin.worlds.putInstance(now)
+        val change = Change(label, world)
+        change.touch(i.box)
+        change.restores += Runnable { if (Bukkit.getWorld(i.world) != null) plugin.worlds.putInstance(i) }
+        Edits.record(change)
+        return change
+    }
+
     private fun detach(plugin: Foreman, args: Args): ToolResult {
         val i = instance(plugin, args.string("id"), args.string("world", null))
         val world = Bukkit.getWorld(i.world) ?: throw ToolError("World ${i.world} is not loaded")
+        if (i.detached) return ToolResult.text("${i.id} is already detached (attach_instance to make it follow its asset again)")
         Locks.guard(world.name, i.box)
-        Chunks.loadEntities(world, listOf(i.box))
-        val untagged = Sync.main {
-            val tagged = (i.entities.values.mapNotNull { Bukkit.getEntity(it) } + Library.entities(world, i.box))
-                .filter { it.persistentDataContainer.get(AreaAssets.INSTANCE_KEY, PersistentDataType.STRING) == i.id }.distinct()
-            tagged.forEach { it.persistentDataContainer.remove(AreaAssets.INSTANCE_KEY) }
-            plugin.worlds.removeInstance(i.world, i.id)
-            tagged.size
+        Sync.main { replace(plugin, world, i, i.copy(detached = true), "detach instance ${i.id}") }
+        val nested = plugin.worlds.descendants(i.world, i.id).size
+        return ToolResult.text(
+            "Detached ${i.id}: syncs leave it as it is" + (if (i.parent != null) ", a sync of ${i.parent} too (its box stays exactly as it is)" else "") +
+                (if (nested > 0) "; the $nested copies nested in it still follow their assets (detach them too to keep them)" else "") +
+                ". attach_instance makes it follow its asset again; undo puts it back.",
+        )
+    }
+
+    private fun attach(plugin: Foreman, args: Args): ToolResult {
+        val i = instance(plugin, args.string("id"), args.string("world", null))
+        val world = Bukkit.getWorld(i.world) ?: throw ToolError("World ${i.world} is not loaded")
+        val sync = args.bool("sync", false)
+        if (Clipboards.pasted(i)) throw ToolError("${i.id} was pasted from a clipboard: it has no asset to follow")
+        if (!i.detached && !sync) return ToolResult.text("${i.id} isn't detached: it follows its asset")
+        Locks.guard(world.name, i.box)
+        val attached = if (!i.detached) null else {
+            Instances.prepare(world, i)
+            Sync.main {
+                val now = i.copy(detached = false, edited = false)
+                replace(plugin, world, i, now.copy(fingerprint = Fingerprints.of(world, now)), "attach instance ${i.id}")
+            }
         }
-        return ToolResult.text("Detached ${i.id}: its record is gone, $untagged entities untagged; its blocks, entities, points and areas stay.")
+        if (!sync) return ToolResult.text("Attached ${i.id}: what it holds now counts as unchanged, its next sync replaces it with ${i.asset}. Undo puts it back.")
+        val now = plugin.worlds.instance(i.world, i.id) ?: throw ToolError("${i.id} is gone")
+        val source = InstanceSync.Source.of(plugin, now)
+        val plan = InstanceSync.plan(plugin, source, listOf(now), args.bool("force", false))
+        plan.skipped.firstOrNull()?.let { return ToolResult.text("Attached ${i.id}, but didn't sync it: ${it.reason}") }
+        val result = InstanceSync.run(plugin, source, plan, "attach and sync instance ${i.id}")
+        val label = "attach and sync instance ${i.id}"
+        Edits.join(listOfNotNull(attached, result.change), label)
+        val synced = result.synced.single()
+        return ToolResult.text(
+            (if (attached != null) "Attached and synced" else "Synced") + " ${i.id} with ${i.asset}: ${result.blocks} blocks changed" +
+                (if (synced.children.isNotEmpty()) ", ${synced.children.size} nested copies made again" else "") + ". Undo puts it back.",
+        )
+    }
+
+    private fun forget(plugin: Foreman, args: Args): ToolResult {
+        val i = instance(plugin, args.string("id"), args.string("world", null))
+        val world = Bukkit.getWorld(i.world) ?: throw ToolError("World ${i.world} is not loaded")
+        Locks.guard(world.name, i.box)
+        Instances.prepare(world, i)
+        val (forgotten, untagged) = Sync.main {
+            val change = Change("forget instance ${i.id}", world)
+            Instances.forget(world, i, change).also { Edits.record(change) }
+        }
+        return ToolResult.text(
+            "Forgot ${i.id}" + (if (forgotten.size > 1) " and the ${forgotten.size - 1} copies nested in it" else "") +
+                ": records gone, $untagged entities untagged; blocks, entities, points and areas stay as plain content. Undo puts them back.",
+        )
     }
 
     private fun deleteInstance(plugin: Foreman, args: Args): ToolResult {
@@ -468,11 +614,15 @@ object LibraryTools {
         Locks.guard(world.name, i.box)
         Instances.prepare(world, i)
         val (deleted, change) = Edits.scoped(world, "delete instance ${i.id}") { scope -> Instances.delete(scope, i) }
-        if (json(args)) return ToolResult.text(JsonObject().apply { addProperty("deleted", i.id) }.toString())
+        if (json(args)) return ToolResult.text(JsonObject().apply {
+            addProperty("deleted", i.id)
+            add("instances", JsonArray().apply { deleted.instances.forEach { add(it.id) } })
+        }.toString())
         return ToolResult.text(
-            "Deleted ${i.id}: " + (deleted.blocks?.let { "$it blocks it wrote (${change.blocks} changed)" } ?: "its blocks stayed (pasted before Foreman recorded the blocks pastes write)") +
+            "Deleted ${i.id}" + (if (deleted.instances.size > 1) " and the ${deleted.instances.size - 1} copies nested in it" else "") + ": " +
+                (deleted.blocks?.let { "$it blocks they wrote (${change.blocks} changed)" } ?: "their blocks stayed (pasted before Foreman recorded the blocks pastes write)") +
                 ", ${deleted.entities} entities (${deleted.furniture} furniture), ${deleted.blockData} block data entries, ${deleted.points} points, " +
-                "${deleted.areas} areas, and its record. Undo puts it back.",
+                "${deleted.areas} areas, and their records. Undo puts it back.",
         )
     }
 
@@ -490,52 +640,71 @@ object LibraryTools {
         Chunks.loadEntities(world, listOf(around, to))
         val (moved, change) = Edits.scoped(world, "turn instance ${i.id} $rotate°") { scope -> Library.move(scope, i.box, placement) }
         val now = moved.instances.firstOrNull { it.id == i.id } ?: throw ToolError("${i.id} was not moved")
+        val nested = moved.instances.count { it.isUnder(i.id) }
         if (json(args)) return ToolResult.text(json(now).toString())
         return ToolResult.text(
-            "Turned ${i.id} $rotate° in place: it occupies ${now.box.describe()} (was ${i.box.describe()}), turned ${now.rotate}° from its asset; " +
+            "Turned ${i.id} $rotate° in place: it occupies ${now.box.describe()} (was ${i.box.describe()}), ${now.orientation.ifEmpty { "as" }} from its asset" +
+                (if (nested > 0) ", with the $nested copies nested in it" else "") + "; " +
                 "${change.blocks} blocks, ${moved.entities} entities, ${moved.blockData} block data entries, ${moved.points} points. Undo turns it back.",
         )
     }
 
     private fun syncInstance(plugin: Foreman, args: Args): ToolResult {
         val i = instance(plugin, args.string("id"), args.string("world", null))
-        val world = Bukkit.getWorld(i.world) ?: throw ToolError("World ${i.world} is not loaded")
-        Locks.guard(world.name, i.box)
-        val label = "sync instance ${i.id} with ${i.asset}"
-        val (pasted, change) = if (i.sourceWorld != null && i.sourceArea != null) {
-            val source = Bukkit.getWorld(i.sourceWorld)
-                ?: throw ToolError("${i.id} comes from ${i.asset}, whose world ${i.sourceWorld} isn't loaded: load it (open_asset_source), then sync again")
-            val area = plugin.worlds.area(i.sourceArea, source.name)?.takeIf { AreaAssets.TAG in it.tags }
-                ?: throw ToolError("${i.id} comes from ${i.asset}, which isn't an asset area any more (list_assets)")
-            area.bounds.requireVolume(plugin.limits.maxEditBlocks.toLong(), "sync_instance")
-            Instances.prepare(world, i)
-            AreaAssets.prepare(area, world, AreaAssets.footprint(area.bounds, i.rotate, i.origin))
-            val copy = Sync.main { AreaAssets.copy(area) }
-            Edits.scoped(world, label) { scope ->
-                Instances.delete(scope, i)
-                scope.flush()
-                AreaAssets.paste(scope, copy, i.origin, i.rotate, true, i.id).instance
-            }
-        } else {
-            val asset = try {
-                plugin.assets.get(i.asset)
-            } catch (_: ToolError) {
-                throw ToolError("${i.id} comes from schematic ${i.asset}, which isn't in the library any more (list_assets)")
-            }
-            val clipboard = plugin.assets.read(asset)
-            Instances.prepare(world, i)
-            Chunks.loadEntities(world, listOf(AreaAssets.footprint(Box(clipboard.region.minimumPoint, clipboard.region.maximumPoint), i.rotate, i.origin)))
-            Edits.scoped(world, label) { scope ->
-                Instances.delete(scope, i)
-                scope.flush()
-                AssetTools.pasteSchematic(plugin, scope, asset.name, clipboard, i.origin, i.rotate, true, i.id)
-            }
-        }
-        if (json(args)) return ToolResult.text(json(pasted).toString())
+        val source = InstanceSync.Source.of(plugin, i)
+        val plan = InstanceSync.plan(plugin, source, listOf(i), args.bool("force", false))
+        plan.skipped.firstOrNull()?.let { throw ToolError("Didn't sync ${i.id}: ${it.reason}") }
+        val result = InstanceSync.run(plugin, source, plan, "sync instance ${i.id} with ${i.asset}")
+        val synced = result.synced.single()
+        val pasted = synced.instance
+        if (json(args)) return ToolResult.text(json(pasted).apply { add("children", JsonArray().apply { synced.children.forEach { add(it.id) } }) }.toString())
+        val kept = Instances.detachedIn(pasted)
         return ToolResult.text(
-            "Synced ${i.id} with ${i.asset}: removed and pasted again at ${Box.fmt(pasted.origin)}" + (if (pasted.rotate != 0) " turned ${pasted.rotate}°" else "") +
-                ", ${pasted.box.describe()}, ${change.blocks} blocks changed. Changes made inside it since its paste are gone; undo brings them back.",
+            "Synced ${i.id} with ${i.asset}: removed and pasted again at ${Box.fmt(pasted.origin)}" + pasted.orientation.let { if (it.isEmpty()) "" else " $it" } +
+                ", ${pasted.box.describe()}, ${result.blocks} blocks changed" +
+                (if (synced.children.isNotEmpty()) ", ${synced.children.size} nested copies made again (${synced.children.joinToString(", ") { it.id }})" else "") +
+                (if (kept.isNotEmpty()) ", detached ones kept as they were (${kept.joinToString(", ") { it.id }})" else "") +
+                ". Undo brings the old one back.",
         )
+    }
+
+    private fun syncAsset(plugin: Foreman, args: Args): ToolResult {
+        val source = InstanceSync.Source.of(plugin, args.string("asset"))
+        val world = args.string("world", null)?.let { plugin.world(it).name }
+        val instances = plugin.worlds.allInstances.filter { it.asset == source.id && (world == null || it.world == world) }
+        if (instances.isEmpty()) return ToolResult.text("No copies of ${source.id}" + (world?.let { " in $it" } ?: " in the loaded worlds") + " (list_instances)")
+        val plan = InstanceSync.plan(plugin, source, instances, args.bool("force", false))
+        val result = InstanceSync.run(plugin, source, plan, "sync ${plan.sync.size} copies of ${source.id}")
+        if (json(args)) return ToolResult.text(JsonObject().apply {
+            addProperty("asset", source.id)
+            add("synced", JsonArray().apply {
+                result.synced.forEach { s ->
+                    add(JsonObject().apply {
+                        addProperty("id", s.instance.id)
+                        addProperty("world", s.instance.world)
+                        add("children", JsonArray().apply { s.children.forEach { add(it.id) } })
+                    })
+                }
+            })
+            add("covered", JsonArray().apply {
+                plan.covered.forEach { (i, with) -> add(JsonObject().apply { addProperty("id", i.id); addProperty("world", i.world); addProperty("with", with.id) }) }
+            })
+            add("skipped", JsonArray().apply {
+                plan.skipped.forEach { k -> add(JsonObject().apply { addProperty("id", k.instance.id); addProperty("world", k.instance.world); addProperty("reason", k.reason) }) }
+            })
+            addProperty("blocks", result.blocks)
+        }.toString())
+        val out = StringBuilder()
+        if (result.synced.isEmpty()) out.append("Synced no copy of ${source.id}.")
+        else out.append("Synced ${result.synced.size} copies of ${source.id} (${result.blocks} blocks changed, one undo step):\n")
+            .append(result.synced.joinToString("\n") { s ->
+                "  ${s.instance.id} in ${s.instance.world}" + (if (s.children.isNotEmpty()) ", ${s.children.size} nested copies made again" else "")
+            })
+        if (plan.covered.isNotEmpty()) out.append("\nMade again with the copy they are nested in:\n")
+            .append(plan.covered.entries.joinToString("\n") { (i, with) -> "  ${i.id} in ${i.world}, with ${with.id}" })
+        if (plan.skipped.isNotEmpty()) out.append("\nSkipped ${plan.skipped.size}:\n")
+            .append(plan.skipped.joinToString("\n") { "  ${it.instance.id} in ${it.instance.world}: ${it.reason}" })
+        return ToolResult.text(out.toString())
     }
 
     // ---- Opening the source -------------------------------------------------------------------------------------------
@@ -547,6 +716,7 @@ object LibraryTools {
         val (worldName, areaName) = when {
             args.has("instance") -> {
                 val i = instance(plugin, args.string("instance"), args.string("world", null), player.world)
+                if (Clipboards.pasted(i)) throw ToolError("${i.id} was pasted from a clipboard: it has no source to open")
                 if (i.sourceWorld == null || i.sourceArea == null) throw ToolError("${i.id} was pasted from schematic ${i.asset}, not from an area")
                 i.sourceWorld to i.sourceArea
             }

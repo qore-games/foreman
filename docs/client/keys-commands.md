@@ -22,10 +22,10 @@ tool with its keys.
 
 | # | Tool | Keys |
 |---|---|---|
-| 1 | [Selection](selection.md) | ++enter++ ask a chat about it, ++delete++ clear it, ++n++ the hub's Selection page |
+| 1 | [Selection](selection.md) | ++ctrl+c++ / ++ctrl+x++ [copy / cut it](selection.md#copy-and-paste), ++ctrl+v++ paste the clipboard, ++enter++ ask a chat about it, ++delete++ clear it, ++n++ the hub's Selection page |
 | 2 | [Display editor](displays.md) | ++v++ mode, ++o++ axes, ++period++ pivot, ++n++ values, ++equal++ duplicate, ++delete++ delete, ++z++ undo, ++end++ drop, ++i++ select in the box, ++p++ move position |
 | 3 | [Place model](models.md#placing) | ++r++ turn, ++enter++ place, ++shift+enter++ place and edit, ++n++ the model browser |
-| 4 | [Place asset](library.md#placing) | ++r++ turn, ++enter++ paste, ++n++ the library |
+| 4 | [Place asset](library.md#placing) | ++r++ turn, ++enter++ paste, ++z++ undo, ++n++ the library |
 | 5 | [Asset tool](library.md#the-asset-tool) | ++c++ new asset from the selection, ++n++ panel, ++r++ turn, ++f++ fit, ++u++ sync a copy, ++delete++ delete |
 | 6 | [Areas and points](regions.md#the-tool) | ++n++ panel, ++m++ new area from the selection, ++p++ new point, ++delete++ delete, ++k++ check the layout |
 | 7 | [Measure](editor.md#measuring) | ++backspace++ remove the last measure, ++delete++ clear them all |

@@ -53,9 +53,12 @@ object DisplayEdits {
             .sortedWith(compareBy({ it.display.location.y }, { it.display.location.x }, { it.display.location.z }))
     }
 
-    /** The loaded display [id] (or what it became) with its furniture; null when there is no such display. */
-    fun find(id: UUID): Found? {
-        val entity = Bukkit.getEntity(id) ?: Bukkit.getEntity(Edits.current(id)) ?: return null
+    /**
+     * The loaded display [id] (or what it became) of [world] (null: of any world, when only one has it) with its
+     * furniture; null when there is no such display.
+     */
+    fun find(world: World?, id: UUID): Found? {
+        val entity = Edits.loaded(world, id) ?: Edits.loaded(world, Edits.current(id)) ?: return null
         val display = entity as? Display ?: throw ToolError("it is a ${entity.type.key.key}, not a display")
         return Found(display, furnitureOf(display))
     }
@@ -242,7 +245,7 @@ object DisplayEdits {
         val snapshot = display.createSnapshot() ?: throw ToolError("its display can't be copied")
         val from = display.location
         val to = from.clone().add(k.x().toDouble(), k.y().toDouble(), k.z().toDouble())
-        if (!provider.remove(handle)) throw ToolError("its provider refused to remove it")
+        if (!provider.remove(world, handle)) throw ToolError("its provider refused to remove it")
         val moved = put(world, snapshot, to, placed, newRoot)
         if (moved == null) {
             put(world, snapshot, from, placed, root)?.let { back -> remap(handle, display.uniqueId, back, replaced) }
@@ -253,7 +256,7 @@ object DisplayEdits {
         change.touch(from)
         change.touch(to)
         change.restores += Runnable {
-            Furniture.provider?.remove(Furniture.current(moved.handle))
+            Furniture.provider?.remove(world, Furniture.current(moved.handle))
             put(world, snapshot, from, placed, root)?.let { back -> remap(moved.handle, moved.display.uniqueId, back, null) }
         }
         return moved.display
@@ -274,9 +277,9 @@ object DisplayEdits {
         copy.remove()
         val type = provider.type(f.id) ?: return null
         val placed = provider.spawn(type, Location(world, root.x().toDouble(), root.y().toDouble(), root.z().toDouble()), f.yaw, f.state) ?: return null
-        val display = placed.entity?.let { Bukkit.getEntity(it) } as? Display
+        val display = placed.entity?.let { world.getEntity(it) } as? Display
         if (display == null) {
-            provider.remove(placed.handle)
+            provider.remove(world, placed.handle)
             return null
         }
         display.transformation = snapshotTransformation(snapshot, world) ?: display.transformation
@@ -303,7 +306,7 @@ object DisplayEdits {
         val placed = f.furniture
         if (placed != null) {
             val handle = placed.handle ?: throw ToolError("its provider gives no handle to remove it by")
-            if (!Furniture.require().remove(handle)) throw ToolError("its provider refused to remove it")
+            if (!Furniture.require().remove(d.world, handle)) throw ToolError("its provider refused to remove it")
             val root = BlockVector3.at(placed.x, placed.y, placed.z)
             change.restores += Runnable { put(d.world, snapshot, at, placed, root)?.let { remap(handle, d.uniqueId, it, null) } }
         } else {

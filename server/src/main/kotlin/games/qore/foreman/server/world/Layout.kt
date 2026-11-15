@@ -125,12 +125,17 @@ class Layout(private val plugin: Foreman) : ForemanLayout, Listener {
         return out
     }
 
-    /** [data] with the [LayoutField.Type.YAW] fields of [types] turned [rotate]° clockwise (a paste or move turned so). */
-    fun turned(types: List<LayoutType>, data: JsonObject, rotate: Int): JsonObject {
-        if (rotate % 360 == 0 || data.size() == 0) return data
+    /**
+     * [data] with the [LayoutField.Type.YAW] fields of [types] mirrored east–west when [mirror], then turned [rotate]°
+     * clockwise (a paste or move placed so).
+     */
+    fun turned(types: List<LayoutType>, data: JsonObject, rotate: Int, mirror: Boolean = false): JsonObject {
+        if (rotate % 360 == 0 && !mirror || data.size() == 0) return data
         val yaws = types.flatMap { it.fields }.filter { it.type == LayoutField.Type.YAW && data.get(it.name)?.let { v -> v.isJsonPrimitive && v.asJsonPrimitive.isNumber } == true }
         if (yaws.isEmpty()) return data
-        return data.deepCopy().apply { yaws.forEach { f -> addProperty(f.name, Placement.normalize(get(f.name).asFloat + rotate)) } }
+        return data.deepCopy().apply {
+            yaws.forEach { f -> addProperty(f.name, Placement.normalize(get(f.name).asFloat.let { if (mirror) -it else it } + rotate)) }
+        }
     }
 
     /** What is wrong with [data] for [types]: unknown fields (warnings), bad values, missing required fields. [world] checks area names. */

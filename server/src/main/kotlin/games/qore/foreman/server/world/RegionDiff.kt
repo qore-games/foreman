@@ -24,8 +24,8 @@ import java.util.UUID
 import kotlin.math.abs
 
 /**
- * A box of a world compared with where it was copied or moved: [placement] takes its blocks to the target's, turned.
- * Compared: block states (turned as WorldEdit turns them), the block data entries Foreman copies ([ChunkBlockData]:
+ * A box of a world compared with where it was copied or moved: [placement] takes its blocks to the target's, mirrored
+ * and turned. Compared: block states (flipped and turned as WorldEdit does), the block data entries Foreman copies ([ChunkBlockData]:
  * their content), entities (type, position and yaw turned, pitch, name, a fixed display's pose: its yaw, pitch and
  * transformation together, turned, as the model shows; what it shows,
  * an interaction's size, a hanging entity's facing and item, their persistent data), furniture as its provider sees it
@@ -100,9 +100,9 @@ class RegionDiff(
         }
     }
 
-    /** [data] turned as WorldEdit turns a clipboard's blocks. */
+    /** [data] flipped and turned as WorldEdit flips and turns a clipboard's blocks. */
     private fun turn(data: BlockData): String =
-        if (placement.rotate == 0) data.getAsString(false)
+        if (!placement.turns) data.getAsString(false)
         else BukkitAdapter.adapt(BlockTransformExtent.transform(BukkitAdapter.adapt(data), placement.transform)).getAsString(false)
 
     // ---- Block data ---------------------------------------------------------------------------------------------------
@@ -353,7 +353,7 @@ class RegionDiff(
             a is String && b is String -> when {
                 a == b -> {}
                 uuid(a)?.let { uuids[it]?.toString() == b } == true -> mapped++
-                placement.rotate != 0 && face(a)?.let { placement.face(it).name.equals(b, true) } == true -> turned++
+                placement.turns && face(a)?.let { placement.face(it).name.equals(b, true) } == true -> turned++
                 else -> out += "$path ${quote(a)} → ${quote(b)}"
             }
             a is IntArray && b is IntArray -> when {
@@ -366,7 +366,7 @@ class RegionDiff(
                 val y = (b as Number).toDouble()
                 when {
                     abs(x - y) <= 1e-6 * maxOf(1.0, abs(x)) -> {}
-                    angle((x + placement.rotate).toFloat(), y.toFloat()) <= ANGLE -> turned++
+                    angle(placement.yaw(x.toFloat()), y.toFloat()) <= ANGLE -> turned++
                     else -> out += "$path $x → $y"
                 }
             }
@@ -385,7 +385,7 @@ class RegionDiff(
     private fun face(s: String): BlockFace? = runCatching { BlockFace.valueOf(s.uppercase()) }.getOrNull()?.takeIf { it in HORIZONTAL }
 
     /** Reads the uncompressed NBT that persistent data containers serialize to: compounds as sorted maps. */
-    private object Nbt {
+    internal object Nbt {
         fun read(bytes: ByteArray): Any? = DataInputStream(ByteArrayInputStream(bytes)).use { input ->
             val type = input.readByte().toInt()
             if (type == 0) return null

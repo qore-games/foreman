@@ -17,7 +17,9 @@ import games.qore.foreman.server.mcp.schema
 import games.qore.foreman.server.world.Area
 import games.qore.foreman.server.world.AreaAssets
 import games.qore.foreman.server.world.Assets
+import games.qore.foreman.server.world.Box
 import games.qore.foreman.server.world.Chunks
+import games.qore.foreman.server.world.Clipboards
 import games.qore.foreman.server.world.Snapshots
 import games.qore.foreman.server.world.Sync
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer
@@ -58,9 +60,9 @@ object AssetContentTools {
                 "or to read it without a render: size, a palette of block states, the blocks that aren't air and have a face " +
                 "in the open (those enclosed by full blocks are left out and counted), and its display entities (item, block, " +
                 "text) with their pose. Positions are from its min corner as saved; paste_asset turns it about its bottom " +
-                "center. Text gives a summary, json everything.",
+                "center. Text gives a summary, json everything. `clipboard` reads your clipboard (copy_region).",
             schema {
-                string("name", "Asset name or area id from list_assets")
+                string("name", "Asset name or area id from list_assets, or clipboard")
                 int("max_blocks", "Most blocks listed (default and at most $MAX_BLOCKS): past it the list stops and says truncated", required = false)
                 enum("format", listOf("text", "json"), "text (default): a summary; json: {asset, size, palette, blocks: flat [x, y, z, " +
                     "palette index, …], listed, hidden, total, truncated, displays: [{type: item|block|text, pos, yaw, pitch, " +
@@ -80,15 +82,16 @@ object AssetContentTools {
             "json" -> true
             else -> throw ToolError("format is text or json")
         }
-        val area = if (AreaAssets.isId(name)) AreaAssets.get(plugin.worlds, name) else null
-        val file = if (area == null) plugin.assets.get(name) else null
+        val clip = if (Clipboards.isId(name)) Clipboards.get(name) else null
+        val area = if (clip == null && AreaAssets.isId(name)) AreaAssets.get(plugin.worlds, name) else null
+        val file = if (clip == null && area == null) plugin.assets.get(name) else null
         // A changed area (moved, resized) or schematic is read again; changes inside an area within [KEPT_MS].
-        val key = "$name|$max|${area?.hashCode() ?: file!!.file.lastModified()}"
+        val key = if (clip != null) "${Clipboards.ASSET}#${clip.serial}|$max" else "$name|$max|${area?.hashCode() ?: file!!.file.lastModified()}"
         val now = System.currentTimeMillis()
         val content = synchronized(kept) {
             kept.values.removeIf { now - it.first > KEPT_MS }
             kept[key]?.second
-        } ?: (if (area != null) readArea(plugin, area, max) else readFile(plugin, file!!, max)).also { read ->
+        } ?: (if (clip != null) readClip(clip, max) else if (area != null) readArea(plugin, area, max) else readFile(plugin, file!!, max)).also { read ->
             synchronized(kept) {
                 kept[key] = now to read
                 while (kept.size > 16) kept.remove(kept.keys.first())
@@ -101,14 +104,31 @@ object AssetContentTools {
         val world = AreaAssets.world(area)
         val box = area.bounds.requireVolume(plugin.limits.maxEditBlocks.toLong(), "asset_content")
         Chunks.loadEntities(world, listOf(box))
-        val (snapshots, displays) = Sync.main {
-            val displays = AreaAssets.displays(world, box).flatMap { listOf(it) + riders(it) }.distinctBy { it.uniqueId }
-            Snapshots(world, box.min.x(), box.min.z(), box.max.x(), box.max.z()).load() to displays.mapNotNull { display(it, box.min) }
-        }
+        val (snapshots, displays) = Sync.main { Snapshots(world, box.min.x(), box.min.z(), box.max.x(), box.max.z()).load() to poses(world, box) }
         return JsonObject().apply {
             addProperty("asset", AreaAssets.id(area))
             blocks(this, box.sizeX, box.sizeY, box.sizeZ, max) { x, y, z -> snapshots.data(box.min.x() + x, box.min.y() + y, box.min.z() + z) }
-            add("displays", JsonArray().apply { displays.forEach { add(it) } })
+            add("displays", displays)
+        }
+    }
+
+    /** The displays of [box] (and their riders) with their pose from its min corner, as `displays` says them. Main thread. */
+    fun poses(world: org.bukkit.World, box: Box): JsonArray = JsonArray().apply {
+        AreaAssets.displays(world, box).flatMap { listOf(it) + riders(it) }.distinctBy { it.uniqueId }.mapNotNull { display(it, box.min) }.forEach(::add)
+    }
+
+    /** A clipboard: its blocks as copied, its displays as they were then ([Clipboards.Clip.displays]). */
+    private fun readClip(clip: Clipboards.Clip, max: Int): JsonObject {
+        val clipboard = clip.copy.clipboard
+        val min = clipboard.region.minimumPoint
+        val d = clipboard.dimensions
+        return JsonObject().apply {
+            addProperty("asset", Clipboards.ASSET)
+            blocks(this, d.x(), d.y(), d.z(), max) { x, y, z ->
+                val state = clipboard.getBlock(min.add(x, y, z))
+                if (state.blockType.material.isAir) null else BukkitAdapter.adapt(state)
+            }
+            add("displays", clip.displays)
         }
     }
 

@@ -4,6 +4,10 @@ import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard
 import com.sk89q.worldedit.extent.clipboard.Clipboard
+import com.sk89q.worldedit.function.mask.Mask
+import com.sk89q.worldedit.function.mask.MaskUnion
+import com.sk89q.worldedit.function.mask.Masks
+import com.sk89q.worldedit.function.mask.RegionMask
 import com.sk89q.worldedit.function.operation.ForwardExtentCopy
 import com.sk89q.worldedit.function.operation.Operations
 import com.sk89q.worldedit.math.BlockVector3
@@ -22,6 +26,8 @@ import org.bukkit.block.data.BlockData
 import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntitySnapshot
+import org.bukkit.entity.Hanging
+import org.bukkit.entity.LivingEntity
 import org.bukkit.persistence.PersistentDataType
 import org.joml.Matrix4d
 import org.joml.Vector3d
@@ -69,8 +75,17 @@ object AreaAssets {
         world.getNearbyEntities(Library.search(box)) { it is Display && it.isPersistent && !it.isInsideVehicle && Library.inside(it, box) }
             .map { it as Display }
 
+    /**
+     * The entities a copy of [box] takes: those a move of it carries ([Library.entities]: displays, markers where plugins
+     * keep data in the world, item frames, paintings, armor stands, mobs…; riders go with what they ride), persistent
+     * ones only (plugins spawn their runtime parts again), mobs that despawn aside (they aren't part of a build). Main
+     * thread.
+     */
+    fun copied(world: World, box: Box): List<Entity> =
+        Library.entities(world, box).filter { it.isPersistent && !(it is LivingEntity && it.removeWhenFarAway) }
+
     /** The furniture whose root display is one of [displays] (its root may stand outside the box its model shows in). */
-    private fun furniture(world: World, box: Box, displays: List<Display>): List<Furniture.Placed> {
+    private fun furniture(world: World, box: Box, displays: List<Entity>): List<Furniture.Placed> {
         val ids = displays.map { it.uniqueId }.toSet()
         return Furniture.inBox(world, box.grow(Library.REACH, Library.REACH, Library.REACH)).filter { it.entity in ids }
     }
@@ -158,14 +173,15 @@ object AreaAssets {
     /** Bottom centre of [box]: what pastes put at their position, and turn around. */
     fun origin(box: Box): BlockVector3 = BlockVector3.at(Math.floorDiv(box.min.x() + box.max.x(), 2), box.min.y(), Math.floorDiv(box.min.z() + box.max.z(), 2))
 
-    /** The box [box] occupies pasted with its bottom centre at [position], turned [rotate]° clockwise seen from above. */
-    fun footprint(box: Box, rotate: Int, position: BlockVector3): Box = Placement(origin(box), rotate, position).box(box)
+    /** The box [box] occupies pasted with its bottom centre at [position], mirrored when [mirror], turned [rotate]° clockwise seen from above. */
+    fun footprint(box: Box, rotate: Int, position: BlockVector3, mirror: Boolean = false): Box = Placement(origin(box), rotate, position, mirror).box(box)
 
     /**
-     * What a paste copied: display entities, furniture adopted by its provider, furniture placed again, furniture lost,
-     * block data entries, and the [instance] it recorded with its points and areas.
+     * What a paste copied: entities besides furniture ([displays], markers, frames…), furniture adopted by its provider,
+     * furniture placed again, furniture lost, block data entries, and the [instance] it recorded with its points and areas,
+     * and the [children] nested in it.
      */
-    class Pasted(val displays: Int, val furniture: Int, val replaced: Int, val lost: Int, val blockData: Int, val instance: Instance)
+    class Pasted(val displays: Int, val furniture: Int, val replaced: Int, val lost: Int, val blockData: Int, val instance: Instance, val children: List<Instance>)
 
     /**
      * Off the main thread, before [copy]: loads the entities of the asset and of where it goes, so that its furniture
@@ -180,27 +196,33 @@ object AreaAssets {
 
     /**
      * An asset area read for [paste]: its blocks around its bottom centre, its display entities, its furniture, the block
-     * data of its blocks ([ChunkBlockData]), and the points and other areas inside it.
+     * data of its blocks ([ChunkBlockData]), the points and other areas inside it, and the [instances] lying in it
+     * (detached ones aside: they are plain content now), those of them changed since their paste in [edited]. [loose]: a
+     * box copied to a clipboard ([Clipboards]) rather than an asset area, whose pastes are detached copies of
+     * [Clipboards.ASSET], with no source to follow.
      */
     class Copy(
         val area: Area, val origin: BlockVector3, val clipboard: Clipboard, val entities: List<CopiedEntity>, val furniture: List<Furniture.Placed>,
-        val blockData: List<ChunkBlockData.Entry>, val points: List<Point>, val areas: List<Area>,
+        val blockData: List<ChunkBlockData.Entry>, val points: List<Point>, val areas: List<Area>, val instances: List<Instance>, val edited: Set<String>,
+        val loose: Boolean = false,
     )
 
-    /** A display entity of an asset: which it is, where, and everything else about it. */
-    class CopiedEntity(val id: UUID, val location: Location, val snapshot: EntitySnapshot)
+    /** An entity of an asset (a display, a marker): which it is, where, everything else about it, and the instance it was pasted by ([tag]). */
+    class CopiedEntity(val id: UUID, val location: Location, val snapshot: EntitySnapshot, val tag: String?)
 
     /**
-     * Reads [area] for [paste]. Main thread, before the paste's edit session opens: a second session of the same world
-     * open beside it would take its writes out of its history.
+     * Reads [area] for [paste] ([loose]: a box for a clipboard, [Copy.loose]). Main thread, before the paste's edit session
+     * opens: a second session of the same world open beside it would take its writes out of its history.
      */
-    fun copy(area: Area): Copy {
+    fun copy(area: Area, loose: Boolean = false): Copy {
         val source = world(area)
         val box = area.bounds
         Chunks.keepLoaded(source, box.grow(Library.REACH, Library.REACH, Library.REACH))
-        val displays = displays(source, box)
+        val displays = copied(source, box)
         val furniture = furniture(source, box, displays)
-        val entities = displays.mapNotNull { e -> e.createSnapshot()?.let { CopiedEntity(e.uniqueId, e.location, it) } }
+        val entities = displays.mapNotNull { e ->
+            e.createSnapshot()?.let { CopiedEntity(e.uniqueId, e.location, it, e.persistentDataContainer.get(INSTANCE_KEY, PersistentDataType.STRING)) }
+        }
         val clipboard = WorldEdit.getInstance().newEditSessionBuilder().world(BukkitAdapter.adapt(source)).build().use { session ->
             val region = CuboidRegion(session.world, box.min, box.max)
             BlockArrayClipboard(region).also {
@@ -209,44 +231,93 @@ object AreaAssets {
             }
         }
         val worlds = Foreman.instance.worlds
+        val inner = worlds.instances(area.world).filter { !it.detached && box.containsBox(it.box) }
         return Copy(
             area, origin(box), clipboard, entities, furniture, ChunkBlockData.read(source, box),
             worlds.points(area.world).filter { it.inside(box) },
             worlds.areas(area.world).filter { it.name != area.name && box.containsBox(it.bounds) },
+            inner, inner.filter { Fingerprints.state(source, it) == Fingerprints.State.EDITED }.map { it.id }.toSet(), loose,
         )
     }
 
     /**
-     * Pastes [copy] into [scope]'s world, its bottom centre at [position], turned [rotate]° clockwise seen from above:
-     * its blocks and their block data, then copies of its display entities with their whole pose turned (their
-     * transformation stays, their position and yaw turn), tagged with the instance. Copies of furniture are taken in by
-     * the furniture provider, or placed again through it when it doesn't. Then its points and areas, named after the
-     * instance [id], and the [Instance] itself. Everything is recorded in the scope's change. Main thread.
+     * How the instances lying in an asset's area ([inner]) become copies nested in instance [id] of its paste: each one's
+     * id is `<id>/<its id>`, under the nearest of its ancestors that is nested too (`<id>/<parent's>/<its own>`; ancestors
+     * that aren't, detached ones, join its path with `.`); the points and areas it owns (by name: its id, `<its id>/…`) and
+     * the entities tagged with it go to it.
      */
-    fun paste(scope: EditScope, copy: Copy, position: BlockVector3, rotate: Int, ignoreAir: Boolean, id: String): Pasted {
+    class Nesting(val id: String, val inner: List<Instance>) {
+        private val byId = inner.associateBy { it.id }
+        private val ids = HashMap<String, String>()
+
+        /** The nested id of [s], one of [inner]. */
+        fun childId(s: Instance): String = ids[s.id] ?: run {
+            val ancestor = generateSequence(s.parent) { it.substringBeforeLast('/', "").ifEmpty { null } }.firstNotNullOfOrNull { byId[it] }
+            val rest = (if (ancestor == null) s.id else s.id.removePrefix("${ancestor.id}/")).replace('/', '.')
+            ((ancestor?.let(::childId) ?: id) + "/" + rest).also { ids[s.id] = it }
+        }
+
+        /** The instance of [inner] that [name] (a point's build, an area's name, an entity's tag) belongs to. */
+        fun owner(name: String): Instance? = generateSequence(name.ifEmpty { null }) { it.substringBeforeLast('/', "").ifEmpty { null } }.firstNotNullOfOrNull { byId[it] }
+
+        /** The id of the copy owning [name]: its owner's nested one, else [id]. */
+        fun ownerId(name: String?): String = name?.let(::owner)?.let(::childId) ?: id
+
+        /** [name] renamed for the paste: under its owner's nested id, else under [id] (`id` itself when empty). */
+        fun rename(name: String): String = owner(name)?.let { childId(it) + name.removePrefix(it.id) } ?: if (name.isEmpty()) id else "$id/$name"
+    }
+
+    /**
+     * Pastes [copy] into [scope]'s world, its bottom centre at [position], mirrored east–west when [mirror] then turned
+     * [rotate]° clockwise seen from above: its blocks and their block data, then copies of its entities, their position,
+     * yaw and facing placed so (a display's transformation and block mirrored too: [Placement.mirror]), tagged with the
+     * instance (or the nested copy they belong to). Copies of furniture are taken in by the furniture provider, or placed again
+     * through it when it doesn't. Then its points and areas, named after the instance [id], the [Instance] itself and the
+     * copies nested in it ([Nesting]), with their fingerprints. Nothing is written in the boxes of [keep] (detached copies
+     * a sync leaves as they are), nor nested copies made there. Everything is recorded in the scope's change. Main thread.
+     */
+    fun paste(scope: EditScope, copy: Copy, position: BlockVector3, rotate: Int, mirror: Boolean, ignoreAir: Boolean, id: String, keep: List<Instance> = emptyList()): Pasted {
         val world = scope.world
-        val placement = Placement(copy.origin, rotate, position)
-        val transform = placement.transform
+        val placement = Placement(copy.origin, rotate, position, mirror)
         val result = placement.box(copy.area.bounds)
+        val nesting = Nesting(id, copy.instances)
+        val kept = keep.map { it.box }
+        fun isKept(x: Int, y: Int, z: Int) = kept.any { it.contains(x, y, z) }
+        fun isKept(p: BlockVector3) = isKept(p.x(), p.y(), p.z())
+        fun keptId(i: String) = keep.any { i == it.id || i.startsWith("${it.id}/") }
         Chunks.keepLoaded(world, result)
         scope.change.touch(result)
 
         val holder = ClipboardHolder(copy.clipboard)
-        holder.transform = transform
-        Operations.complete(holder.createPaste(scope.session).to(position).ignoreAirBlocks(ignoreAir).copyEntities(false).copyBiomes(false).build())
+        holder.transform = placement.transform
+        val paste = holder.createPaste(scope.session).to(position).ignoreAirBlocks(ignoreAir).copyEntities(false).copyBiomes(false)
+        if (kept.isNotEmpty()) paste.maskSource(outside(kept.map(placement.inverse()::box)))
+        Operations.complete(paste.build())
         // The blocks (furniture cells included) are in the world before the entities that claim them.
         scope.flush()
-        val blockData = ChunkBlockData.copy(copy.blockData, placement, world, scope.change)
+        val blockData = ChunkBlockData.copy(copy.blockData.filter { !isKept(placement.block(it.x, it.y, it.z)) }, placement, world, scope.change)
 
         val roots = copy.furniture.mapNotNull { it.entity }.toSet()
+        val tags = copy.entities.associate { it.id to nesting.ownerId(it.tag) }
         val copies = HashMap<UUID, Entity>()
         val pasted = LinkedHashMap<UUID, UUID>()
+        val skipped = HashSet<UUID>()
         var displays = 0
         for (e in copy.entities) {
             val at = placement.location(e.location, world)
+            if (isKept(at.blockX, at.blockY, at.blockZ) || keptId(tags.getValue(e.id))) {
+                skipped += e.id
+                continue
+            }
             val entity = e.snapshot.createEntity(at)
             entity.setRotation(at.yaw, at.pitch)
-            (listOf(entity) + passengers(entity)).forEach { tag(it, id) }
+            // Riders keep a yaw of their own: placed like the rest.
+            passengers(entity).forEach { it.setRotation(placement.yaw(it.location.yaw), it.location.pitch) }
+            for (part in listOf(entity) + passengers(entity)) {
+                if (part is Hanging) part.setFacingDirection(placement.face(part.facing), true)
+                if (part is Display) placement.mirror(part)
+                tag(part, tags.getValue(e.id))
+            }
             pasted[e.id] = entity.uniqueId
             if (e.id in roots) copies[e.id] = entity
             else {
@@ -254,13 +325,16 @@ object AreaAssets {
                 (listOf(entity) + passengers(entity)).forEach { scope.change.spawnedEntities += it.uniqueId to it.location }
             }
         }
-        Bukkit.getPluginManager().callEvent(placement.event(RegionCopyEvent.Kind.PASTE, world(copy.area), copy.area.bounds, world, pasted))
+        // A clipboard's source world may have unloaded since: the event says only its coordinates matter then.
+        val source = Bukkit.getWorld(copy.area.world) ?: world
+        Bukkit.getPluginManager().callEvent(placement.event(RegionCopyEvent.Kind.PASTE, source, copy.area.bounds, world, pasted, clipboard = copy.loose))
 
         val adopted = Furniture.inBox(world, result).filter { it.handle != null }.associateBy { it.entity }
         var taken = 0
         var replaced = 0
         var lost = 0
         for (f in copy.furniture) {
+            if (f.entity in skipped || f.entity == null && isKept(placement.block(f.x, f.y, f.z))) continue
             val entity = f.entity?.let { copies[it] }
             val placed = entity?.let { adopted[it.uniqueId] }
             if (placed != null) {
@@ -271,35 +345,73 @@ object AreaAssets {
             // A provider that doesn't take in copied furniture places it again, as transform_region does.
             entity?.remove()
             f.entity?.let { pasted.remove(it) }
-            val again = Furniture.provider?.type(f.id)?.let { Furniture.spawn(world, it, placement.block(f.x, f.y, f.z), f.yaw + rotate, f.state, scope.change) }
+            val again = Furniture.provider?.type(f.id)?.let { Furniture.spawn(world, it, placement.block(f.x, f.y, f.z), placement.yaw(f.yaw), f.state, scope.change) }
             if (again != null) {
                 replaced++
-                again.entity?.let { e -> Bukkit.getEntity(e)?.let { tag(it, id) }; f.entity?.let { pasted[it] = e } }
+                again.entity?.let { e -> world.getEntity(e)?.let { tag(it, f.entity?.let(tags::get) ?: id) }; f.entity?.let { pasted[it] = e } }
             } else lost++
         }
-        val instance = record(scope, copy, placement, id, result, pasted, written(copy.clipboard, placement, result))
-        return Pasted(displays, taken, replaced, lost, blockData, instance)
+        val written = written(copy.clipboard, placement, result, kept)
+        val records = record(scope, copy, placement, nesting, keep, result, pasted, tags, written)
+        val edited = copy.edited.mapNotNull { e -> copy.instances.firstOrNull { it.id == e }?.let(nesting::childId) }.toSet()
+        val fingerprinted = Fingerprints.taken(world, records, edited)
+        Foreman.instance.worlds.putInstances(fingerprinted)
+        return Pasted(displays, taken, replaced, lost, blockData, fingerprinted.first(), fingerprinted.drop(1))
     }
 
-    /** The blocks of [clipboard] that aren't air, where [placement] puts them in [box]: what a paste of it writes. */
-    fun written(clipboard: Clipboard, placement: Placement, box: Box): Written =
-        Written.of(box, clipboard.region.asSequence().filter { !clipboard.getBlock(it).blockType.material.isAir }.map(placement::block))
+    /** A mask of a clipboard's blocks outside [boxes] (in its coordinates). */
+    private fun outside(boxes: List<Box>): Mask {
+        val masks = boxes.map { RegionMask(CuboidRegion(it.min, it.max)) as Mask }
+        return Masks.negate(if (masks.size == 1) masks[0] else MaskUnion(masks))
+    }
 
-    /** The points and areas of [copy] made in the scope's world for instance [id], then the instance: all removed on undo. */
-    private fun record(scope: EditScope, copy: Copy, placement: Placement, id: String, result: Box, entities: Map<UUID, UUID>, written: Written): Instance {
+    /** The blocks of [clipboard] that aren't air, where [placement] puts them in [box], [kept] boxes aside: what a paste of it writes. */
+    fun written(clipboard: Clipboard, placement: Placement, box: Box, kept: List<Box> = emptyList()): Written =
+        Written.of(box, clipboard.region.asSequence().filter { !clipboard.getBlock(it).blockType.material.isAir }.map(placement::block)
+            .filter { p -> kept.none { it.contains(p.x(), p.y(), p.z()) } })
+
+    /**
+     * The points and areas of [copy] made in the scope's world, then the instance [Nesting.id] and the copies nested in it
+     * (those of [keep] aside): each with the points, areas and entities it owns. All removed on undo. Returns the instance
+     * first, then its nested copies, not yet fingerprinted.
+     */
+    private fun record(
+        scope: EditScope, copy: Copy, placement: Placement, nesting: Nesting, keep: List<Instance>, result: Box,
+        entities: Map<UUID, UUID>, tags: Map<UUID, String>, written: Written,
+    ): List<Instance> {
         val world = scope.world.name
         val worlds = Foreman.instance.worlds
-        val points = copy.points.map { p -> placement.point(p, world).copy(build = if (p.build.isEmpty()) id else "$id/${p.build}") }
-        val areas = copy.areas.map { a -> placement.area(a, world).copy(name = "$id/${a.name}", tags = a.tags - TAG) }
+        val id = nesting.id
+        fun keptId(i: String) = keep.any { i == it.id || i.startsWith("${it.id}/") }
+        val points = copy.points.map { p -> nesting.ownerId(p.build) to placement.point(p, world).copy(build = nesting.rename(p.build)) }.filter { !keptId(it.first) }
+        val areas = copy.areas.map { a -> nesting.ownerId(a.name) to placement.area(a, world).copy(name = nesting.rename(a.name), tags = a.tags - TAG) }.filter { !keptId(it.first) }
+        fun owned(owner: String) = entities.filter { (from, _) -> (tags[from] ?: id) == owner }
+        val now = System.currentTimeMillis()
+        val by = Caller.current()?.name ?: Caller.CONSOLE.name
         val instance = Instance(
-            id, world, id(copy.area), copy.area.world, copy.area.name, placement.position, placement.rotate, result, points, areas.map { it.name },
-            entities, System.currentTimeMillis(), Caller.current()?.name ?: Caller.CONSOLE.name, written,
+            id, world, if (copy.loose) Clipboards.ASSET else id(copy.area), copy.area.world.takeIf { !copy.loose }, copy.area.name.takeIf { !copy.loose },
+            placement.position, placement.rotate, result, points.filter { it.first == id }.map { it.second }, areas.filter { it.first == id }.map { it.second.name },
+            owned(id), now, by, written, mirror = placement.mirror, detached = copy.loose,
         )
-        if (points.isNotEmpty()) worlds.addPoints(world, points)
-        areas.forEach { worlds.put(it) }
-        worlds.putInstance(instance)
-        scope.change.restores += Runnable { forget(instance) }
-        return instance
+        val children = copy.instances.filter { !keptId(nesting.childId(it)) }.map { s ->
+            val cid = nesting.childId(s)
+            val (rotate, mirror) = placement.compose(s.rotate, s.mirror)
+            val box = placement.box(s.box)
+            val assetIds = s.entities.entries.associate { (asset, there) -> there to asset }
+            Instance(
+                cid, world, s.asset, s.sourceWorld, s.sourceArea, placement.block(s.origin), rotate, box,
+                points.filter { it.first == cid }.map { it.second }, areas.filter { it.first == cid }.map { it.second.name },
+                owned(cid).mapKeys { (from, _) -> assetIds[from] ?: from }, now, by,
+                s.written?.let { w -> Written.of(box, w.blocks().map(placement::block).filter { written.has(it.x(), it.y(), it.z()) }) },
+                mirror = mirror,
+            )
+        }
+        if (points.isNotEmpty()) worlds.addPoints(world, points.map { it.second })
+        areas.forEach { worlds.put(it.second) }
+        val records = listOf(instance) + children
+        worlds.putInstances(records)
+        scope.change.restores += Runnable { records.asReversed().forEach(::forget) }
+        return records
     }
 
     /** Removes [instance] with the points and areas it made (an undone paste). */

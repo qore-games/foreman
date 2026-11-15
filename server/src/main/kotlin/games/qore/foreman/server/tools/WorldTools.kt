@@ -27,7 +27,7 @@ object WorldTools {
         plugin.worlds = WorldData(plugin).also { it.start() }
         Chunks.start(plugin)
         Locks.start(plugin)
-        return InspectTools.all(plugin) + QualityTools.all(plugin) + LockTools.all(plugin) + EditTools.all(plugin) + TerrainTools.all(plugin) + AssetTools.all(plugin) + AssetContentTools.all(plugin) + LibraryTools.all(plugin) + DiffTools.all(plugin) +
+        return InspectTools.all(plugin) + QualityTools.all(plugin) + LockTools.all(plugin) + EditTools.all(plugin) + TerrainTools.all(plugin) + AssetTools.all(plugin) + AssetContentTools.all(plugin) + ClipboardTools.all(plugin) + LibraryTools.all(plugin) + DiffTools.all(plugin) +
             ModelTools.all(plugin) + DisplayTools.all(plugin) + BuildTools.all(plugin) + LayoutTools.all(plugin) + ObjectTools.all(plugin) + RepairTools.all(plugin) + LandTools.all(plugin) + WorldEditTool.all(plugin)
     }
 

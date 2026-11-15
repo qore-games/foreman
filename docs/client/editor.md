@@ -56,10 +56,10 @@ At the top left of the screen, in the same look as the panel, the tool says what
 
 | # | Tool | For | Keys |
 |---|---|---|---|
-| 1 | [Selection](selection.md) | A box for the AI or your commands | ++enter++ ask a chat about it, ++delete++ clear it, ++n++ the hub's Selection page |
+| 1 | [Selection](selection.md) | A box for the AI or your commands; copy and paste | ++ctrl+c++ copy it, ++ctrl+x++ cut it, ++ctrl+v++ paste the clipboard, ++enter++ ask a chat about it, ++delete++ clear it, ++n++ the hub's Selection page |
 | 2 | [Display editor](displays.md) | Select item, block and text displays, move, turn and scale them | ++v++ mode, ++o++ axes, ++period++ pivot, ++n++ values, ++equal++ duplicate, ++delete++ delete, ++z++ undo, ++end++ drop, ++i++ select in the box, ++p++ move position |
 | 3 | [Place model](models.md#placing) | An item model placed as a display or furniture | ++r++ turn, ++enter++ place, ++shift+enter++ place and edit, ++n++ the model browser |
-| 4 | [Place asset](library.md#placing) | An asset of the library pasted in the world | ++r++ turn, ++enter++ paste, ++n++ the library |
+| 4 | [Place asset](library.md#placing) | An asset of the library, or the clipboard, pasted in the world | ++r++ turn, ++enter++ paste, ++z++ undo, ++n++ the library |
 | 5 | [Asset tool](library.md#the-asset-tool) | Make assets, move, turn and resize them with their content; turn, sync and delete their copies | ++c++ new asset from the selection, ++n++ panel, ++r++ turn, ++f++ fit, ++u++ sync a copy, ++delete++ delete |
 | 6 | [Areas and points](regions.md#the-tool) | The server's areas, marks and points, for gameplay | ++n++ panel, ++m++ new area from the selection, ++p++ new point, ++delete++ delete |
 | 7 | [Measure](#measuring) | Lengths, offsets and block counts between two points | ++backspace++ remove the last, ++delete++ clear them all |

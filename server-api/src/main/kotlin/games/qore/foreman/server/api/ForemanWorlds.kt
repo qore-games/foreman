@@ -87,9 +87,11 @@ class WorldPoint(
  * bottom centre went ([x], [y], [z]) turned [rotation]° clockwise seen from above, the [box] it occupies (max corners
  * exclusive), the points and areas it brought (named `<id>/…`), its entities (the asset's UUID → the pasted one's, which
  * carries the persistent data `foreman:instance` = [id]), when ([created], epoch ms) and by whom ([by]: a player's name
- * or `console`).
+ * or `console`). A copy pasted inside another as part of its asset is nested: its id is `<parent id>/<its own>`, its
+ * [parent] the copy holding it. [mirror]: mirrored east–west before the turn. [detached]: it no longer follows its
+ * asset (syncs leave it as it is).
  */
-class WorldInstance(
+class WorldInstance @JvmOverloads constructor(
     val id: String,
     val world: World,
     val asset: String,
@@ -105,6 +107,9 @@ class WorldInstance(
     val entities: Map<UUID, UUID>,
     val created: Long,
     val by: String,
+    val mirror: Boolean = false,
+    val parent: String? = null,
+    val detached: Boolean = false,
 )
 
 /** Something Foreman keeps in [world] changed ([part]). Fired on the main thread, after the change is saved. */

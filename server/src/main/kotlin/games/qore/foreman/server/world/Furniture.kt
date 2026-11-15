@@ -87,7 +87,7 @@ object Furniture {
      */
     fun removeSpawned(change: Change) {
         val provider = provider ?: return
-        change.spawnedFurniture.forEach { provider.remove(current(it)) }
+        change.spawnedFurniture.forEach { provider.remove(change.world, current(it)) }
     }
 
     /** Places the furniture [change] lifted again: last in an undo. */
@@ -104,7 +104,7 @@ object Furniture {
         val provider = provider ?: return
         placed.forEach { f ->
             val handle = f.handle ?: return@forEach
-            if (provider.remove(handle)) change.removedFurniture += Change.RemovedFurniture(f.id, Location(world, f.x.toDouble(), f.y.toDouble(), f.z.toDouble()), f.yaw, f.state, handle)
+            if (provider.remove(world, handle)) change.removedFurniture += Change.RemovedFurniture(f.id, Location(world, f.x.toDouble(), f.y.toDouble(), f.z.toDouble()), f.yaw, f.state, handle)
         }
     }
 

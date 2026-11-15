@@ -36,7 +36,7 @@ your root displays instead (same entities, new places): follow both with
 | `spawn(type, root, yaw, state)` | Places floor furniture; null when refused |
 | `place(type, player, against, face)` | Places wall, ceiling or hanging furniture as a player would |
 | `place(type, player, against, face, yaw)` | The same, turned to `yaw` where the face leaves it free to turn (under a ceiling): the mod's placement tool places what its preview shows. By default the player's yaw |
-| `remove(handle)` | Removes one without drops |
+| `remove(world, handle)` | Removes one of that world without drops (look it up there only: worlds cloned from one map hold furniture with the same handles) |
 
 A `FurnitureType` gives its `id`, the `surfaces` it goes on (`floor`, `wall`, `ceiling`, `hanging`), its `rotations`
 (4 or 8), its `footprint` (collision cells relative to the root, front facing north), whether it's `interactive`

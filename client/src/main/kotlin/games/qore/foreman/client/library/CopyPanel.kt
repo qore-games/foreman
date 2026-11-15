@@ -15,10 +15,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * A pasted copy's panel, beside the world: its asset and the area it came from, its turn, who pasted it and when, the
- * points it carries, and its actions: go to its asset's area (the server loads that world when needed), make its box
- * the selection, teleport to it, detach it from its asset, turn it a quarter, sync it with its asset (pasted again as
- * the asset is now) and delete it. Sync, detach and delete ask a second click.
+ * A pasted copy's panel, beside the world: its asset and the area it came from, its turn and mirror, the copy it is
+ * nested in, who pasted it and when, the points it carries, and its actions: go to its asset's area (the server loads
+ * that world when needed), make its box the selection, teleport to it, detach it from its asset (syncs leave it) or
+ * attach it again, turn it a quarter, sync it with its asset (pasted again as the asset is now) and delete it. Sync,
+ * detach and delete ask a second click.
  */
 class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
     private val panelW = 270
@@ -26,11 +27,10 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
     private val py = 10
     private val ph get() = height - 20
 
-    /** The bridge's copy as it is now, else the one given (from a list, or detached since). */
-    private val copy get() = Bridge.instances.firstOrNull { it.id == given.id } ?: given
+    /** The bridge's copy as it is now, else the one given (from a list, or deleted since). */
+    private val copy get() = Bridge.instances.firstOrNull { it.id == given.id && it.world == given.world } ?: given
     /** The action waiting for its second click: `detach`, `sync` or `delete`. */
     private var asking: String? = null
-    private var detached = false
     private var deleted = false
     private var busy = false
     private var message = "" to Theme.FAINT
@@ -40,7 +40,7 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
     override fun draw(ui: Ui) {
         val copy = copy
         ui.card(px, py, panelW, ph, Theme.RAIL)
-        ui.title(if (deleted) "Deleted copy" else if (detached) "Detached copy" else "Pasted copy", px + 10, py + 10)
+        ui.title(if (deleted) "Deleted copy" else if (copy.detached) "Detached copy" else "Pasted copy", px + 10, py + 10)
         ui.button(px + panelW - 24, py + 8, 16, 16, "×", Style.GHOST, tooltip = "Close (Esc)") { onClose() }
         var y = py + 32
         fun row(label: String, value: String, color: Int = Theme.TEXT) {
@@ -51,7 +51,8 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
         row("Asset", copy.assetName)
         row("From", copy.source?.let { "${it.area} in ${it.world}" } ?: copy.asset, Theme.MUTED)
         row("Where", "${copy.world} · ${box.minX} ${box.minY} ${box.minZ} → ${box.maxX} ${box.maxY} ${box.maxZ} (${box.sizeX}×${box.sizeY}×${box.sizeZ})")
-        row("Turned", "${copy.rotate}° clockwise")
+        row("Turned", "${copy.rotate}° clockwise" + if (copy.mirror) ", mirrored" else "")
+        copy.parent?.let { row("In", it, Theme.MUTED) }
         row("Pasted", listOfNotNull(copy.by.ifEmpty { null }, created(copy)).joinToString(" · ").ifEmpty { "?" })
         row("Id", copy.id, Theme.FAINT)
         y += 4
@@ -62,8 +63,10 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
 
     private fun actions(ui: Ui, copy: AssetInstance, top: Int) {
         val w = (panelW - 20 - 4) / 2
-        val on = !busy && !detached && !deleted && Bridge.connected
-        ui.button(px + 10, top, w, 18, "Open in library", Style.PRIMARY, on, tooltip = "Takes you to the asset's area, in its library world") {
+        val on = !busy && !deleted && Bridge.connected
+        // A clipboard's paste has no asset to open nor follow.
+        val pasted = copy.asset == Clipboard.ID && copy.source == null
+        ui.button(px + 10, top, w, 18, "Open in library", Style.PRIMARY, on && !pasted, tooltip = if (pasted) "Pasted from a clipboard: no asset" else "Takes you to the asset's area, in its library world") {
             call { AssetCalls.openSource(copy) { result -> done(result) { onClose() } } }
         }
         ui.button(px + 14 + w, top, w, 18, "Select", tooltip = "Makes its box Foreman's selection") {
@@ -76,15 +79,14 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
             AssetCalls.teleport(copy)
             onClose()
         }
-        ui.button(px + 14 + w, y, w, 18, if (asking == "detach") "Sure?" else "Detach", Style.DANGER, on,
-            tooltip = "It stays in the world as plain blocks, no longer a copy of its asset. Click twice") {
-            if (ask("detach", "Detach: it stays as plain blocks. Click again")) call {
-                AssetCalls.detach(copy) { result ->
-                    done(result) {
-                        detached = true
-                        say("Detached: plain blocks now", Theme.OK)
-                    }
-                }
+        if (copy.detached) ui.button(px + 14 + w, y, w, 18, "Attach", enabled = on && !pasted,
+            tooltip = "Follows its asset again: its next sync replaces what it holds now") {
+            asking = null
+            call { AssetCalls.attach(copy) { result -> done(result) { say("Attached: syncs update it again", Theme.OK) } } }
+        } else ui.button(px + 14 + w, y, w, 18, if (asking == "detach") "Sure?" else "Detach", Style.DANGER, on,
+            tooltip = "Syncs leave it as it is, to change it by hand; Attach undoes it. Click twice") {
+            if (ask("detach", "Detach: syncs will leave it as it is. Click again")) call {
+                AssetCalls.detach(copy) { result -> done(result) { say("Detached: syncs leave it", Theme.OK) } }
             }
         }
         val third = (panelW - 20 - 8) / 3
@@ -93,7 +95,7 @@ class CopyPanel(private val given: AssetInstance) : KitScreen("Pasted copy") {
             asking = null
             call { AssetTool.turnCopy(copy, confirmed = true) { result -> done(result) { say("Turned", Theme.OK) } } }
         }
-        ui.button(px + 14 + third, y2, third, 18, if (asking == "sync") "Sure?" else "Sync", enabled = on,
+        ui.button(px + 14 + third, y2, third, 18, if (asking == "sync") "Sure?" else "Sync", enabled = on && !copy.detached,
             tooltip = "Replaces the copy with the asset's current content: edits made inside the copy are lost. Click twice (${AssetTool.keyName("copy-sync")})") {
             if (ask("sync", "Sync replaces it with the asset's content: edits made inside it are lost. Click again")) call {
                 AssetTool.syncCopy(copy, confirmed = true) { result -> done(result) { say("Synced with its asset", Theme.OK) } }

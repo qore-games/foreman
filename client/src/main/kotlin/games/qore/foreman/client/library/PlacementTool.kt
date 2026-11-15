@@ -16,11 +16,13 @@ import games.qore.foreman.client.input.Ray
 import games.qore.foreman.client.input.Tools
 import games.qore.foreman.client.link.AIOverlay
 import games.qore.foreman.client.link.Bridge
+import games.qore.foreman.client.link.SelectionTool
 import games.qore.foreman.client.render.Colors
 import games.qore.foreman.client.render.OverlayDraw
 import games.qore.foreman.client.ui.HubScreen
 import games.qore.foreman.client.ui.Screens
 import games.qore.foreman.client.util.Chat
+import kotlinx.serialization.json.buildJsonObject
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -31,8 +33,9 @@ import kotlin.math.sign
 /**
  * Puts a library asset in the world. Its box follows the block looked at (its bottom center on the face looked at), with
  * a ghost of what the paste would put there ([AssetGhost]); scroll or R turns it a quarter; right click pins it there and shows arrows to nudge it; right click again (or Enter
- * at any time) pastes it with the server's `paste_asset`, one undo step. Left click unpins it, or leaves the tool while
- * it follows; Esc leaves. The tool stays on after a paste, for the next one; N picks another in the hub's library.
+ * at any time) pastes it with the server's `paste_asset`, one undo step, which Z takes back. Left click unpins it, or
+ * leaves the tool while it follows; Esc leaves. The tool stays on after a paste, for the next one; N picks another in
+ * the hub's library. It places the [Clipboard] the same way ([clipboard]), as copied, leaving back to the selection tool.
  */
 object PlacementTool : Placing {
     override val title = "Place asset"
@@ -44,6 +47,9 @@ object PlacementTool : Placing {
     private val FRONT = listOf(Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST)
 
     var asset: LibraryAsset? = null
+        private set
+    /** Whether [asset] is the [Clipboard]. */
+    var clipboard = false
         private set
     /** Quarter turns clockwise seen from above (`paste_asset`'s rotate / 90). */
     private var turns = 0
@@ -69,17 +75,31 @@ object PlacementTool : Placing {
         pinned = from.offset(offset.x.roundToInt(), offset.y.roundToInt(), offset.z.roundToInt())
     }
 
-    /** Starts placing [asset], its front toward the player. */
-    fun start(asset: LibraryAsset) {
+    /** Starts placing [asset], its front toward the player; the [clipboard] turned as it was copied. */
+    fun start(asset: LibraryAsset, clipboard: Boolean = false) {
         this.asset = asset
+        this.clipboard = clipboard
         pinned = null
         outcome = null
-        turns = Minecraft.getInstance().player?.direction?.get2DDataValue() ?: 0
+        turns = if (clipboard) 0 else Minecraft.getInstance().player?.direction?.get2DDataValue() ?: 0
         AssetGhost.load(asset)
         Tools.activate(this)
     }
 
-    override fun keys() = placingKeys() + EditorKey(InputConstants.KEY_N, "Pick an asset: the library") { Screens.open(HubScreen(HubScreen.Section.LIBRARY)) }
+    override fun keys() = placingKeys() + listOfNotNull(
+        EditorKey(InputConstants.KEY_Z, "Undo your last change") { undo() },
+        if (clipboard) null else EditorKey(InputConstants.KEY_N, "Pick an asset: the library") { Screens.open(HubScreen(HubScreen.Section.LIBRARY)) },
+    )
+
+    /** Takes back the last change (the last paste, most often): the server's `undo`. */
+    private fun undo() = AssetCalls.call("undo", buildJsonObject {}) { result ->
+        val now = System.currentTimeMillis()
+        result.onSuccess { outcome = "§a✔ ${it.lineSequence().firstOrNull().orEmpty().take(60).ifEmpty { "Undone" }}" to now }
+            .onFailure { outcome = "§c✖ ${it.message.orEmpty().take(60)}" to now }
+    }
+
+    /** Leaves the tool: back to the selection tool after placing the clipboard. */
+    private fun leave() = if (clipboard) Tools.activate(SelectionTool) else Tools.deactivate()
 
     override fun snapNote() = "Assets go on whole blocks"
 
@@ -118,7 +138,7 @@ object PlacementTool : Placing {
             val now = System.currentTimeMillis()
             result.onSuccess { text ->
                 outcome = "§a✔ Pasted ${asset.name}" to now
-                Chat.success("${text.lineSequence().firstOrNull().orEmpty()} (/foreman undo to take it back)")
+                Chat.success("${text.lineSequence().firstOrNull().orEmpty()} (Z or /foreman undo takes it back)")
                 gizmo.cancel()
                 dragFrom = null
                 pinned = null
@@ -134,7 +154,7 @@ object PlacementTool : Placing {
             MouseButton.LEFT -> when {
                 pinned != null && gizmo.press(ray) -> dragFrom = pinned
                 pinned != null -> pinned = null
-                else -> Tools.deactivate()
+                else -> leave()
             }
             MouseButton.RIGHT -> if (pinned == null) pinned = aimed else paste()
         }
@@ -158,7 +178,7 @@ object PlacementTool : Placing {
     }
 
     override fun escape(): Boolean {
-        Tools.deactivate()
+        leave()
         return true
     }
 
@@ -186,13 +206,13 @@ object PlacementTool : Placing {
     }
 
     override fun status(): ToolStatus {
-        val asset = asset ?: return ToolStatus(empty = "Pick an asset in the hub's Library [N]")
+        val asset = asset ?: return ToolStatus(empty = "Pick an asset in the hub's Library [N], or copy a selection (Ctrl+C) and paste it (Ctrl+V)")
         val at = position
         val details = listOf("${asset.sizeLabel} · turned ${turns * 90}° · " + (at?.let { "at ${it.x} ${it.y} ${it.z}" + if (pinned != null) " (pinned)" else "" } ?: "look at a block"))
         val hints = if (pinned == null) listOf(
             Hint(ToolStatus.RIGHT, "pin it here"),
             Hint(ToolStatus.SCROLL, "turn it"),
-            Hint(ToolStatus.LEFT, "leave the tool"),
+            Hint(ToolStatus.LEFT, if (clipboard) "back to the selection" else "leave the tool"),
         ) else listOf(
             Hint(ToolStatus.RIGHT, "paste it here"),
             Hint(ToolStatus.DRAG, "an arrow nudges it"),
@@ -204,7 +224,7 @@ object PlacementTool : Placing {
             AssetGhost.note(),
         )
         return ToolStatus(
-            Shown("Asset", asset.name, "to paste"), details = details, hints = hints, notes = notes,
+            if (clipboard) Shown("Clipboard", asset.sizeLabel, "to paste") else Shown("Asset", asset.name, "to paste"), details = details, hints = hints, notes = notes,
             prompt = if (pinned != null && !pasting) "Pinned: right click to paste it" else null,
         )
     }

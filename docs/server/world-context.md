@@ -47,7 +47,8 @@ Lock in the client's [area panel](../client/regions.md)): until they unlock it (
 - the tools that change blocks (edits, terrain, buildings, `worldedit`, pastes, moves and copies of regions), checked on
   their box before they run, and after any edit session on the blocks it actually wrote (an edit that went in anyway
   is taken back);
-- assets and their copies: `move_asset`, `rotate_instance`, `sync_instance`, `delete_instance`, `detach_instance`;
+- assets and their copies: `move_asset`, `rotate_instance`, `sync_instance`, `sync_asset` (the copies inside it),
+  `delete_instance`, `detach_instance`, `attach_instance`, `forget_instance`;
 - displays and furniture inside it (`edit_displays`, `spawn_display`, `remove_displays`, `place_furniture`,
   `remove_furniture`, `/foreman model spawn`);
 - its points, the locked area itself (changed or deleted) and the areas reaching into it (an area around it all, a
