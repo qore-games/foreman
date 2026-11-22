@@ -389,7 +389,7 @@ object RegionsTool : EditorTool {
     private fun run(what: String, done: String, shown: BlockBox? = null, after: (Result<Unit>) -> Unit = {}, call: ((Result<Unit>) -> Unit) -> Unit) {
         val refused = when {
             busy -> "Wait for the last change to be saved"
-            !Bridge.connected -> "No Foreman plugin on this server: areas and points are its"
+            !Bridge.connected -> Bridge.unavailable("areas and points are its")
             else -> null
         }
         if (refused != null) {
@@ -561,7 +561,7 @@ object RegionsTool : EditorTool {
         val asking = System.currentTimeMillis() - deleteAsked <= CONFIRM_MS
         val notes = listOfNotNull(
             if (busy) Note("Saving…", Note.Tone.BUSY) else note?.takeIf { !asking && System.currentTimeMillis() - it.second < NOTE_MS }?.let { Note.coloured(it.first) },
-            if (!Bridge.connected) Note("No Foreman plugin here: areas and points are its", Note.Tone.ERROR) else null,
+            if (!Bridge.connected) Note(Bridge.unavailable("areas and points are its"), Note.Tone.ERROR) else null,
         )
         val prompt = if (asking && shown != null) "Press Delete again to delete ${area?.name ?: point?.let(::label) ?: "it"}" else null
         return ToolStatus(shown, "Click an area or a point to select it", details, hover, hints, prompt, notes)

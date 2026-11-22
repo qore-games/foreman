@@ -39,7 +39,7 @@ object DisplaysPage {
         ui.button(x + w - 74, y + 12, 64, 16, "Clear", Style.GHOST, enabled = selected.isNotEmpty()) { DisplayEditor.clearSelection() }
         y += 52
         if (!Bridge.connected) {
-            ui.paragraph("No Foreman plugin on this server: the editor shows changes but can't save them. Its display tools (edit_displays, spawn_display, remove_displays) save them.", x, y, w, Theme.WARN)
+            ui.paragraph(Bridge.unavailable("the editor shows changes but can't save them") + ". Its display tools (edit_displays, spawn_display, remove_displays) save them.", x, y, w, Theme.WARN)
             y += 26
         }
         ui.text("In editor mode", x, y, Theme.ACCENT)

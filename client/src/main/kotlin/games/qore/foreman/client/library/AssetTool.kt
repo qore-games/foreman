@@ -327,7 +327,7 @@ object AssetTool : EditorTool {
     private fun run(what: String, done: String, shown: BlockBox? = null, after: (Result<String>) -> Unit = {}, call: ((Result<String>) -> Unit) -> Unit) {
         val refused = when {
             busy -> "Wait for the last change to be saved"
-            !Bridge.connected -> "No Foreman plugin on this server: assets are its world tools"
+            !Bridge.connected -> Bridge.unavailable("assets are its world tools")
             else -> null
         }
         if (refused != null) {
@@ -424,7 +424,7 @@ object AssetTool : EditorTool {
     override fun status(): ToolStatus {
         val notes = listOfNotNull(
             if (busy) Note("Saving…", Note.Tone.BUSY) else note?.takeIf { System.currentTimeMillis() - it.second < NOTE_MS }?.let { Note.coloured(it.first) },
-            if (!Bridge.connected) Note("No Foreman plugin here: assets are its world tools", Note.Tone.ERROR) else null,
+            if (!Bridge.connected) Note(Bridge.unavailable("assets are its world tools"), Note.Tone.ERROR) else null,
         )
         val asset = selected
         val copy = Bridge.instances.firstOrNull { it.id == selectedCopy }

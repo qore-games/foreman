@@ -428,7 +428,7 @@ object ObjectsTool : EditorTool {
     private fun <T> run(what: String, done: String, after: (Result<T>) -> Unit, call: ((Result<T>) -> Unit) -> Unit) {
         val refused = when {
             busy -> "Wait for the last change to be saved"
-            !Bridge.connected -> "No Foreman plugin on this server: objects are its plugins'"
+            !Bridge.connected -> Bridge.unavailable("objects are its plugins'")
             else -> null
         }
         if (refused != null) {
@@ -606,7 +606,7 @@ object ObjectsTool : EditorTool {
         val asking = System.currentTimeMillis() - deleteAsked <= CONFIRM_MS
         val notes = listOfNotNull(
             if (busy) Note("Saving…", Note.Tone.BUSY) else note?.takeIf { !asking && System.currentTimeMillis() - it.second < NOTE_MS }?.let { Note.coloured(it.first) },
-            if (!Bridge.connected) Note("No Foreman plugin here: objects are its plugins'", Note.Tone.ERROR) else null,
+            if (!Bridge.connected) Note(Bridge.unavailable("objects are its plugins'"), Note.Tone.ERROR) else null,
         ) + ObjectActions.notes()
         val prompt = if (asking && obj != null) "Press Delete again to delete the ${name(obj)}" else null
         return Inspector.status(ToolStatus(shown, "Click an object to select it, or C for a new one", details, hover, hints, prompt, notes))

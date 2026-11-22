@@ -253,7 +253,7 @@ class HubScreen(private var section: Section = lastSection(), private val parent
         ui.rect(0, 0, rail, height, Theme.RAIL)
         ui.image(LOGO, 10, 11, 20, 16, 80, 64)
         ui.text("Foreman", 36, 12, Theme.ACCENT)
-        ui.text(if (Bridge.connected) "● server linked" else "○ client only", 36, 24, if (Bridge.connected) Theme.OK else Theme.FAINT)
+        ui.text(if (Bridge.connected) "● server linked" else if (Bridge.denied != null) "○ not linked" else "○ client only", 36, 24, if (Bridge.connected) Theme.OK else Theme.FAINT)
         val top = 44
         val headings = Group.entries.count { g -> g.label != null && Section.entries.any { it.group == g } }
         // Shorter rows when the screen is too short for them all above "Esc to close"; on the shortest (the default
@@ -340,6 +340,10 @@ class HubScreen(private var section: Section = lastSection(), private val parent
             val features = Bridge.hello?.features.orEmpty()
             val detail = if (features.isEmpty() || "world" in features) "World ${Bridge.world} · ${Bridge.areas.size} areas · ${Bridge.points.size} points" else "Offers: " + features.joinToString(", ")
             ui.text(ui.fit(detail, colW - 20), l + 10, y + 40, Theme.MUTED)
+        } else if (Bridge.denied != null) {
+            ui.text("Foreman doesn't link you", l + 10, y + 26, Theme.WARN)
+            // Linked as soon as they get it: the server greets them then.
+            ui.text(ui.fit("Its tools need ${Bridge.denied}", colW - 20), l + 10, y + 40, Theme.MUTED)
         } else {
             ui.text("No Foreman plugin here", l + 10, y + 26, Theme.MUTED)
             ui.paragraph("Packets, the HUD inspector, locations and chats work on any server.", l + 10, y + 40, colW - 20)

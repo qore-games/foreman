@@ -52,7 +52,7 @@ object HistoryPage {
         }
         drawn = now
         if (!Bridge.connected) {
-            ui.paragraph("No Foreman plugin on this server: the history is its, made by its tools.", x, y0, w, Theme.WARN)
+            ui.paragraph(Bridge.unavailable("the history is its, made by its tools") + ".", x, y0, w, Theme.WARN)
             return
         }
         val current = page

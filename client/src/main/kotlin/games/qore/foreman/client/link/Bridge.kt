@@ -139,7 +139,7 @@ data class Hello(
 
 /**
  * The `foreman:bridge` channel to the foreman plugin: JSON messages with a `type`. The server says hello (how to reach
- * its tools: MCP URL and this player's token, or the relay), pushes areas, points, the declared point and area types,
+ * its tools: MCP URL and this player's token, or the relay) or `denied` (the permission the player lacks), pushes areas, points, the declared point and area types,
  * the object kinds and the objects near the player (while the objects tool needs them), check issues and AI changes,
  * and the [panels][Panels] (the one open, the relations near the player); the client sends its selection, which layers
  * it wants and the panel it opens. Protocol in the README.
@@ -151,6 +151,9 @@ object Bridge {
     private val out = Net.outgoing<JsonObject>(CHANNEL) { it.toString().encodeToByteArray() }
 
     var hello: Hello? = null
+        private set
+    /** The permission the server's Foreman wants before it links this player (its `denied`): null when it linked them or isn't there. */
+    var denied: String? = null
         private set
     /** The server's name of the player's world (areas and tools use world names). */
     var world: String = ""
@@ -184,6 +187,13 @@ object Bridge {
     val connected get() = hello != null
 
     /**
+     * What the mod says where it needs the server's tools and has none, with what that leaves out ([why]): no Foreman
+     * plugin on the server, or one that doesn't link this player ([denied]).
+     */
+    fun unavailable(why: String? = null): String =
+        denied?.let { "You don't have $it on this server's Foreman" } ?: listOfNotNull("No Foreman plugin on this server", why).joinToString(": ")
+
+    /**
      * The server's tools go through the game connection ([Relay]): it relays, and announced no MCP address or one this
      * computer doesn't reach (checked when it says hello).
      */
@@ -212,6 +222,7 @@ object Bridge {
 
     private fun reset() {
         hello = null
+        denied = null
         relayed = false
         world = ""
         areas = emptyList()
@@ -232,11 +243,17 @@ object Bridge {
                 "hello" -> {
                     val hello = JSON.decodeFromJsonElement<Hello>(message)
                     this.hello = hello
+                    denied = null
                     world = hello.world
                     relayed = hello.relay && hello.mcpUrl == null
                     if (hello.relay && hello.mcpUrl != null && hello.token != null) probe(hello.mcpUrl, hello.token)
                     Panels.hello()
                     subscribe()
+                }
+                // Its Foreman doesn't link this player (any more): what it said before goes.
+                "denied" -> {
+                    reset()
+                    denied = message["permission"]?.jsonPrimitive?.content ?: "permission"
                 }
                 "world" -> world = message["world"]?.jsonPrimitive?.content ?: world
                 "areas" -> areas = JSON.decodeFromJsonElement(message["areas"]!!)

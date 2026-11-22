@@ -52,6 +52,10 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 
 ### Server (Paper plugin)
 
+- **Linked when given `foreman.client`.** A player made operator, or given the permission by a permission plugin, while
+  online is linked at once (when the server sends them their commands again) instead of on their next join, and
+  unlinked when they lose it. The mod of a player without it is told so (`denied` on the bridge): its hub and messages
+  say they lack `foreman.client` instead of "No Foreman plugin on this server".
 - **Panels and relations.** Plugins show panels for the things they manage and the relations between them
   (`ForemanPanels` in `foreman-server-api`: a `PanelProvider` resolves what a builder aims at (an entity, a block, a
   world object, or a `global` target for its settings) to its own target, describes its panel as sections of rows

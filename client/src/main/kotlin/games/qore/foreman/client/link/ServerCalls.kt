@@ -32,7 +32,7 @@ object ServerCalls {
     fun callNow(tool: String, args: JsonObject, timeout: java.time.Duration = java.time.Duration.ofMinutes(10)): JsonObject {
         val url = Bridge.mcpUrl
         val token = Bridge.editorToken
-        if (url == null || token == null) throw AgentException("No Foreman plugin on this server")
+        if (url == null || token == null) throw AgentException(Bridge.unavailable())
         val client = client(url, token)
         val result = try {
             client.callTool(tool, args, timeout)

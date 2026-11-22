@@ -221,7 +221,7 @@ object ModelsPanel {
         }
         val furniture = ItemModels.furniture[id.toString()].orEmpty()
         when {
-            !Bridge.connected -> row("Furniture", "Unknown: the server doesn't run the Foreman plugin", Theme.MUTED)
+            !Bridge.connected -> row("Furniture", Bridge.denied?.let { "Unknown: you don't have $it" } ?: "Unknown: the server doesn't run the Foreman plugin", Theme.MUTED)
             ItemModels.furnitureLoading -> row("Furniture", "Asking the server…", Theme.MUTED)
             ItemModels.furnitureError != null && furniture.isEmpty() -> row("Furniture", "Unknown: ${ItemModels.furnitureError}", Theme.WARN)
             furniture.isEmpty() -> row("Furniture", "None shows it", Theme.MUTED)

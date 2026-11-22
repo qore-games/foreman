@@ -61,7 +61,7 @@ object LayoutCheck {
 
     /** Shows the list and runs the check. */
     fun open() {
-        if (!Bridge.connected) return Chat.warn("No Foreman plugin on this server: the layout check is its")
+        if (!Bridge.connected) return Chat.warn(Bridge.unavailable("the layout check is its"))
         Screens.open(LayoutCheckPanel())
         run()
     }

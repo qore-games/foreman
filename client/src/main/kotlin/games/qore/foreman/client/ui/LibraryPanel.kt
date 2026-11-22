@@ -49,7 +49,7 @@ object LibraryPanel {
         Library.update()
         when {
             !Bridge.connected -> ui.paragraph("The library is the Foreman plugin's: the builds its players tagged as assets and its saved schematics. " +
-                "This server doesn't run it.", x, y, w)
+                (Bridge.denied?.let { "You don't have $it on this server." } ?: "This server doesn't run it."), x, y, w)
             Bridge.hello?.features?.let { it.isNotEmpty() && "world" !in it } == true -> ui.paragraph("This server's Foreman doesn't offer its world tools " +
                 "(a production preset): the library is one of them.", x, y, w)
             else -> openedAsset()?.let { detail(ui, it, x, y, w, h, close) } ?: run {

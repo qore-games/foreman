@@ -161,6 +161,6 @@ object SelectionTool : EditorTool {
                 if (Bridge.connected) Hint("Ctrl+V", "paste the clipboard") else null,
             )
         },
-        notes = if (Bridge.connected) listOfNotNull(Clipboard.note()) else listOf(Note("No Foreman plugin here: chats get it from you")),
+        notes = if (Bridge.connected) listOfNotNull(Clipboard.note()) else listOf(Note(Bridge.unavailable("chats get it from you"))),
     )
 }

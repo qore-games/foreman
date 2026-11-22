@@ -21,6 +21,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerChangedWorldEvent
+import org.bukkit.event.player.PlayerCommandSendEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerRegisterChannelEvent
 import org.bukkit.scheduler.BukkitTask
@@ -33,7 +34,8 @@ import java.util.logging.Level
  * The `foreman:bridge` plugin channel to the foreman client mod, whose AI runs on the builder's computer.
  *
  * S2C: `hello` (MCP URL and the player's token with the MCP server, `relay` with the relay, `test`: whether they have
- * `foreman.test` and testing is on, `features`: the server's), `world`, `areas`, `points`, `instances`, `layout` (the declared point and area types; on subscribe and when they change), `issues` (after each check), `change`
+ * `foreman.test` and testing is on, `features`: the server's), `denied` in its place (`permission`: the one they lack),
+ * `world`, `areas`, `points`, `instances`, `layout` (the declared point and area types; on subscribe and when they change), `issues` (after each check), `change`
  * (after each modifying tool call), and to a player subscribed to `objects` (an editor showing them) `object_kinds` (on
  * subscribe and when they change) and `objects` (those near them, when they change: looked at every second, at once
  * after a change made through Foreman). C2S: `selection`, `subscribe` and `unsubscribe` {layers}. With the panels feature
@@ -108,6 +110,10 @@ class Bridge(private val plugin: Foreman) : Listener {
         if (event.channel == CHANNEL) hello(event.player)
     }
 
+    /** The server sends a player their commands again when their permissions change: an op, a deop, most permission plugins. */
+    @EventHandler
+    fun onCommandsSent(event: PlayerCommandSendEvent) = permissionsChanged(event.player)
+
     @EventHandler
     fun onQuit(event: PlayerQuitEvent) = drop(event.player)
 
@@ -127,7 +133,7 @@ class Bridge(private val plugin: Foreman) : Listener {
     private fun hello(player: Player) {
         if (!player.hasPermission(PERMISSION)) {
             tokens.revoke(player.uniqueId)
-            return
+            return deny(player)
         }
         clients[player.uniqueId] = ConcurrentHashMap.newKeySet()
         send(player, message("hello") {
@@ -161,9 +167,13 @@ class Bridge(private val plugin: Foreman) : Listener {
             !allowed && clients.containsKey(player.uniqueId) -> {
                 drop(player)
                 tokens.revoke(player.uniqueId)
+                deny(player)
             }
         }
     }
+
+    /** Tells [player]'s mod that this server runs Foreman but doesn't link them, so it says why its tools aren't there. */
+    private fun deny(player: Player) = send(player, message("denied") { addProperty("permission", PERMISSION) })
 
     /** Revokes [name]'s token; an online client gets a new one at once. */
     fun revoke(name: String): Boolean {

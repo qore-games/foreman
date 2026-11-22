@@ -609,7 +609,7 @@ object DisplayEditor : EditorTool {
         }
         val notes = listOfNotNull(
             if (busy) Note("Saving…", Note.Tone.BUSY) else note?.takeIf { System.currentTimeMillis() - it.second < NOTE_MS }?.let { Note.coloured(it.first) },
-            if (!Bridge.connected) Note("No Foreman plugin here: changes can't be saved", Note.Tone.ERROR) else null,
+            if (!Bridge.connected) Note(Bridge.unavailable("changes can't be saved"), Note.Tone.ERROR) else null,
         )
         return ToolStatus(selected, "Click a display to select it", details, hovered, hints, notes = notes)
     }
