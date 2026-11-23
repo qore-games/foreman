@@ -11,8 +11,8 @@ The mod works on any server. Everything it adds starts from the [hub](hub.md) (+
   the world (needs the Foreman plugin).
 - [Model browser](models.md): every item model of the loaded resource packs in 3D, placed as a display or as
   furniture (placing needs the Foreman plugin).
-- [Display editor](displays.md): select item, block and text displays (furniture too) by what they draw, and move,
-  turn and scale them with a gizmo (saving needs the Foreman plugin).
+- [Entity editor](entities.md): select any entity (displays and furniture by what they draw), move, turn and scale
+  displays with a gizmo, edit tags, persistent data and NBT (saving needs the Foreman plugin).
 - [World objects](objects.md): what the server's plugins draw with entities and let you edit (cables, props): outlined,
   selected, their anchors moved and their fields edited in a form, new ones placed (needs the Foreman plugin).
 - [Plugin messages and helpers](plugin-messages.md): a log of plugin channels, copying your position.

@@ -82,9 +82,9 @@ The prompts and what each run did: [Examples](https://qore-games.github.io/forem
   anywhere, turned, with a ghost of it in place first. Everything inside travels: blocks and their block data, entities
   with their data, furniture, points and areas. Each paste remembers its asset: turn it, sync it, delete it, or open the
   asset where it's built.
-- **Display editor and models.** Select any display entity (item, block, text, furniture) by clicking its model, then
-  move, turn, scale and stretch it with gizmos, freely or snapped. Browse every item model of the loaded resource packs
-  in 3D and place them.
+- **Entity editor and models.** Select any entity, a display (item, block, text, furniture) by clicking its model, then
+  move, turn, scale and stretch displays with gizmos, freely or snapped, and edit any entity's tags, persistent data and
+  NBT. Browse every item model of the loaded resource packs in 3D and place them.
 - **Areas and points.** Mark areas (claims, zones, tags) and precise points with a facing, for gameplay to read.
   Plugins declare the point and area types they use with typed fields, filled in with forms in game and checked by the
   layout check. Locks, a per-player undo and a history for builders working together; overlays for hidden blocks

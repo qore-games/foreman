@@ -1,7 +1,7 @@
 package games.qore.foreman.client.models
 
 import com.mojang.blaze3d.platform.InputConstants
-import games.qore.foreman.client.display.DisplayEditor
+import games.qore.foreman.client.entity.EntityEditor
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.editor.EditorKey
 import games.qore.foreman.client.editor.Hint
@@ -44,7 +44,7 @@ import kotlin.math.sin
  * the crosshair is, to the move step (Ctrl: free); furniture in the block before the face. Scroll turns it by the turn
  * step (15° when free; Shift: 90°; furniture: by its rotation step), R a quarter, Alt + scroll scales it by the scale
  * step (an eighth when free). Right click or Enter places it with the server's `spawn_display` (or `place_furniture`),
- * one undo step; the tool stays on for the next one. With Shift, the display placed goes to the display editor,
+ * one undo step; the tool stays on for the next one. With Shift, the display placed goes to the entity editor,
  * selected. Left click or Esc leaves; N picks another in the hub's model browser.
  */
 object ModelPlacementTool : Placing {
@@ -140,7 +140,7 @@ object ModelPlacementTool : Placing {
         else if (furniture != null) ItemModels.placeFurniture(furniture, root ?: BlockPos.containing(at), placedYaw, placed)
         else ItemModels.spawnDisplay(model, at, placedYaw, scale) { result ->
             done(result.map { it.text.lineSequence().firstOrNull().orEmpty() }, name)
-            result.getOrNull()?.uuid?.takeIf { edit }?.let { DisplayEditor.select(listOf(it)) }
+            result.getOrNull()?.uuid?.takeIf { edit }?.let { EntityEditor.select(listOf(it)) }
         }
     }
 

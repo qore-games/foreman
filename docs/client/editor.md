@@ -57,7 +57,7 @@ At the top left of the screen, in the same look as the panel, the tool says what
 | # | Tool | For | Keys |
 |---|---|---|---|
 | 1 | [Selection](selection.md) | A box for the AI or your commands; copy and paste | ++ctrl+c++ copy it, ++ctrl+x++ cut it, ++ctrl+v++ paste the clipboard, ++enter++ ask a chat about it, ++delete++ clear it, ++n++ the hub's Selection page |
-| 2 | [Display editor](displays.md) | Select item, block and text displays, move, turn and scale them | ++v++ mode, ++o++ axes, ++period++ pivot, ++n++ values, ++equal++ duplicate, ++delete++ delete, ++z++ undo, ++end++ drop, ++i++ select in the box, ++p++ move position |
+| 2 | [Entity editor](entities.md) | Select any entity, move, turn and scale displays, edit tags, persistent data and NBT | ++v++ mode, ++o++ axes, ++period++ pivot, ++n++ values, ++equal++ duplicate, ++delete++ delete, ++z++ undo, ++end++ drop, ++i++ select in the box, ++p++ move position |
 | 3 | [Place model](models.md#placing) | An item model placed as a display or furniture | ++r++ turn, ++enter++ place, ++shift+enter++ place and edit, ++n++ the model browser |
 | 4 | [Place asset](library.md#placing) | An asset of the library, or the clipboard, pasted in the world | ++r++ turn, ++enter++ paste, ++z++ undo, ++n++ the library |
 | 5 | [Asset tool](library.md#the-asset-tool) | Make assets, move, turn and resize them with their content; turn, sync and delete their copies | ++c++ new asset from the selection, ++n++ panel, ++r++ turn, ++f++ fit, ++u++ sync a copy, ++delete++ delete |
@@ -93,7 +93,7 @@ gizmo does now, and the panel shows only that one:
 | Turns (rings) | the turn step | free, 5°, 15°, 22.5°, 45°, 90° | `Snap: 15°` |
 | Scales | the scale step | free, 1/16, 1/4, 1/2 | `Snap: 1/16` |
 
-The display editor's gizmo is in one mode at a time (++v++): ++g++ follows it. Points and locations show their arrows
+The entity editor's gizmo is in one mode at a time (++v++): ++g++ follows it. Points and locations show their arrows
 and their ring together: the ring under the crosshair (or being dragged) is turning, anything else moving, so aim at the
 ring and press ++g++ to change the turn step. The model placement tool turns with the scroll wheel and scales with
 ++alt++ + scroll: ++g++ changes the step of what you just did (the scale step while ++alt++ is held), else the move step.

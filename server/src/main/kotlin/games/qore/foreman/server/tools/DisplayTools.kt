@@ -51,14 +51,14 @@ object DisplayTools {
         Tool(
             ForemanTool.LIST_DISPLAYS,
             "Lists the display entities (item, block and text displays: furniture, decor, signs) whose position is in a " +
-                "box: uuid, kind, model / block / text, position, yaw, pitch, billboard, transformation (translation, " +
+                "box: uuid, kind, model / block / text, position, yaw, pitch, billboard, view_range, transformation (translation, " +
                 "left_rotation [x, y, z, w], scale, right_rotation, in the display's own axes) and the furniture whose " +
                 "root display it is. Read them before edit_displays or remove_displays.",
             schema {
                 vec("from", "A corner of the box")
                 vec("to", "The opposite corner")
                 string("world", "World name", required = false)
-                format("an array of {uuid, type: item|block|text, world, position, yaw, pitch, billboard, transformation: " +
+                format("an array of {uuid, type: item|block|text, world, position, yaw, pitch, billboard, view_range, transformation: " +
                     "{translation, left_rotation, scale, right_rotation}, model?, block?, text?, furniture?: {id, handle}, persistent?}")
             },
         ) { args -> list(plugin, args) },
@@ -66,12 +66,12 @@ object DisplayTools {
         Tool(
             ForemanTool.EDIT_DISPLAYS,
             "Moves, turns, scales or stretches display entities, one undo step for all: for each, by uuid (list_displays), " +
-                "the absolute values to set (position, yaw, pitch, any part of the transformation, billboard); what is " +
+                "the absolute values to set (position, yaw, pitch, any part of the transformation, billboard, view_range); what is " +
                 "left out stays. A furniture's root display stays on its root block with its yaw and pitch: a move by less " +
                 "than half a block and turns go into its transformation, a move by whole blocks places the furniture again " +
                 "there (its collision cells follow; refused when they are taken), and it gets a new uuid (`replaced`).",
             schema {
-                array("entities", entitySchema(), "Displays to change: [{uuid, position?, yaw?, pitch?, transformation?, billboard?}]")
+                array("entities", entitySchema(), "Displays to change: [{uuid, position?, yaw?, pitch?, transformation?, billboard?, view_range?}]")
                 string("world", "Only displays in this world", required = false)
                 format("{edited: [uuid], failed: [{uuid, error}], replaced: {old uuid: new uuid}, displays: [each edited display as it ended, as list_displays gives it]}")
             },
@@ -97,6 +97,7 @@ object DisplayTools {
                 number("scale", "Multiplies its default size (default 1)", required = false)
                 prop("transformation", transformationSchema(), "Parts of the transformation to set over the default", required = false)
                 enum("billboard", BILLBOARDS, "How it turns toward viewers (default fixed, center for a text)", required = false)
+                number("view_range", VIEW_RANGE + " (default 1)", required = false)
                 string("world", "World name", required = false)
                 format("{uuid, world}")
             },
@@ -130,6 +131,7 @@ object DisplayTools {
     // ---- Schemas ------------------------------------------------------------------------------------------------------
 
     private val BILLBOARDS = Display.Billboard.entries.map { it.name.lowercase() }
+    private const val VIEW_RANGE = "How far it is seen: 1 is 64 blocks (within the server's entity-tracking-range), 0 hides it"
 
     private fun SchemaBuilder.format(json: String) =
         enum("format", listOf("text", "json"), "text (default), or json for programs: $json", required = false)
@@ -159,6 +161,7 @@ object DisplayTools {
             add("pitch", described(SchemaBuilder.type("number"), "Its pitch (-90..90)"))
             add("transformation", described(transformationSchema(), "Parts of its transformation to set"))
             add("billboard", described(SchemaBuilder.type("string").apply { add("enum", JsonArray().apply { BILLBOARDS.forEach { add(it) } }) }, "How it turns toward viewers"))
+            add("view_range", described(SchemaBuilder.type("number"), VIEW_RANGE))
         })
         add("required", JsonArray().apply { add("uuid") })
     }
@@ -198,6 +201,11 @@ object DisplayTools {
         Display.Billboard.entries.firstOrNull { it.name.equals(b, ignoreCase = true) } ?: throw ToolError("billboard is ${BILLBOARDS.joinToString(", ")}")
     }
 
+    private fun viewRange(args: Args): Float? {
+        if (!args.has("view_range")) return null
+        return args.double("view_range", 1.0).takeIf { it.isFinite() && it >= 0 }?.toFloat() ?: throw ToolError("view_range is a number from 0")
+    }
+
     /** An edit's values; [placed] reads the position, yaw and pitch too. */
     private fun request(args: Args, placed: Boolean): DisplayEdits.Request {
         val t = if (args.has("transformation")) Args(runCatching { args.obj("transformation") }.getOrElse { throw ToolError("transformation is an object") }) else null
@@ -208,7 +216,7 @@ object DisplayTools {
             t?.takeIf { it.has("left_rotation") }?.let { quaternion(it, "left_rotation") },
             t?.takeIf { it.has("scale") }?.let { vector(it, "scale") },
             t?.takeIf { it.has("right_rotation") }?.let { quaternion(it, "right_rotation") },
-            billboard(args),
+            billboard(args), viewRange(args),
         )
     }
 

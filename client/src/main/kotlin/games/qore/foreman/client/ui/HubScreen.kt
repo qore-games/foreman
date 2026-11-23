@@ -19,8 +19,8 @@ import games.qore.foreman.client.input.Tools
 import games.qore.foreman.client.library.PlacementTool
 import games.qore.foreman.client.models.ModelPlacementTool
 import games.qore.foreman.client.models.ModelsPanel
-import games.qore.foreman.client.display.DisplayEditor
-import games.qore.foreman.client.display.DisplaysPage
+import games.qore.foreman.client.entity.EntityEditor
+import games.qore.foreman.client.entity.EntitiesPage
 import games.qore.foreman.client.link.Bridge
 import games.qore.foreman.client.link.SelectionTool
 import games.qore.foreman.client.link.WorldEditSelection
@@ -79,7 +79,7 @@ class HubScreen(private var section: Section = lastSection(), private val parent
         SELECTION(Group.WORLD, "⬚", "Selection", "A box to work in: two corners and a gizmo, for the AI or your own commands"),
         LIBRARY(Group.WORLD, "▤", "Library", "The server's assets: builds tagged as assets and saved schematics, to look at and place"),
         MODELS(Group.WORLD, "◆", "Models", "Every item model of the loaded resource packs in 3D, to look at and place as a display or furniture"),
-        DISPLAYS(Group.WORLD, "◇", "Displays", "Select item, block and text displays (furniture too) and move, turn and scale them with a gizmo"),
+        ENTITIES(Group.WORLD, "◇", "Entities", "Select any entity: move, turn and scale displays with a gizmo, edit tags, persistent data and NBT"),
         HISTORY(Group.WORLD, "↶", "History", "The server's changes with Foreman, newest first: go to one, undo yours"),
         PACKETS(Group.DEBUG, "⇅", "Packets", "What the server and your client send each other: record, then find what floods the connection"),
         HUD(Group.DEBUG, "▦", "HUD", "Your HUD's texts as the client lays them out: parts, glyphs, offsets, and what moves when they change"),
@@ -236,7 +236,7 @@ class HubScreen(private var section: Section = lastSection(), private val parent
                 search?.let { it.visible = !ModelsPanel.detailOpen; if (!it.visible && focused === it) focused = null }
                 ModelsPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty()) { onClose() }
             }
-            Section.DISPLAYS -> DisplaysPage.draw(ui, x0, y0, contentWidth, height - y0 - pad) { onClose() }
+            Section.ENTITIES -> EntitiesPage.draw(ui, x0, y0, contentWidth, height - y0 - pad) { onClose() }
             Section.HISTORY -> HistoryPage.draw(ui, x0, y0, contentWidth, height - y0 - pad) { onClose() }
             Section.PACKETS -> PacketsPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad, search?.value.orEmpty())
             Section.HUD -> HudPanel.draw(ui, x0, y0, contentWidth, height - y0 - pad)
@@ -284,7 +284,7 @@ class HubScreen(private var section: Section = lastSection(), private val parent
                 Section.SELECTION -> if (Tools.active === SelectionTool || Tools.active === WorldEditTool) "●" to Theme.ACCENT else null
                 Section.LIBRARY -> if (Tools.active === PlacementTool) "●" to Theme.ACCENT else null
                 Section.MODELS -> if (Tools.active === ModelPlacementTool) "●" to Theme.ACCENT else null
-                Section.DISPLAYS -> if (DisplayEditor.enabled) "●" to Theme.ACCENT else null
+                Section.ENTITIES -> if (EntityEditor.enabled) "●" to Theme.ACCENT else null
                 Section.PACKETS -> if (PacketRecorder.recording) "●" to Theme.ERROR else null
                 Section.HUD -> if (HudGuides.element != null) "●" to Theme.ACCENT else null
                 Section.MESSAGES -> if (Config.settings.pluginMessages.enabled) "●" to Theme.OK else null

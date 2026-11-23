@@ -63,7 +63,8 @@ object DisplayEdits {
         return Found(display, furnitureOf(display))
     }
 
-    private fun furnitureOf(display: Display): Furniture.Placed? {
+    /** The furniture whose root [display] is, null for none. */
+    fun furnitureOf(display: Display): Furniture.Placed? {
         val provider = Furniture.provider ?: return null
         return provider.find(display.world, around(display.location)).firstOrNull { it.entity == display.uniqueId }?.let(Furniture::of)
     }
@@ -79,12 +80,7 @@ object DisplayEdits {
     }
 
     /** What an item display shows: its item's `item_model`, else its material; null when empty. */
-    fun model(d: ItemDisplay): String? {
-        val stack = d.itemStack
-        if (stack.type.isAir) return null
-        val meta = stack.itemMeta
-        return if (meta != null && meta.hasItemModel()) meta.itemModel.toString() else stack.type.key.toString()
-    }
+    fun model(d: ItemDisplay): String? = d.itemStack.takeUnless { it.type.isAir }?.let(EntityEdits::modelOf)
 
     private fun text(d: TextDisplay) = PlainTextComponentSerializer.plainText().serialize(d.text())
 
@@ -98,6 +94,7 @@ object DisplayEdits {
         addProperty("yaw", round(l.yaw.toDouble()))
         addProperty("pitch", round(l.pitch.toDouble()))
         addProperty("billboard", d.billboard.name.lowercase())
+        addProperty("view_range", d.viewRange)
         add("transformation", json(d.transformation))
         when (d) {
             is ItemDisplay -> model(d)?.let { addProperty("model", it) }
@@ -135,6 +132,7 @@ object DisplayEdits {
         fun v(vararg x: Float) = x.joinToString(", ", "[", "]") { n(it) }
         return "${d.uniqueId} $what at ${v(l.x.toFloat(), l.y.toFloat(), l.z.toFloat())} yaw ${n(l.yaw)} pitch ${n(l.pitch)}" +
             (if (d.billboard != Display.Billboard.FIXED) " billboard ${d.billboard.name.lowercase()}" else "") +
+            " view_range ${n(d.viewRange)}" +
             " translation ${v(t.translation.x, t.translation.y, t.translation.z)}" +
             " left ${v(t.leftRotation.x, t.leftRotation.y, t.leftRotation.z, t.leftRotation.w)}" +
             " scale ${v(t.scale.x, t.scale.y, t.scale.z)}" +
@@ -153,7 +151,7 @@ object DisplayEdits {
     class Request(
         val position: Vector3d? = null, val yaw: Float? = null, val pitch: Float? = null,
         val translation: Vector3f? = null, val left: Quaternionf? = null, val scale: Vector3f? = null, val right: Quaternionf? = null,
-        val billboard: Display.Billboard? = null,
+        val billboard: Display.Billboard? = null, val viewRange: Float? = null,
     ) {
         fun over(t: Transformation) = Transformation(
             Vector3f(translation ?: t.translation), Quaternionf(left ?: t.leftRotation), Vector3f(scale ?: t.scale), Quaternionf(right ?: t.rightRotation),
@@ -169,16 +167,18 @@ object DisplayEdits {
         val from = d.location
         val target = Location(d.world, request.position?.x ?: from.x, request.position?.y ?: from.y, request.position?.z ?: from.z, request.yaw ?: from.yaw, request.pitch ?: from.pitch)
         val wanted = request.over(d.transformation)
-        if (f.furniture != null) return editFurniture(f, target, wanted, request.billboard, change, replaced)
+        if (f.furniture != null) return editFurniture(f, target, wanted, request, change, replaced)
 
         val old = d.transformation
         val billboard = d.billboard
+        val viewRange = d.viewRange
         if (target.distanceSquared(from) > 1e-12 || target.yaw != from.yaw || target.pitch != from.pitch) {
             if (d.isInsideVehicle) throw ToolError("it rides another entity: move that one")
             if (!d.teleport(target, TeleportFlag.EntityState.RETAIN_PASSENGERS)) throw ToolError("it could not be moved there")
         }
         d.transformation = wanted
         request.billboard?.let { d.billboard = it }
+        request.viewRange?.let { d.viewRange = it }
         change.touch(from)
         change.touch(target)
         val id = d.uniqueId
@@ -187,6 +187,7 @@ object DisplayEdits {
                 e.teleport(from, TeleportFlag.EntityState.RETAIN_PASSENGERS)
                 e.transformation = old
                 e.billboard = billboard
+                e.viewRange = viewRange
             }
         }
     }
@@ -194,9 +195,9 @@ object DisplayEdits {
     /**
      * A furniture's root display shown at [target] with [wanted]: whole blocks of the move (rounded) place the furniture
      * again there through its provider, the rest of the move and a turn go into the transformation of its display, which
-     * keeps its own position and orientation.
+     * keeps its own position and orientation. Its billboard and view range are the [request]'s.
      */
-    private fun editFurniture(f: Found, target: Location, wanted: Transformation, billboard: Display.Billboard?, change: Change, replaced: MutableMap<UUID, UUID>) {
+    private fun editFurniture(f: Found, target: Location, wanted: Transformation, request: Request, change: Change, replaced: MutableMap<UUID, UUID>) {
         val from = f.display.location
         val k = BlockVector3.at((target.x - from.x).roundToInt(), (target.y - from.y).roundToInt(), (target.z - from.z).roundToInt())
         val d = if (k == BlockVector3.ZERO) f.display else reroot(f, k, change, replaced)
@@ -207,17 +208,20 @@ object DisplayEdits {
         if (offset.lengthSquared() < 1e-8f) offset.zero()
         val old = d.transformation
         val oldBillboard = d.billboard
+        val oldViewRange = d.viewRange
         d.transformation = Transformation(
             inverse.transform(offset).add(turn.transform(Vector3f(wanted.translation))),
             Quaternionf(turn).mul(wanted.leftRotation).normalize(), Vector3f(wanted.scale), Quaternionf(wanted.rightRotation),
         )
-        billboard?.let { d.billboard = it }
+        request.billboard?.let { d.billboard = it }
+        request.viewRange?.let { d.viewRange = it }
         change.touch(at)
         val id = d.uniqueId
         change.restores += Runnable {
             (Edits.entity(id, at) as? Display)?.let { e ->
                 e.transformation = old
                 e.billboard = oldBillboard
+                e.viewRange = oldViewRange
             }
         }
     }
@@ -371,6 +375,7 @@ object DisplayEdits {
         if (request != null) {
             display.transformation = request.over(display.transformation)
             request.billboard?.let { display.billboard = it }
+            request.viewRange?.let { display.viewRange = it }
         }
         change.spawnedEntities += display.uniqueId to display.location
         return display
@@ -391,6 +396,7 @@ object DisplayEdits {
         if (request != null) {
             copy.transformation = request.over(copy.transformation)
             request.billboard?.let { copy.billboard = it }
+            request.viewRange?.let { copy.viewRange = it }
         }
         change.spawnedEntities += copy.uniqueId to copy.location
         return copy

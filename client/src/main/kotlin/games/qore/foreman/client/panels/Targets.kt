@@ -1,7 +1,7 @@
 package games.qore.foreman.client.panels
 
-import games.qore.foreman.client.display.DisplayEditor
-import games.qore.foreman.client.display.DisplayShapes
+import games.qore.foreman.client.entity.EntityEditor
+import games.qore.foreman.client.entity.EntityShapes
 import games.qore.foreman.client.input.Ray
 import games.qore.foreman.client.input.playerDimension
 import games.qore.foreman.client.link.Bridge
@@ -76,7 +76,7 @@ object Targets {
             val along = if (box.contains(ray.origin)) 0.0 else box.clip(ray.origin, end).map { it.distanceTo(ray.origin) }.orElse(null) ?: continue
             hits += e to along
         }
-        DisplayShapes.pick(ray, displays).filter { it.exact }.forEach { hits += it.display to it.distance }
+        EntityShapes.pick(ray, displays).filter { it.exact }.forEach { hits += it.entity to it.distance }
         return hits.sortedBy { it.second }.take(ENTITIES).map { (e, along) -> of(e, along) }
     }
 
@@ -114,12 +114,12 @@ object Targets {
      * camera (a plugin's light probe, an overlay), never what the builder aims at.
      */
     private fun aroundCamera(e: Display, camera: Vec3): Boolean {
-        val bounds = DisplayShapes.bounds(e)
+        val bounds = EntityShapes.bounds(e)
         return bounds.contains(camera) || bounds.center.distanceToSqr(camera) < 0.25
     }
 
     fun of(e: Entity, along: Double = 0.0): Aimed {
-        val box = if (e is Display) DisplayShapes.bounds(e) else e.boundingBox
+        val box = if (e is Display) EntityShapes.bounds(e) else e.boundingBox
         return Aimed(buildJsonObject {
             put("type", "entity")
             world()
@@ -155,8 +155,8 @@ object Targets {
     private fun name(e: Entity): String {
         val custom = if (e.hasCustomName()) e.customName?.string?.trim()?.takeIf { it.isNotEmpty() } else null
         return custom ?: when (e) {
-            is Display -> DisplayEditor.label(e)
-            is Interaction -> drawnAt(e)?.let(DisplayEditor::label)
+            is Display -> EntityEditor.label(e)
+            is Interaction -> drawnAt(e)?.let(EntityEditor::label)
             else -> null
         } ?: EntityType.getKey(e.type).path.replace('_', ' ')
     }
@@ -165,7 +165,7 @@ object Targets {
     private fun drawnAt(e: Interaction): Display? {
         val centre = e.boundingBox.center
         return Minecraft.getInstance().level?.entitiesForRendering()?.filterIsInstance<Display>()
-            ?.filter { it.distanceToSqr(centre) < 16 && DisplayShapes.bounds(it).inflate(0.1).contains(centre) }
+            ?.filter { it.distanceToSqr(centre) < 16 && EntityShapes.bounds(it).inflate(0.1).contains(centre) }
             ?.minByOrNull { it.distanceToSqr(centre) }
     }
 

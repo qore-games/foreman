@@ -49,6 +49,30 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
   mirrored), item frames' and paintings' facing, points and areas. Instances record it; syncs, `rotate_instance` and
   nesting compose it; `diff_regions` takes `target.mirror`. `RegionCopyEvent` gains `mirror` and `face(BlockFace)`,
   and its `block`, `position` and `yaw` follow the mirror.
+- **Entity tools.** `list_entities` reads any entity in a box (displays, armor stands, item frames, interactions,
+  mobs…), filtered by type, item model, item or block, or given by uuid: its scoreboard tags, its persistent data (every
+  key with its type and value), for displays their view range and the furniture they root, and with `nbt` its whole
+  NBT as SNBT (what `/data get entity` shows). `edit_entities` changes them in bulk, by uuid or by box and filters, one
+  undo step: a display's view range, tags added and removed, persistent data keys set (typed) and removed, NBT paths
+  removed (`remove_nbt`) and an SNBT compound merged in (`merge_nbt`), as `/data` does but without running the command,
+  the custom name and a text display's text (MiniMessage), whether it is saved with the world, a living entity's AI,
+  attribute base values (`set_attributes`) and health. `remove_entities` removes any entity but a player (by uuid or
+  box and filters; a furniture's root through its plugin), undo bringing it back with all its data and its uuid;
+  `copy_entities` copies entities with all their data under new uuids, in place or moved. NBT changes refuse changing an entity's uuid, type or world,
+  removing its uuid or position, and players, saying why; undo puts the whole NBT back. `list_entities` gives the custom
+  name, a text display's text, a living entity's health and max health. `list_displays` shows each display's
+  `view_range`, `edit_displays` and `spawn_display` set it.
+- **Entity editor.** The display editor is now the entity editor: it picks any entity (displays by what they draw, the
+  others by their box), the gizmo still moving, turning and scaling the selected displays. Its panel (N) has tabs by the
+  primary entity's type: Transform and Display for displays (view range, brightness, shadow, glow, billboard, an item
+  display's item and model, a block display's block), Text (a text display's text, line width, background, alignment,
+  flags), Mob (health, max health, scale, AI, persistence, baby), Interaction (size, response), Armor stand (yaw,
+  flags), Frame (an item frame's item, rotation, visible, fixed), Item (a dropped item's item, count, pickup delay,
+  never despawns), Painting (variant), and for every entity Entity (custom name, position, name shown, glowing, silent,
+  gravity, invulnerable, saved), Tags, Data (persistent data: keys with their types and values, set, add, remove) and
+  NBT (the whole NBT as SNBT: changed keys merged, deleted ones removed). The panel is wider, its rows taller; the
+  entities nearby are a strip of the 5 nearest to you or to the selection, which grows into a list of the 50 nearest
+  that scrolls or folds away. Delete and Duplicate work on any entity. The hub's section is World → Entities.
 
 ### Server (Paper plugin)
 
@@ -179,6 +203,11 @@ One version for the mod, the plugin and the API artifacts, [semantic](https://se
 - A point's gizmo tilts it up and down too (its pitch, a second ring around its right), besides turning it.
 - A colour picker for colour fields in the areas-and-points forms (a light's colour): saturation and brightness in a
   square, the hue in a bar, common colours and the field's default; the `#rrggbb` box follows as you drag.
+- Sliders for numbers in the forms of points, areas, world objects and plugins' panels: a field with both ends of its
+  range (and a yaw, -180 to 180) is dragged across it, or clicked to type any value, which turns back into the slider
+  on Enter or a click beside it; × takes it back to its default. A panel's field follows the drag live. The point
+  panel's yaw and pitch are sliders too, and so are the entity panel's numbers with a usual range (rotation, scale,
+  facing, view range, brightness, shadow…), applied when let go. For screens of your own, the kit's `Slider`.
 - The display editor leaves out displays riding a player (hats, held models) and those that only exist on the
   client (plugins' packet entities, which the server doesn't list and can't edit): they were picked, listed and
   selected by the box like a build's.

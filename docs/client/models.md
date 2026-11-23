@@ -47,7 +47,7 @@ where the crosshair is, to the move step (++g++ changes it):
 | ++r++ | Turn it 90° |
 | ++alt++ + scroll | Scale it by the scale step (++g++ with ++alt++ held changes it; an eighth when free; ++shift++ + ++alt++: by one) |
 | Right click, ++enter++ | Place it |
-| ++shift++ + right click, ++shift++ + ++enter++ | Place it and edit it in the display editor, selected |
+| ++shift++ + right click, ++shift++ + ++enter++ | Place it and edit it in the [entity editor](entities.md), selected |
 | Left click, ++esc++ | Leave |
 
 The server spawns the display (`spawn_display`) as one change: `/foreman undo` takes it back. It refuses a placement

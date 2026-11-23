@@ -91,6 +91,12 @@ enum class ForemanTool(val id: String, val group: String, val requires: String? 
     SPAWN_DISPLAY("spawn_display", "Displays", WORLD_EDIT),
     REMOVE_DISPLAYS("remove_displays", "Displays", WORLD_EDIT),
 
+    // Entities: any entity read, changed, removed and copied in bulk (tags, persistent data, NBT, name, attributes…).
+    LIST_ENTITIES("list_entities", "Entities", WORLD_EDIT),
+    EDIT_ENTITIES("edit_entities", "Entities", WORLD_EDIT),
+    REMOVE_ENTITIES("remove_entities", "Entities", WORLD_EDIT),
+    COPY_ENTITIES("copy_entities", "Entities", WORLD_EDIT),
+
     // Objects: things plugins draw with entities (cables, props), declared through ForemanObjects.
     OBJECT_KINDS("object_kinds", "Objects", WORLD_EDIT),
     LIST_OBJECTS("list_objects", "Objects", WORLD_EDIT),

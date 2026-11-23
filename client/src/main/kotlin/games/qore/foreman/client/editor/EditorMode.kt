@@ -2,7 +2,7 @@ package games.qore.foreman.client.editor
 
 import com.mojang.blaze3d.platform.InputConstants
 import games.qore.foreman.client.config.Config
-import games.qore.foreman.client.display.DisplayEditor
+import games.qore.foreman.client.entity.EntityEditor
 import games.qore.foreman.client.gizmo.Snapping
 import games.qore.foreman.client.input.Keys
 import games.qore.foreman.client.input.Tools
@@ -53,7 +53,7 @@ object EditorMode {
 
     fun init() {
         binding = Keys.bind("editor", Keys.Category.GENERAL, InputConstants.KEY_B, "Editor mode: the building tools and their keys") { toggle() }
-        listOf(SelectionTool, DisplayEditor, ModelPlacementTool, PlacementTool, AssetTool, MeasureTool, LocationEditor, WorldEditTool).forEach(EditorTools::register)
+        listOf(SelectionTool, EntityEditor, ModelPlacementTool, PlacementTool, AssetTool, MeasureTool, LocationEditor, WorldEditTool).forEach(EditorTools::register)
         MeasureTool.init()
         HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, Identifier.fromNamespaceAndPath("foreman", "editor"), HudElement { g, _ -> EditorPanel.draw(g) })
     }

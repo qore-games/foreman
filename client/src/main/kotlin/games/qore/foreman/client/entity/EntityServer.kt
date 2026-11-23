@@ -1,4 +1,4 @@
-package games.qore.foreman.client.display
+package games.qore.foreman.client.entity
 
 import games.qore.foreman.client.agent.AgentException
 import games.qore.foreman.client.link.Bridge
@@ -17,17 +17,18 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import net.minecraft.core.BlockPos
+import net.minecraft.nbt.TagParser
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaterniond
 import org.joml.Vector3d
 import java.util.UUID
 
 /**
- * The display editor's changes, made by the server's display tools (`edit_displays`, `spawn_display`,
- * `remove_displays`, `undo`, `list_displays`) off the client thread; answers come on it.
+ * The entity editor's calls, to the server's display tools (`edit_displays`, `spawn_display`, `undo`) and entity tools
+ * (`list_entities`, `edit_entities`, `remove_entities`, `copy_entities`) off the client thread; answers come on it.
  */
-object DisplayServer {
-    /** A display the server couldn't change, and why. */
+object EntityServer {
+    /** An entity the server couldn't change, and why. */
     class Failed(val uuid: UUID, val error: String)
 
     /** What an edit did: the displays it couldn't change, and those it spawned again under a new uuid (furniture moved to another block). */
@@ -73,38 +74,50 @@ object DisplayServer {
 
     private fun numbers(e: JsonElement?, n: Int): List<Double>? = e.arr()?.mapNotNull { it.double() }?.takeIf { it.size == n }
 
-    /** Spawns a display per spec (`spawn_display`'s arguments), one after the other; [done] gets their uuids. */
-    fun spawn(specs: List<JsonObject>, done: (Result<List<UUID>>) -> Unit) {
-        ServerCalls.run({
-            specs.map { spec ->
-                val args = buildJsonObject {
-                    spec.forEach { (k, v) -> put(k, v) }
-                    if ("world" !in spec) world()
-                    put("format", "json")
-                }
-                json(ServerCalls.callNow("spawn_display", args))["uuid"].str()?.let(::uuid) ?: throw AgentException("spawn_display gave no uuid")
-            }
-        }, done)
+    /** Spawns a display per spec (`spawn_display`'s arguments), one after the other: their uuids. Off the client thread. */
+    private fun spawnNow(specs: List<JsonObject>): List<UUID> = specs.map { spec ->
+        val args = buildJsonObject {
+            spec.forEach { (k, v) -> put(k, v) }
+            if ("world" !in spec) world()
+            put("format", "json")
+        }
+        json(ServerCalls.callNow("spawn_display", args))["uuid"].str()?.let(::uuid) ?: throw AgentException("spawn_display gave no uuid")
     }
 
-    /** Removes [uuids] (furniture through its plugin), one undo step; [done] gets those it couldn't remove. */
+    /** Removes [uuids], any entity (furniture through its plugin), one undo step; [done] gets those it couldn't remove. */
     fun remove(uuids: Collection<UUID>, done: (Result<List<Failed>>) -> Unit) {
         val args = buildJsonObject {
             put("uuids", JsonArray(uuids.map { JsonPrimitive(it.toString()) }))
             world()
             put("format", "json")
         }
-        ServerCalls.run({ failed(json(ServerCalls.callNow("remove_displays", args))) }, done)
+        ServerCalls.run({ failed(json(ServerCalls.callNow("remove_entities", args))) }, done)
+    }
+
+    /** What a duplication made: the copies' uuids, and the entities it couldn't copy. */
+    class Copied(val ids: List<UUID>, val failed: List<Failed>)
+
+    /** Copies [uuids] in place (`copy_entities`, one undo step), then spawns a display per spec (furniture's models). */
+    fun duplicate(uuids: Collection<UUID>, specs: List<JsonObject>, done: (Result<Copied>) -> Unit) {
+        ServerCalls.run({
+            val answer = if (uuids.isEmpty()) null else json(ServerCalls.callNow("copy_entities", buildJsonObject {
+                put("uuids", JsonArray(uuids.map { JsonPrimitive(it.toString()) }))
+                world()
+                put("format", "json")
+            }))
+            val copies = answer?.get("copies").obj().orEmpty().values.mapNotNull { it.str()?.let(::uuid) }
+            Copied(copies + spawnNow(specs), answer?.let(::failed).orEmpty())
+        }, done)
     }
 
     /** The server's undo: its last change, whoever made it. */
     fun undo(done: (Result<String>) -> Unit) = ServerCalls.run({ ServerCalls.text(ServerCalls.callNow("undo", buildJsonObject {})) }, done)
 
-    /** The displays the server listed, and the furniture of those that belong to one (uuid to furniture id). */
+    /** The entities the server listed, and the furniture of the displays that are one's root (uuid to furniture id). */
     class Listed(val seen: Set<UUID>, val furniture: Map<UUID, String>)
 
-    /** The displays between [from] and [to], for their furniture. */
-    fun furniture(from: BlockPos, to: BlockPos, done: (Result<Listed>) -> Unit) {
+    /** The entities between [from] and [to], for their furniture and to know which are this client's own. */
+    fun listed(from: BlockPos, to: BlockPos, done: (Result<Listed>) -> Unit) {
         val args = buildJsonObject {
             put("from", JsonArray(listOf(from.x, from.y, from.z).map { JsonPrimitive(it) }))
             put("to", JsonArray(listOf(to.x, to.y, to.z).map { JsonPrimitive(it) }))
@@ -112,11 +125,37 @@ object DisplayServer {
             put("format", "json")
         }
         ServerCalls.run({
-            val answer = json(ServerCalls.callNow("list_displays", args))
-            val list = answer.arr() ?: answer["displays"].arr() ?: JsonArray(emptyList())
+            val list = json(ServerCalls.callNow("list_entities", args)).arr() ?: JsonArray(emptyList())
             val seen = list.mapNotNull { d -> d["uuid"].str()?.let(::uuid)?.let { it to d } }
             Listed(seen.map { it.first }.toSet(), seen.mapNotNull { (id, d) -> d["furniture"].obj()?.let { it["id"].str() }?.let { id to it } }.toMap())
         }, done)
+    }
+
+    /** What `list_entities` says of [uuid] with its NBT; null when the server has no such loaded entity. */
+    fun info(uuid: UUID, done: (Result<EntityInfo?>) -> Unit) {
+        val args = buildJsonObject {
+            put("uuids", JsonArray(listOf(JsonPrimitive(uuid.toString()))))
+            world()
+            put("nbt", true)
+            put("format", "json")
+        }
+        ServerCalls.run({
+            json(ServerCalls.callNow("list_entities", args)).arr()?.firstOrNull()?.let { e ->
+                val snbt = e["nbt"].str() ?: throw AgentException("list_entities gave no nbt: update the server's Foreman")
+                EntityInfo(uuid, e["type"].str().orEmpty(), e["tags"].arr().orEmpty().mapNotNull { it.str() }, e["data"].obj() ?: JsonObject(emptyMap()), TagParser.parseCompoundFully(snbt), e.obj()!!)
+            }
+        }, done)
+    }
+
+    /** Changes [uuids] with `edit_entities`' [changes] (add_tags, set_data, merge_nbt…), one undo step; [done] gets those it couldn't change. */
+    fun editEntities(uuids: Collection<UUID>, changes: JsonObject, done: (Result<List<Failed>>) -> Unit) {
+        val args = buildJsonObject {
+            put("uuids", JsonArray(uuids.map { JsonPrimitive(it.toString()) }))
+            changes.forEach { (k, v) -> put(k, v) }
+            world()
+            put("format", "json")
+        }
+        ServerCalls.run({ failed(json(ServerCalls.callNow("edit_entities", args))) }, done)
     }
 
     private fun JsonObjectBuilder.world() {

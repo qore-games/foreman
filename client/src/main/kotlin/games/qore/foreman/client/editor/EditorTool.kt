@@ -21,11 +21,11 @@ class EditorKey(
 }
 
 /**
- * A tool of editor mode (displays, assets, areas and points, models, selections, locations…): an in-world [Tool] that
+ * A tool of editor mode (entities, assets, areas and points, models, selections, locations…): an in-world [Tool] that
  * editor mode switches to, with the keys it takes while it is the current one.
  */
 interface EditorTool : Tool {
-    /** Stable id, for settings: `displays`, `assets`, `regions`, `models`, `selection`, `locations`… */
+    /** Stable id, for settings: `entities`, `assets`, `regions`, `models`, `selection`, `locations`… */
     val id: String
 
     /** Its keys while it is the current tool, in the order the panel shows them. */
@@ -47,7 +47,7 @@ interface EditorTool : Tool {
 /** The tools of editor mode, in the order its panel lists them (the number keys pick them: 1 to 9, then 0). */
 object EditorTools {
     /** The panel's order by id; tools with another id come after these, in the order they were registered. */
-    private val ORDER = listOf("selection", "displays", "models", "library", "assets", "regions", "measure", "locations", "worldedit", "objects")
+    private val ORDER = listOf("selection", "entities", "models", "library", "assets", "regions", "measure", "locations", "worldedit", "objects")
 
     private val registered = mutableListOf<EditorTool>()
 

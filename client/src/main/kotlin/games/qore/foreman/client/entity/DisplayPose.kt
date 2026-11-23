@@ -1,4 +1,4 @@
-package games.qore.foreman.client.display
+package games.qore.foreman.client.entity
 
 import com.mojang.math.Transformation
 import games.qore.foreman.client.mixin.DisplayAccessor

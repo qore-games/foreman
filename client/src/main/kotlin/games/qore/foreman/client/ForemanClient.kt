@@ -3,7 +3,7 @@ package games.qore.foreman.client
 import games.qore.foreman.client.link.AIClient
 import games.qore.foreman.client.config.Config
 import games.qore.foreman.client.debug.CopyLocationHotkeys
-import games.qore.foreman.client.display.DisplayEditor
+import games.qore.foreman.client.entity.EntityEditor
 import games.qore.foreman.client.editor.EditorMode
 import games.qore.foreman.client.input.Keys
 import games.qore.foreman.client.input.Tools
@@ -43,7 +43,7 @@ object ForemanClient : ClientModInitializer {
         games.qore.foreman.client.link.OutboundProfiles.init()
         AIClient.init()
         Library.init()
-        DisplayEditor.init()
+        EntityEditor.init()
         games.qore.foreman.client.regions.RegionsTool.init()
         games.qore.foreman.client.objects.ObjectsTool.init()
         ItemModels.init()

@@ -5,7 +5,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
-/** The display editor's picking: where a layer of an item puts its quads (its display context's transform, then its own). */
+/** The entity editor's picking: where a layer of an item puts its quads (its display context's transform, then its own). */
 @Mixin(ItemStackRenderState.LayerRenderState.class)
 public interface ItemLayerAccessor {
     @Invoker("applyTransform")

@@ -12,7 +12,8 @@ overlays and furniture that go with them.
 | **Terrain** | `make_ground`, `grade`, `foundation`, `blend_terrain`, `smooth_terrain`, `make_fields`, `build_path` (walkable roads over the relief) |
 | **Buildings** | `build_structure` (a whole building from [templates](building-templates.md)), `demolish` (puts the land back), `list_styles` |
 | **Library** | `list_assets`, `preview_asset`, `paste_asset`, `scatter_assets`, `save_asset` ([schematic library](assets.md)) |
-| **Displays** | `list_displays`, `edit_displays` (move, turn, scale, stretch), `spawn_display`, `remove_displays`, `list_models` ([displays and models](displays.md)) |
+| **Displays** | `list_displays`, `edit_displays` (move, turn, scale, stretch, view range), `spawn_display`, `remove_displays`, `list_models` ([displays and models](displays.md)) |
+| **Entities** | `list_entities`, `edit_entities`, `remove_entities`, `copy_entities`: any entity's name, scoreboard tags, persistent data and NBT, a display's view range, a text display's text, a mob's AI, attributes and health, in bulk; removed with undo, copied ([entities](displays.md#entities)) |
 | **Objects** | `object_kinds`, `list_objects`, `place_objects`, `edit_objects`, `remove_objects`: what plugins draw with entities and declare ([world objects](../developers/world-objects.md)) |
 | **Checking** | `check`, `measure_site`, `repair_terrain`, `connect_doors` |
 | **Context** | `set_mark`, `claim`, `world_profile`, `points` ([world context](world-context.md)) |

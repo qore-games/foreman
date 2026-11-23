@@ -1,4 +1,4 @@
-package games.qore.foreman.client.display
+package games.qore.foreman.client.entity
 
 import com.mojang.blaze3d.vertex.PoseStack
 import games.qore.foreman.client.input.Ray
@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState
 import net.minecraft.client.resources.model.geometry.BakedQuad
 import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.Display
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.EmptyBlockGetter
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -32,17 +33,18 @@ class DisplayShape(
     val exact: ((Vector3d, Vector3d) -> Double?)?,
 )
 
-/** A display under the crosshair: [exact] when the ray meets what it draws, not only its box. */
-class DisplayHit(val display: Display, val distance: Double, val exact: Boolean)
+/** An entity under the crosshair: [exact] when the ray meets what it draws (a display's model), not only its box. */
+class EntityHit(val entity: Entity, val distance: Double, val exact: Boolean)
 
 /**
- * The shapes of displays, from what the client draws: an item display's model (its quads, through the client's item
- * model and its display context's transform), a block display's block shape, a text display's text box. Kept per
- * display while what it shows stays the same, a few seconds at most (models change with resource packs).
+ * What entities draw, to pick them under the crosshair and outline them: any entity by its box, a display by its shape,
+ * from what the client draws: an item display's model (its quads, through the client's item model and its display
+ * context's transform), a block display's block shape, a text display's text box. Display shapes are kept per display
+ * while what it shows stays the same, a few seconds at most (models change with resource packs).
  */
-object DisplayShapes {
+object EntityShapes {
     private const val KEEP_MS = 3000L
-    /** Displays without shape are pickable by their anchor within this many blocks. */
+    /** Entities without shape are pickable by their anchor within this many blocks. */
     const val MARKERS = 8.0
     const val MARKER = 0.12
 
@@ -160,46 +162,68 @@ object DisplayShapes {
         return Matrix4d().translation(e.x, e.y, e.z).rotate(orientation(e)).mul(Matrix4d(t.matrix))
     }
 
-    /** The corners of [e]'s box in the world, or null when it has none. */
-    fun corners(e: Display): List<Vec3>? {
+    /** The corners of [e]'s box in the world (a display's turned with it), or null when it has none. */
+    fun corners(e: Entity): List<Vec3>? {
+        if (e !is Display) return e.boundingBox.takeUnless(::flat)?.let { b -> corners(b) { x, y, z -> Vec3(x, y, z) } }
         val box = shape(e).box ?: return null
         val m = matrix(e)
-        return listOf(box.minX, box.maxX).flatMap { x -> listOf(box.minY, box.maxY).flatMap { y -> listOf(box.minZ, box.maxZ).map { z -> point(m, x, y, z) } } }
+        return corners(box) { x, y, z -> point(m, x, y, z) }
     }
 
-    /** Where [e]'s transformation starts in the world (its anchor). */
-    fun anchor(e: Display): Vec3 = point(matrix(e), 0.0, 0.0, 0.0)
+    private fun corners(box: AABB, point: (Double, Double, Double) -> Vec3) =
+        listOf(box.minX, box.maxX).flatMap { x -> listOf(box.minY, box.maxY).flatMap { y -> listOf(box.minZ, box.maxZ).map { z -> point(x, y, z) } } }
+
+    /** A box too thin to click (a marker armor stand, an interaction of size 0). */
+    private fun flat(box: AABB) = box.xsize < 0.01 && box.ysize < 0.01 && box.zsize < 0.01
+
+    /** Where [e] stands: a display's transformation starts there (its anchor). */
+    fun anchor(e: Entity): Vec3 = if (e is Display) point(matrix(e), 0.0, 0.0, 0.0) else e.position()
 
     /** [e]'s box in the world, axis aligned; a point at its anchor when it has none. */
-    fun bounds(e: Display): AABB = corners(e)?.let { c ->
+    fun bounds(e: Entity): AABB = corners(e)?.let { c ->
         AABB(c.minOf { it.x }, c.minOf { it.y }, c.minOf { it.z }, c.maxOf { it.x }, c.maxOf { it.y }, c.maxOf { it.z })
     } ?: anchor(e).let { AABB(it, it) }
 
     private fun point(m: Matrix4d, x: Double, y: Double, z: Double) = m.transformPosition(Vector3d(x, y, z)).let { Vec3(it.x, it.y, it.z) }
 
-    /** The displays [ray] meets, what it meets exactly first, nearest first; anchors of displays without shape nearby. */
-    fun pick(ray: Ray, displays: Collection<Display>): List<DisplayHit> {
-        val hits = ArrayList<DisplayHit>()
-        for (e in displays) {
-            val shape = shape(e)
-            val m = matrix(e)
-            val box = shape.box
-            if (box == null || abs(m.determinant()) < 1e-12) {
-                val anchor = point(m, 0.0, 0.0, 0.0)
-                if (anchor.distanceTo(ray.origin) > MARKERS) continue
-                val (distance, along) = ray.toPoint(anchor)
-                if (distance <= MARKER * 1.5) hits += DisplayHit(e, along, true)
-                continue
-            }
-            val inverse = Matrix4d(m).invert()
-            val origin = inverse.transformPosition(Vector3d(ray.origin.x, ray.origin.y, ray.origin.z))
-            val dir = inverse.transformDirection(Vector3d(ray.dir.x, ray.dir.y, ray.dir.z))
-            val entered = slab(box, origin, dir) ?: continue
-            val exact = shape.exact
-            if (exact == null) hits += DisplayHit(e, entered, true)
-            else hits += exact(origin, dir)?.let { DisplayHit(e, it, true) } ?: DisplayHit(e, entered, false)
+    /**
+     * The entities [ray] meets, what it meets exactly first, nearest first: displays by what they draw, the others by
+     * their box; anchors of those without shape nearby.
+     */
+    fun pick(ray: Ray, entities: Collection<Entity>): List<EntityHit> {
+        val hits = ArrayList<EntityHit>()
+        for (e in entities) {
+            val hit = if (e is Display) display(ray, e) else boxed(ray, e)
+            hit?.let { hits += it }
         }
         return hits.sortedWith(compareBy({ !it.exact }, { it.distance }))
+    }
+
+    private fun display(ray: Ray, e: Display): EntityHit? {
+        val shape = shape(e)
+        val m = matrix(e)
+        val box = shape.box
+        if (box == null || abs(m.determinant()) < 1e-12) return marker(ray, e, point(m, 0.0, 0.0, 0.0))
+        val inverse = Matrix4d(m).invert()
+        val origin = inverse.transformPosition(Vector3d(ray.origin.x, ray.origin.y, ray.origin.z))
+        val dir = inverse.transformDirection(Vector3d(ray.dir.x, ray.dir.y, ray.dir.z))
+        val entered = slab(box, origin, dir) ?: return null
+        val exact = shape.exact ?: return EntityHit(e, entered, true)
+        return exact(origin, dir)?.let { EntityHit(e, it, true) } ?: EntityHit(e, entered, false)
+    }
+
+    private fun boxed(ray: Ray, e: Entity): EntityHit? {
+        val box = e.boundingBox
+        if (flat(box)) return marker(ray, e, e.position())
+        val o = Vector3d(ray.origin.x, ray.origin.y, ray.origin.z)
+        return slab(box.inflate(e.pickRadius.toDouble()), o, Vector3d(ray.dir.x, ray.dir.y, ray.dir.z))?.let { EntityHit(e, it, true) }
+    }
+
+    /** [e] by a marker on its [anchor], near the camera only. */
+    private fun marker(ray: Ray, e: Entity, anchor: Vec3): EntityHit? {
+        if (anchor.distanceTo(ray.origin) > MARKERS) return null
+        val (distance, along) = ray.toPoint(anchor)
+        return if (distance <= MARKER * 1.5) EntityHit(e, along, true) else null
     }
 
     /** How far along the ray it enters [box] (0 from inside), or null when it misses. */

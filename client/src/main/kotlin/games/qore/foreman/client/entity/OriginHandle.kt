@@ -1,4 +1,4 @@
-package games.qore.foreman.client.display
+package games.qore.foreman.client.entity
 
 import games.qore.foreman.client.gizmo.GizmoChange
 import games.qore.foreman.client.gizmo.GizmoFrame
@@ -37,7 +37,7 @@ object OriginHandle {
 
     private val gizmo = TransformGizmo(
         frame = { position()?.let { GizmoFrame(it, GizmoFrame.WORLD_AXES) } }, changed = ::moved, committed = ::committed, cancelled = { cancel() },
-        rings = emptyList(), grid = { Snapping.Grid.FLOOR }, wholeBlocks = { furniture(primary ?: DisplayEditor.selected.lastOrNull()) },
+        rings = emptyList(), grid = { Snapping.Grid.FLOOR }, wholeBlocks = { furniture(primary ?: EntityEditor.selectedDisplays().lastOrNull()?.uuid) },
     )
     private var primary: UUID? = null
     /** The dragged displays' poses at the start, and what the drag makes of them. */
@@ -55,12 +55,12 @@ object OriginHandle {
     /** Starts a drag when [ray] is on the arrows; true when the click was theirs. */
     fun press(ray: Ray): Boolean {
         if (!on || !gizmo.press(ray)) return false
-        if (DisplayEditor.busy) {
+        if (EntityEditor.busy) {
             cancel()
             Chat.warn("Wait for the last change to be saved")
             return true
         }
-        val displays = DisplayEditor.selectedDisplays()
+        val displays = EntityEditor.selectedDisplays()
         primary = displays.lastOrNull()?.uuid
         starts = displays.associate { it.uuid to DisplayPose.of(it) }
         return true
@@ -75,7 +75,7 @@ object OriginHandle {
         if (!on) return
         gizmo.update(ray)
         // Again every frame: the server's position syncs would put them back meanwhile.
-        previewed?.forEach { (id, pose) -> DisplayEditor.nearby[id]?.let(pose::applyTo) }
+        previewed?.forEach { (id, pose) -> EntityEditor.display(id)?.let(pose::applyTo) }
     }
 
     /** Ends a drag where it started. */
@@ -83,7 +83,7 @@ object OriginHandle {
         val starts = starts ?: return gizmo.cancel()
         end()
         gizmo.cancel()
-        starts.forEach { (id, pose) -> DisplayEditor.nearby[id]?.let(pose::applyTo) }
+        starts.forEach { (id, pose) -> EntityEditor.display(id)?.let(pose::applyTo) }
     }
 
     private fun end() {
@@ -94,18 +94,18 @@ object OriginHandle {
 
     /** The primary's entity position, as the drag shows it. */
     private fun position(): Vec3? {
-        val id = primary ?: DisplayEditor.selected.lastOrNull() ?: return null
-        return previewed?.get(id)?.pos ?: DisplayEditor.nearby[id]?.position()
+        val id = primary ?: EntityEditor.selectedDisplays().lastOrNull()?.uuid ?: return null
+        return previewed?.get(id)?.pos ?: EntityEditor.nearby[id]?.position()
     }
 
-    private fun furniture(id: UUID?) = id?.let { DisplayEditor.nearby[it] }?.let { DisplayEditor.kind(it) == "furniture" } == true
+    private fun furniture(id: UUID?) = id?.let { EntityEditor.nearby[it] }?.let { EntityEditor.kind(it) == "furniture" } == true
 
     private fun moved(change: GizmoChange) {
         val starts = starts ?: return
         val offset = (change as? GizmoChange.Move)?.offset ?: return
         val poses = starts.mapValues { (id, pose) -> entityMoved(pose, if (furniture(id)) whole(offset) else offset) }
         previewed = poses
-        poses.forEach { (id, pose) -> DisplayEditor.nearby[id]?.let(pose::applyTo) }
+        poses.forEach { (id, pose) -> EntityEditor.display(id)?.let(pose::applyTo) }
     }
 
     /** Saved by the editor from where they were, as one change (`edit_displays`: position and transformation). */
@@ -114,8 +114,8 @@ object OriginHandle {
         val starts = starts ?: return
         val after = previewed ?: return
         end()
-        starts.forEach { (id, pose) -> DisplayEditor.nearby[id]?.let(pose::applyTo) }
-        DisplayEditor.change { e, pose -> after[e.uuid] ?: pose }
+        starts.forEach { (id, pose) -> EntityEditor.display(id)?.let(pose::applyTo) }
+        EntityEditor.change { e, pose -> after[e.uuid] ?: pose }
     }
 
     /** [pose] with its entity [offset] away and its model where it was: its translation takes the move back. */
@@ -130,7 +130,7 @@ object OriginHandle {
 
     /** The markers of the selected displays and [hovered], and the arrows in its mode. */
     fun draw(draw: OverlayDraw, hovered: Display?) {
-        val selected = DisplayEditor.selectedDisplays()
+        val selected = EntityEditor.selectedDisplays()
         val primary = selected.lastOrNull()
         for (e in (selected + listOfNotNull(hovered)).distinct()) {
             val pose = DisplayPose.of(e)
@@ -139,7 +139,7 @@ object OriginHandle {
             draw.box(p.subtract(MARKER, MARKER, MARKER), p.add(MARKER, MARKER, MARKER), COLOR, 1.5f, Colors.withAlpha(COLOR, 0.35f), onTop = true)
             pose.origin.takeIf { it.distanceTo(p) > 0.01 }?.let { draw.line(p, it, Colors.withAlpha(COLOR, 0.7f), 1.5f, onTop = true) }
             if (e === primary || e === hovered || selected.size <= LABELS) {
-                val root = if (DisplayEditor.kind(e) == "furniture") " · root" else ""
+                val root = if (EntityEditor.kind(e) == "furniture") " · root" else ""
                 draw.label(p.add(0.0, 0.18, 0.0), String.format(Locale.ROOT, "%.3f %.3f %.3f", p.x, p.y, p.z) + root, COLOR, size = 0.7f)
             }
         }
@@ -148,5 +148,5 @@ object OriginHandle {
 
     /** Its line on the display editor's status card, in its mode. */
     fun status(): String? = if (!on) null else
-        "Position mode [${DisplayEditor.keyName("display-position")}]: the arrows move the entity, its model stays" + if (furniture(DisplayEditor.selected.lastOrNull())) " (furniture: whole blocks)" else ""
+        "Position mode [${EntityEditor.keyName("display-position")}]: the arrows move the entity, its model stays" + if (furniture(EntityEditor.selectedDisplays().lastOrNull()?.uuid)) " (furniture: whole blocks)" else ""
 }
