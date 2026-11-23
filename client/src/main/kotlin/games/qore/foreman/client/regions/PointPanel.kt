@@ -6,6 +6,7 @@ import games.qore.foreman.client.link.LayoutType
 import games.qore.foreman.client.link.Layouts
 import games.qore.foreman.client.ui.kit.KitScreen
 import games.qore.foreman.client.ui.kit.Popover
+import games.qore.foreman.client.ui.kit.Slider
 import games.qore.foreman.client.ui.kit.Style
 import games.qore.foreman.client.ui.kit.Theme
 import games.qore.foreman.client.ui.kit.Ui
@@ -46,6 +47,9 @@ class PointPanel(private val point: GamePoint?, private val back: Screen? = null
     }
     /** The boxes of [values], in their order. */
     private val boxes = ArrayList<EditBox>()
+    /** Where it faces, slid: its yaw (empty: no facing) and pitch. */
+    private val yawSlider = Slider(-180.0, 180.0, 1.0, ::num)
+    private val pitchSlider = Slider(-90.0, 90.0, 1.0, ::num)
     private var form = form(null)
     private var pick: Popover? = null
     /** The type list was offered (a new point asks for its type first). */
@@ -229,7 +233,10 @@ class PointPanel(private val point: GamePoint?, private val back: Screen? = null
         (0 until 3).forEach { i -> place(boxes.getOrNull(4 + i), x + LABEL + i * (third() + 4), y) }
         y += 22
         ui.text("Facing", x, y + 4, Theme.TEXT)
-        (0 until 2).forEach { i -> place(boxes.getOrNull(7 + i), x + LABEL + i * (third() + 4), y) }
+        val half = (third() * 3 + 4) / 2
+        val shown = y >= bodyTop && y + 16 <= bodyBottom
+        boxes.getOrNull(7)?.let { yawSlider.draw(ui, x + LABEL, y, half, it, shown, none = "yaw: none") }
+        boxes.getOrNull(8)?.let { pitchSlider.draw(ui, x + LABEL + half + 4, y, half, it, shown, default = 0.0) }
         y += 24
         for (p in problems) y += ui.paragraph(p, x, y, w, Theme.ERROR) + 2
         if (type != null) y += form.draw(ui, x, y, w, bodyTop, bodyBottom) + 4

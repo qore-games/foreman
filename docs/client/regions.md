@@ -83,7 +83,8 @@ both by the turn step. The marker's arrow shows the facing. The change is saved 
 
 Its panel sets its **type** (one from the list, ▾, or your own name) and **kind**, the **build** and **room** it belongs
 to (both optional), where it is exactly (**At**: x, y, z) and its **facing**: a yaw in degrees (0 south, 90 west, 180
-north, -90 east; empty: none) and a pitch (optional: 0 level, 90 straight down). A declared type adds its form below.
+north, -90 east; empty: none) and a pitch (optional: 0 level, 90 straight down), both sliders (below). A declared type
+adds its form below.
 Deleting a point removes that one only: another point on the same block stays.
 
 ## Typed points and areas
@@ -106,16 +107,16 @@ The form is made from the fields:
 | Field | In the form |
 |---|---|
 | Text | A text box |
-| Whole number, number | A number box, its range beside it (`1 – 64`) |
+| Whole number, number | A slider across its range when it has both ends (`1 – 64`): drag it, or click it to type any value, which turns back into the slider when you press ++enter++ or click beside it. Without both ends, a number box with its range beside it |
 | On/off | A switch |
 | Choice | Its choices as buttons, or a list when they don't fit |
 | Colour | A swatch and its `#rrggbb`. Click the swatch for a picker: drag in the square (saturation, brightness) and the bar (hue), or pick a common colour or the field's default. The box follows as you go; click beside the picker or press ++esc++ to close it |
-| Direction (yaw) | Degrees, with **Facing**: the point's own facing (for an area, where you look) |
+| Direction (yaw) | A slider of degrees (-180 to 180), with **Facing**: the point's own facing (for an area, where you look) |
 | Area | A list of the areas of the world |
 
 A required field has a `*`, its description shows on its label. A field left empty reads its default (shown faint in
-the box, or as *default* beside a switch or a choice); × beside a switch, a choice or an area takes the value back to
-the default. **Save** writes the form as the whole of the point's or area's data. The plugin checks it: what doesn't fit
+the box or the slider, or as *default* beside a switch or a choice); × beside a slider, a switch, a choice or an area
+takes the value back to the default. **Save** writes the form as the whole of the point's or area's data. The plugin checks it: what doesn't fit
 (out of range, not one of the choices, a required field missing) is refused, and every reason shows in red under the
 field it names.
 

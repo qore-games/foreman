@@ -34,11 +34,11 @@ enum class Style { NORMAL, PRIMARY, DANGER, GHOST }
 
 /**
  * A clickable area registered while drawing; the last one under the mouse gets the click. One with [onDrag] gets the
- * mouse's position on the click and while the button is held.
+ * mouse's position on the click and while the button is held, then [onRelease] when it is let go.
  */
 class Hit(
     val x: Int, val y: Int, val w: Int, val h: Int, val tooltip: String?, val onClick: (() -> Unit)?, val blocks: Boolean = false,
-    val onDrag: ((Double, Double) -> Unit)? = null,
+    val onDrag: ((Double, Double) -> Unit)? = null, val onRelease: (() -> Unit)? = null,
 ) {
     fun contains(mx: Double, my: Double) = mx >= x && mx < x + w && my >= y && my < y + h
 }
@@ -117,9 +117,12 @@ class Ui(
         hits += Hit(x, y, w, h, tooltip, onClick)
     }
 
-    /** An area dragged with the mouse: [onDrag] gets the mouse's position on the click and while the button is held. */
-    fun drag(x: Int, y: Int, w: Int, h: Int, tooltip: String? = null, onDrag: (Double, Double) -> Unit) {
-        hits += Hit(x, y, w, h, tooltip, null, onDrag = onDrag)
+    /**
+     * An area dragged with the mouse: [onDrag] gets the mouse's position on the click and while the button is held,
+     * [onRelease] runs when it is let go.
+     */
+    fun drag(x: Int, y: Int, w: Int, h: Int, tooltip: String? = null, onRelease: (() -> Unit)? = null, onDrag: (Double, Double) -> Unit) {
+        hits += Hit(x, y, w, h, tooltip, null, onDrag = onDrag, onRelease = onRelease)
     }
 
     /** A vertical gradient from [top] to [bottom] (ARGB). */
@@ -296,6 +299,8 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
 
     override fun mouseClicked(real: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val event = real.scaled()
+        // A click beside the slider being typed in turns it back into a slider.
+        Slider.typed?.let { box -> if (!box.isMouseOver(event.x(), event.y()) && focused === box) focused = null }
         if (!modal && super.mouseClicked(event, doubleClick)) return true
         liveScrolls().lastOrNull { it.inGutter(event.x(), event.y()) }?.let { area ->
             // On the thumb: drag it from where it was grabbed. Above or below: it jumps there, centered.
@@ -329,6 +334,7 @@ abstract class KitScreen(title: String) : Screen(Component.literal(title)) {
     override fun mouseReleased(real: MouseButtonEvent): Boolean {
         if (held == null && dragging == null) return super.mouseReleased(real.scaled())
         held = null
+        dragging?.onRelease?.invoke()
         dragging = null
         return true
     }

@@ -5,6 +5,7 @@ import games.qore.foreman.client.link.LayoutField
 import games.qore.foreman.client.link.Layouts
 import games.qore.foreman.client.ui.kit.ColorPicker
 import games.qore.foreman.client.ui.kit.Popover
+import games.qore.foreman.client.ui.kit.Slider
 import games.qore.foreman.client.ui.kit.Style
 import games.qore.foreman.client.ui.kit.Theme
 import games.qore.foreman.client.ui.kit.Ui
@@ -21,10 +22,11 @@ import net.minecraft.network.chat.Component
 
 /**
  * One [field] being edited, a row of a [form][LayoutForm] or of a plugin's panel: its label, then a text box (string),
- * a number box with its range (int, number), a switch (bool), choices (enum: buttons, a list when they don't fit), a
- * swatch opening a colour picker and a hex box (color), a number with the facing a click away ([facing]; yaw), a pick
- * of [world]'s areas (area), or what it points at and a button picking it in the world ([pickTarget]; target). Empty,
- * it reads its default (the box's hint). [open] opens its lists; [onPicked] runs when a picked value changes.
+ * a number (int, number: a [Slider] across its range when it has both ends, else a box with its range), a switch (bool),
+ * choices (enum: buttons, a list when they don't fit), a swatch opening a colour picker and a hex box (color), a slider
+ * of degrees with the facing a click away ([facing]; yaw), a pick of [world]'s areas (area), or what it points at and a
+ * button picking it in the world ([pickTarget]; target). Empty, it reads its default (the box's hint, the slider's faint
+ * value). [open] opens its lists; [onPicked] runs when a picked value changes.
  */
 class FieldInput(
     val field: LayoutField, private val world: String, private val facing: () -> Float?, private val open: (Popover) -> Unit,
@@ -45,6 +47,9 @@ class FieldInput(
 
     /** Typed in a box, rather than picked. */
     val boxed get() = field.type !in PICKED
+
+    /** A number with both ends of its range (a yaw's, a turn when it has none): slid, its box shown when clicked. */
+    private val slider: Slider? = sliderOf(field)
 
     /** Shows [value] (null: empty, its default). */
     fun load(value: JsonElement?) {
@@ -108,11 +113,17 @@ class FieldInput(
             else -> boxRow(ui, cx, y, cw, top, bottom)
         }
         // A required field without a default has nothing to go back to.
-        if (!boxed && set != null && (f.default != null || !f.required)) ui.button(x + w - RESET_W + 2, y, RESET_W - 2, 16, "×", Style.GHOST,
+        val changed = if (boxed) slider != null && text.isNotBlank() else set != null
+        if (changed && (f.default != null || !f.required)) ui.button(x + w - RESET_W + 2, y, RESET_W - 2, 16, "×", Style.GHOST,
             tooltip = if (f.default != null) "Back to the default: ${defaultText(f)}" else "Clear it") {
-            set = null
             error = null
-            onPicked?.invoke()
+            if (boxed) {
+                text = ""
+                box?.value = ""
+            } else {
+                set = null
+                onPicked?.invoke()
+            }
         }
         val error = error ?: return 20
         return 18 + ui.paragraph(error, cx, y + 18, cw, Theme.ERROR) + 4
@@ -127,6 +138,15 @@ class FieldInput(
     private fun boxRow(ui: Ui, x: Int, y: Int, w: Int, top: Int, bottom: Int) {
         val f = field
         val box = box ?: return
+        slider?.let { s ->
+            val facingW = if (f.type == "yaw") 56 else 0
+            val sw = w - RESET_W - facingW
+            s.draw(ui, x, y, sw, box, y >= top && y + 16 <= bottom, (f.default as? JsonPrimitive)?.takeIf { !it.isString }?.double())
+            if (f.type == "yaw") ui.button(x + sw + 6, y, 50, 16, "Facing", Style.NORMAL, tooltip = "Use where it faces now") {
+                facing()?.let { text = num(it.toDouble()); box.value = text }
+            }
+            return
+        }
         val bx = if (f.type == "color") x + 20 else x
         if (f.type == "string") box.setWidth(w)
         box.setPosition(bx, y)
@@ -261,6 +281,17 @@ class FieldInput(
         private const val RESET_W = 16
         /** The field types picked rather than typed. */
         private val PICKED = setOf("bool", "enum", "area", "target")
+
+        /** [f]'s slider: a number with both ends of its range, a yaw (a turn, -180 to 180, unless it has its own). */
+        private fun sliderOf(f: LayoutField): Slider? {
+            val (min, max) = when (f.type) {
+                "int", "number" -> (f.min ?: return null) to (f.max ?: return null)
+                "yaw" -> (f.min ?: -180.0) to (f.max ?: 180.0)
+                else -> return null
+            }
+            if (max <= min) return null
+            return Slider(min, max, Slider.step(min, max, whole = f.type != "number"), ::num)
+        }
 
         private fun range(f: LayoutField): String? = when {
             f.min != null && f.max != null -> "${num(f.min)} – ${num(f.max)}"
